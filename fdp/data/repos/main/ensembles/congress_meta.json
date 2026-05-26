@@ -1,0 +1,45 @@
+{
+  "chamber": "congress",
+  "steps": 2000,
+  "burn_in": 0,
+  "epsilon": 0.07,
+  "num_districts": 14,
+  "total_population": 10712927,
+  "ideal_population": 765209.0714285715,
+  "enacted_metrics": {
+    "step": 0,
+    "dem_seats": 5,
+    "efficiency_gap": 0.16009641953640183,
+    "mean_median": 0.08928167955036503,
+    "num_cut_edges": 787,
+    "polsby_popper_mean": 0.2288468824191627,
+    "polsby_popper_min": 0.1091379810044577,
+    "majority_minority_districts": 14
+  },
+  "columns_used": {
+    "population": "TOTPOP_C",
+    "dem_votes": "DEM_VOTES",
+    "rep_votes": "REP_VOTES",
+    "black_vap": "BVAP",
+    "hisp_vap": "HVAP",
+    "district": "CDIST"
+  },
+  "runtime_seconds": 41.6,
+  "ran_at": "2026-04-07T19:23:24",
+  "data_sources": {
+    "precincts": "RDH Georgia 2020 General Election Statewide Precincts (ga_gen_20_st_prec)",
+    "population": "2020 Census PL 94-171 Block-level (ga_pl2020_p1_b, ga_pl2020_p4_b)",
+    "districts": "Georgia 2023 Enacted Congressional Districts (Congress-2023 shape)",
+    "election": "2020 US Presidential Election results (Biden/Trump)"
+  },
+  "algorithm": {
+    "key": "recom",
+    "name": "ReCom (Recombination)",
+    "proposal": "Merge two adjacent districts, re-split via random spanning tree",
+    "accept": "always_accept (Markov chain random walk)",
+    "note": "Fast, widely used in academic studies. Each step is independent.",
+    "constraints": [
+      "Population within \u00b17% of ideal (765,209)"
+    ]
+  }
+}

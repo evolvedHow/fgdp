@@ -1,0 +1,114 @@
+# =============================================================================
+# Mid-Decade Redistricting History — Georgia 2001–2023
+#
+# Source: FDGA analysis of enacted legislation and election results, 2000–2024
+# Author: Jane Branscomb
+# Created: 2026-02-16
+# Schema:  fdp/config/schema/redistricting_history.yml
+#
+# NOTE: The `districts` field for each chamber wave is intentionally empty until
+# specific district IDs are resolved by comparing historical boundary files.
+# When boundary files for each wave become available, run:
+#   fdp displacement compute --wave 2005 --plan-a <before> --plan-b <after>
+# to populate both the district IDs and displacement metrics.
+# =============================================================================
+
+source: "FDGA analysis of enacted legislation and election results, 2000-2024"
+author: "Jane Branscomb"
+created: "2026-02-16"
+total_districts_changed: 71
+additional_bills_not_passed: 33
+
+waves:
+  - year: 2005
+    end_year: 2006
+    label: "2005–2006 Mid-Decade Redistricting"
+    party: R
+    reason: '"We''re fixing the Democratic gerrymander" of 2001'
+    legal_context: >
+      Action challenged in court; allowed by GA Supreme Court in
+      Blum v. Schrader, 2006.
+    election_result: >
+      2006: Rs gain 10 House seats despite virtually level statewide vote share.
+    chambers:
+      - chamber: congress
+        all_districts: true
+        district_count: 13
+        districts: []
+        notes: "All 13 congressional districts redrawn"
+      - chamber: house
+        all_districts: false
+        district_count: 11
+        districts: []
+        notes: "Specific district IDs to be resolved from boundary file comparison"
+
+  - year: 2012
+    label: "2012 Mid-Decade Redistricting"
+    party: R
+    reason: "Produce Republican super-majority"
+    election_result: >
+      2012: Rs achieve super-majority in Senate, 1 seat shy in House, despite
+      2.4% decline in statewide vote share.
+    chambers:
+      - chamber: house
+        all_districts: false
+        district_count: 23
+        districts: []
+        notes: "Specific district IDs to be resolved from boundary file comparison"
+
+  - year: 2015
+    label: "2015 Mid-Decade Redistricting"
+    party: both
+    reason: '"Make districts better for incumbents to get re-elected."'
+    legal_context: >
+      Court deposition of Gina Wright, LCRO, in GA NAACP v. Georgia, 2017.
+    election_result: >
+      2016: Incumbents re-elected in altered districts.
+    chambers:
+      - chamber: house
+        all_districts: false
+        district_count: 17
+        districts: []
+        notes: "Specific district IDs to be resolved from boundary file comparison"
+
+  - year: 2023
+    label: "2023 Mid-Decade Redistricting"
+    party: R
+    reason: >
+      Complies with court order requiring new Congressional and General Assembly
+      districts for Black voters, but goes beyond court-ordered change to alter
+      other districts and maintain partisan advantage.
+    legal_context: >
+      Senator Bill Cowsert, Senate Committee Hearing, 2023:
+      "We're maintaining the existing partisan balance."
+    election_result: >
+      All districts altered as partisan take-backs are won as expected.
+    chambers:
+      - chamber: congress
+        all_districts: false
+        district_count: 1
+        districts: []
+        notes: "Court-ordered VRA change; specific district TBD from boundary comparison"
+      - chamber: house
+        all_districts: false
+        district_count: 6
+        districts: []
+        notes: "Partisan take-backs; specific district IDs TBD from boundary comparison"
+
+# ---------------------------------------------------------------------------
+# Decade redistrictings (not mid-decade; listed for timeline completeness)
+# ---------------------------------------------------------------------------
+decade_redistrictings:
+  - year: 2001
+    party: D
+    reason: "2000 US Census"
+  - year: 2004
+    party: N/A
+    reason: "Court found 2001 General Assembly maps unconstitutional; new maps drawn by Court"
+    note: "All General Assembly districts affected"
+  - year: 2011
+    party: R
+    reason: "2010 US Census"
+  - year: 2021
+    party: R
+    reason: "2020 US Census"

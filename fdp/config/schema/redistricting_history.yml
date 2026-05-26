@@ -1,0 +1,44 @@
+# =============================================================================
+# CDM SCHEMA: Redistricting History Events
+#
+# Defines the contract for mid-decade redistricting event records.
+# Canonical data lives in: data/repos/main/history/redistricting_waves.yml
+# Python model:            fdp/schema/models.py :: RedistrictingWave
+# TypeScript mirror:       map-compare/src/lib/types/cdm.ts :: RedistrictingWave
+# =============================================================================
+
+schema:
+  name: redistricting_history
+  version: "1.0"
+  description: "Mid-decade redistricting events affecting Georgia districts"
+
+wave:
+  required_fields:
+    - year        # int: calendar year the redistricting took effect
+    - label       # str: human-readable label, e.g. "2005–2006 Mid-Decade Redistricting"
+    - party       # enum: R | D | both
+    - reason      # str: stated justification (often a direct quote)
+    - chambers    # list[ChamberWave]
+  optional_fields:
+    - end_year        # int: when the redistricting spanned two years
+    - legal_context   # str: court cases, citations, quotes
+    - election_result # str: documented partisan outcome
+
+chamber_wave:
+  required_fields:
+    - chamber         # enum: congress | house | senate
+    - district_count  # int: number of districts changed in this chamber
+  optional_fields:
+    - all_districts   # bool: true when every district in the chamber was redrawn
+    - districts       # list[str]: specific district IDs (empty = not yet resolved from boundary files)
+    - notes           # str: additional context
+
+enums:
+  party:
+    - R
+    - D
+    - both
+  chamber:
+    - congress
+    - house
+    - senate

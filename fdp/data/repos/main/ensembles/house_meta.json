@@ -1,0 +1,44 @@
+{
+  "chamber": "house",
+  "steps": 10000,
+  "burn_in": 0,
+  "epsilon": 0.07,
+  "num_districts": 180,
+  "total_population": 10711902,
+  "ideal_population": 59510.566666666666,
+  "enacted_metrics": {
+    "step": 0,
+    "dem_seats": 85,
+    "efficiency_gap": 0.05250302653137626,
+    "mean_median": 0.05452998945886128,
+    "num_cut_edges": 3011,
+    "polsby_popper_mean": 0.24855141398275388,
+    "polsby_popper_min": 0.059459274359202466,
+    "majority_minority_districts": 179
+  },
+  "columns_used": {
+    "population": "TOTPOP_H",
+    "dem_votes": "DEM_VOTES",
+    "rep_votes": "REP_VOTES",
+    "black_vap": "BVAP",
+    "hisp_vap": "HVAP",
+    "district": "HDIST"
+  },
+  "runtime_seconds": 119.0,
+  "ran_at": "2026-04-07T13:43:31",
+  "data_sources": {
+    "precincts": "RDH Georgia 2020 General Election Statewide Precincts (ga_gen_20_st_prec)",
+    "population": "2020 Census PL 94-171 Block-level (ga_pl2020_p1_b, ga_pl2020_p4_b)",
+    "districts": "Georgia 2023 Enacted House Districts (House-2023 shape)",
+    "election": "2020 US Presidential Election results (Biden/Trump)"
+  },
+  "algorithm": {
+    "method": "ReCom (Recombination)",
+    "library": "GerryChain 0.3.x",
+    "proposal": "Merge two adjacent districts, re-split via random spanning tree",
+    "constraints": [
+      "Population within \u00b17% of ideal (59,511)"
+    ],
+    "accept": "always_accept (Markov chain random walk)"
+  }
+}

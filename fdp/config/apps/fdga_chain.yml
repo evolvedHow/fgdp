@@ -1,0 +1,37 @@
+# =============================================================================
+# fdga-chain — GerryChain ensemble redistricting analysis
+# =============================================================================
+
+app:
+  name: fdga_chain
+  description: "GerryChain ensemble analysis — generates alternative redistricting maps"
+  repo: main
+
+chain:
+  steps: 10000
+  epsilon: 0.05
+  pop_col: "TOTPOP_C"
+  algorithm: "recom"
+  random_seed: 42
+
+data:
+  precinct_source: "precincts/ga_gen_20_congress_prec.shp"
+  graphs_dir:      "graphs"
+  ensembles_dir:   "ensembles"
+  lrdb_file:       "lrdb/lrdb_web_20260216.geojson"
+  boundaries:
+    congress:
+      enacted: "boundaries/congress/congress_enacted_24_2024update.geojson"
+    house:
+      enacted: "boundaries/house/house_enacted_24_2024update.geojson"
+    senate:
+      enacted: "boundaries/senate/senate_enacted_24_2024update.geojson"
+
+# Metrics computed per ensemble run
+metrics:
+  - dem_seats
+  - efficiency_gap
+  - mean_median
+  - polsby_popper
+  - majority_minority_districts
+  - num_cut_edges

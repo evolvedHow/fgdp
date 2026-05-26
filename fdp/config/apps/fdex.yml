@@ -1,0 +1,91 @@
+# =============================================================================
+# fdex — District Explorer (consumer-facing)
+# Overrides for defaults.yml where fdex differs from platform defaults.
+# =============================================================================
+
+app:
+  name: fdex
+  description: "District Explorer — consumer-facing redistricting tool"
+  repo: main   # Switch to a workspace name to test new data without affecting other apps
+
+map:
+  zoom: 5.5
+  min_zoom: 4.5
+  max_zoom: 12.0
+
+# Plan catalogue: each entry references a file inside the active data repo.
+# Path is relative to the repo root (data_layout keys resolved by the platform).
+plans:
+  congress:
+    - id: congress_enacted_24
+      label: "2024 Enacted Congressional Map"
+      file: "boundaries/congress/congress_enacted_24_2024update.geojson"
+    - id: congress_remedy_a
+      label: "Congressional Remedy A"
+      file: "boundaries/congress/congress_remedy_a.geojson"
+    - id: congress_remedy_b
+      label: "Congressional Remedy B"
+      file: "boundaries/congress/congress_remedy_b.geojson"
+    - id: congress12_census20
+      label: "2011 Congressional (2020 Census Boundaries)"
+      file: "boundaries/congress/congress12_census20.geojson"
+    - id: congress14_census20
+      label: "2013 Congressional (2020 Census Boundaries)"
+      file: "boundaries/congress/congress14_census20.geojson"
+    - id: congress21_census20
+      label: "2021 Congressional (2020 Census Boundaries)"
+      file: "boundaries/congress/congress21_census20.geojson"
+  house:
+    - id: house_enacted_24
+      label: "2024 Enacted House Map"
+      file: "boundaries/house/house_enacted_24_2024update.geojson"
+    - id: house_remedy_a
+      label: "House Remedy A"
+      file: "boundaries/house/house_remedy_a.geojson"
+    - id: house_remedy_b
+      label: "House Remedy B"
+      file: "boundaries/house/house_remedy_b.geojson"
+    - id: house15_census20
+      label: "2015 House (2020 Census Boundaries)"
+      file: "boundaries/house/house15_census20.geojson"
+  senate:
+    - id: senate_enacted_24
+      label: "2024 Enacted Senate Map"
+      file: "boundaries/senate/senate_enacted_24_2024update.geojson"
+    - id: senate_remedy
+      label: "Senate Remedy Map"
+      file: "boundaries/senate/senate_remedy.geojson"
+    - id: senate14_census20
+      label: "2014 Senate (2020 Census Boundaries)"
+      file: "boundaries/senate/senate14_census20.geojson"
+
+overlays:
+  - id: bvap
+    label: "Black VAP %"
+    property: "BVAP_PCT"
+    color_ramp: ["#f7f7f7", "#084594"]
+    breaks: [0, 10, 20, 30, 40, 50, 100]
+  - id: hvap
+    label: "Hispanic VAP %"
+    property: "HVAP_PCT"
+    color_ramp: ["#f7f7f7", "#006d2c"]
+    breaks: [0, 5, 10, 15, 20, 30, 100]
+  - id: avap
+    label: "Asian VAP %"
+    property: "AVAP_PCT"
+    color_ramp: ["#f7f7f7", "#7a0177"]
+    breaks: [0, 2, 5, 10, 15, 20, 100]
+  - id: partisan
+    label: "Partisan Lean"
+    property: "DEM_PCT"
+    color_ramp: ["#c0392b", "#f7f7f7", "#2980b9"]
+    breaks: [0, 40, 45, 50, 55, 60, 100]
+
+reference_layers:
+  county: "boundaries/reference/county.geojson"
+  places: "boundaries/reference/places_2020data.geojson"
+
+demographics:
+  congress: "demographics/congress.json"
+  house:    "demographics/house.json"
+  senate:   "demographics/senate.json"

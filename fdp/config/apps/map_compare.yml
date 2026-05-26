@@ -1,0 +1,60 @@
+# =============================================================================
+# map-compare — Redistricting plan comparison tool
+# =============================================================================
+
+app:
+  name: map_compare
+  description: "Side-by-side redistricting plan comparison with metrics and AI narratives"
+  repo: main
+
+map:
+  zoom: 6.0
+
+# Plans available in the preset library (mirrors fdex; single source of truth)
+plans:
+  congress:
+    - id: congress_enacted_24
+      label: "2024 Enacted"
+      file: "boundaries/congress/congress_enacted_24_2024update.geojson"
+    - id: congress_remedy_a
+      label: "Remedy A"
+      file: "boundaries/congress/congress_remedy_a.geojson"
+    - id: congress_remedy_b
+      label: "Remedy B"
+      file: "boundaries/congress/congress_remedy_b.geojson"
+    - id: congress12_census20
+      label: "2011 Plan"
+      file: "boundaries/congress/congress12_census20.geojson"
+    - id: congress21_census20
+      label: "2021 Plan"
+      file: "boundaries/congress/congress21_census20.geojson"
+  house:
+    - id: house_enacted_24
+      label: "2024 Enacted"
+      file: "boundaries/house/house_enacted_24_2024update.geojson"
+    - id: house_remedy_a
+      label: "Remedy A"
+      file: "boundaries/house/house_remedy_a.geojson"
+    - id: house_remedy_b
+      label: "Remedy B"
+      file: "boundaries/house/house_remedy_b.geojson"
+  senate:
+    - id: senate_enacted_24
+      label: "2024 Enacted"
+      file: "boundaries/senate/senate_enacted_24_2024update.geojson"
+    - id: senate_remedy
+      label: "Remedy"
+      file: "boundaries/senate/senate_remedy.geojson"
+
+reference_layers:
+  county: "boundaries/reference/county.geojson"
+  places: "boundaries/reference/places_2020data.geojson"
+
+# LLM: map-compare calls AI providers client-side; list supported providers
+llm:
+  providers:
+    - groq
+    - anthropic
+    - openai
+    - google
+  default_provider: groq

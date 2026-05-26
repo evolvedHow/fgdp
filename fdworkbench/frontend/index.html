@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FD Workbench — Fair Districts Georgia</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 800: '#1a2942', 900: '#0f1d2e' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Monospace SQL editor */
+    #sql-editor {
+      font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      tab-size: 2;
+      resize: vertical;
+    }
+    /* Results table */
+    #results-table th {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    /* Sidebar scrollbar */
+    #sidebar-list::-webkit-scrollbar { width: 4px; }
+    #sidebar-list::-webkit-scrollbar-track { background: transparent; }
+    #sidebar-list::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 2px; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 1rem; height: 1rem;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    .spinner-dark {
+      border: 2px solid rgba(37,99,235,0.2);
+      border-top-color: #2563eb;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Transition helper */
+    .fade-in { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity:1; transform:none; } }
+  </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden flex flex-col">
+
+<!-- ── HEADER ──────────────────────────────────────────────────────── -->
+<header class="bg-navy-800 text-white px-5 py-3 flex items-center gap-3 shadow-lg z-20 flex-shrink-0">
+  <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+  </svg>
+  <span class="font-bold text-lg tracking-tight">FD Workbench</span>
+  <span class="text-xs text-blue-300 bg-blue-900/40 px-2 py-0.5 rounded-full ml-1">
+    Fair Districts Georgia · NLQ Analytics
+  </span>
+  <div class="ml-auto flex items-center gap-3">
+    <span id="status-badge" class="text-xs text-green-300 hidden">● Connected</span>
+  </div>
+</header>
+
+<!-- ── MAIN LAYOUT ─────────────────────────────────────────────────── -->
+<div class="flex flex-1 overflow-hidden">
+
+  <!-- SIDEBAR ──────────────────────────────────────────────────────── -->
+  <aside class="w-64 bg-navy-800 text-white flex flex-col flex-shrink-0 shadow-xl">
+    <div class="px-4 pt-4 pb-2 flex items-center justify-between">
+      <span class="text-xs font-semibold text-blue-300 uppercase tracking-widest">Saved Queries</span>
+      <span id="query-count" class="text-xs text-slate-400 bg-slate-700 rounded-full px-2 py-0.5">0</span>
+    </div>
+    <div id="sidebar-list" class="flex-1 overflow-y-auto px-2 pb-4 space-y-1">
+      <p id="sidebar-empty" class="text-xs text-slate-500 italic px-2 pt-2">No saved queries yet.</p>
+    </div>
+    <!-- New query button -->
+    <div class="px-3 py-3 border-t border-slate-700">
+      <button onclick="resetWorkbench()"
+              class="w-full text-xs text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600
+                     rounded-md px-3 py-2 flex items-center gap-2 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+        </svg>
+        New Query
+      </button>
+    </div>
+  </aside>
+
+  <!-- CONTENT AREA ─────────────────────────────────────────────────── -->
+  <main class="flex-1 overflow-y-auto p-6 space-y-5">
+
+    <!-- NLQ INPUT ──────────────────────────────────────────────────── -->
+    <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <label class="block text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">
+        Natural Language Query
+      </label>
+      <div class="flex gap-3 items-start">
+        <textarea id="nlq-input" rows="3"
+          class="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800
+                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                 placeholder-gray-400 resize-none"
+          placeholder="Ask anything about Georgia redistricting… e.g. 'How does the enacted congressional map compare to the ensemble on partisan bias?'"
+        ></textarea>
+        <button id="ask-btn" onclick="handleAsk()"
+          class="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold
+                 px-5 py-3 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50">
+          <span id="ask-label">Ask</span>
+          <span id="ask-spinner" class="spinner hidden"></span>
+        </button>
+      </div>
+      <p class="mt-2 text-xs text-gray-400">
+        Tip: ask about <strong>partisan bias</strong>, <strong>compactness</strong>,
+        <strong>demographic breakdowns</strong>, <strong>local redistricting processes</strong>, or
+        compare <strong>enacted plans vs. ensemble</strong>.
+      </p>
+    </section>
+
+    <!-- SIMILARITY MATCH BANNER ────────────────────────────────────── -->
+    <div id="match-banner" class="hidden fade-in bg-amber-50 border border-amber-200 rounded-xl p-4">
+      <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-amber-800">Similar saved query found</p>
+          <p id="match-title" class="text-sm text-amber-700 mt-0.5 font-medium"></p>
+          <p id="match-nlq" class="text-xs text-amber-600 mt-1 italic"></p>
+          <div class="flex gap-2 mt-3">
+            <button onclick="loadMatchedResults()"
+                    class="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors">
+              Load Cached Results
+            </button>
+            <button onclick="dismissMatch()"
+                    class="text-xs bg-white hover:bg-amber-100 text-amber-700 border border-amber-300 px-3 py-1.5 rounded-md font-medium transition-colors">
+              Run as New Query Instead
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SQL EDITOR ─────────────────────────────────────────────────── -->
+    <section id="sql-section" class="hidden fade-in bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <div class="flex items-center justify-between mb-3">
+        <label class="text-xs font-semibold text-gray-500 uppercase tracking-widest">
+          Generated SQL
+          <span class="ml-2 text-blue-500 normal-case font-normal">(DuckDB)</span>
+        </label>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-gray-400">Edit before running if needed</span>
+        </div>
+      </div>
+      <textarea id="sql-editor"
+        class="w-full border border-gray-200 bg-gray-50 rounded-lg px-4 py-3 text-gray-800 min-h-28"
+        rows="7"
+        spellcheck="false"
+      ></textarea>
+      <div class="flex items-center gap-3 mt-3">
+        <button id="run-btn" onclick="handleRun()"
+          class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold
+                 px-5 py-2 rounded-lg transition-colors flex items-center gap-2">
+          <span id="run-label">Run Query</span>
+          <span id="run-spinner" class="spinner hidden"></span>
+        </button>
+        <button onclick="resetWorkbench()"
+          class="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg
+                 border border-gray-200 hover:border-gray-300 transition-colors">
+          Clear
+        </button>
+      </div>
+    </section>
+
+    <!-- RESULTS ────────────────────────────────────────────────────── -->
+    <section id="results-section" class="hidden fade-in bg-white rounded-xl shadow-sm border border-gray-200">
+      <!-- Results header -->
+      <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-semibold text-gray-500 uppercase tracking-widest">Results</span>
+          <span id="row-count-badge"
+                class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium"></span>
+          <span id="truncate-badge"
+                class="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium hidden">
+            Showing first 500 rows
+          </span>
+        </div>
+        <div class="flex items-center gap-2" id="save-area">
+          <button id="save-btn" onclick="openSaveModal()"
+            class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg
+                   font-medium transition-colors flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+            </svg>
+            Save Query
+          </button>
+        </div>
+      </div>
+      <!-- Table container -->
+      <div class="overflow-x-auto max-h-96 overflow-y-auto">
+        <table id="results-table" class="w-full text-xs border-collapse">
+          <thead id="results-thead" class="bg-gray-50 border-b border-gray-200"></thead>
+          <tbody id="results-tbody" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Error section -->
+    <div id="error-section" class="hidden fade-in bg-red-50 border border-red-200 rounded-xl p-4">
+      <div class="flex items-start gap-3">
+        <svg class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div>
+          <p class="text-sm font-semibold text-red-800">Error</p>
+          <p id="error-message" class="text-sm text-red-700 mt-0.5"></p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ── SAVE MODAL ──────────────────────────────────────────────────── -->
+<div id="save-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 fade-in">
+    <h2 class="text-base font-bold text-gray-800 mb-4">Save Query</h2>
+    <div class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Title</label>
+        <input id="save-title" type="text" placeholder="e.g. Congressional Partisan Bias Comparison"
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Query</label>
+        <p id="save-nlq-preview" class="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 italic"></p>
+      </div>
+    </div>
+    <div class="flex gap-3 mt-5">
+      <button onclick="confirmSave()"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold
+                     py-2 rounded-lg transition-colors">
+        Save
+      </button>
+      <button onclick="closeSaveModal()"
+              class="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm
+                     py-2 rounded-lg transition-colors">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── DELETE CONFIRM MODAL ────────────────────────────────────────── -->
+<div id="delete-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 fade-in">
+    <h2 class="text-base font-bold text-gray-800 mb-2">Delete Query?</h2>
+    <p class="text-sm text-gray-600 mb-5">This will permanently delete the query and all cached results.</p>
+    <div class="flex gap-3">
+      <button id="confirm-delete-btn"
+              class="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold
+                     py-2 rounded-lg transition-colors">
+        Delete
+      </button>
+      <button onclick="closeDeleteModal()"
+              class="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm
+                     py-2 rounded-lg transition-colors">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SCRIPTS ─────────────────────────────────────────────────────── -->
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let state = {
+  currentNlq:    '',
+  currentSql:    '',
+  currentResult: null,   // {columns, rows, row_count, truncated}
+  matchedQuery:  null,   // matched saved query object (if any)
+  pendingDeleteId: null,
+};
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadBookmarks();
+  document.getElementById('nlq-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAsk();
+  });
+  document.getElementById('status-badge').classList.remove('hidden');
+});
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch('/api' + path, opts);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(err.detail || resp.statusText);
+  }
+  return resp.json();
+}
+
+// ── Bookmarks / sidebar ───────────────────────────────────────────────────────
+async function loadBookmarks() {
+  try {
+    const queries = await api('GET', '/queries');
+    renderBookmarks(queries);
+  } catch (e) {
+    console.error('Could not load bookmarks:', e);
+  }
+}
+
+function renderBookmarks(queries) {
+  const list   = document.getElementById('sidebar-list');
+  const empty  = document.getElementById('sidebar-empty');
+  const count  = document.getElementById('query-count');
+
+  count.textContent = queries.length;
+  list.innerHTML = '';
+
+  if (!queries.length) {
+    list.appendChild(empty);
+    return;
+  }
+
+  queries.forEach(q => {
+    const item = document.createElement('div');
+    item.className = `
+      group flex items-start gap-1.5 px-2 py-2 rounded-lg cursor-pointer
+      hover:bg-slate-700 transition-colors
+    `;
+    item.innerHTML = `
+      <div class="flex-1 min-w-0" onclick="loadSavedQuery(${q.id})">
+        <p class="text-xs font-semibold text-slate-200 leading-tight truncate">${esc(q.title)}</p>
+        <p class="text-xs text-slate-400 mt-0.5 truncate italic">${esc(q.nlq)}</p>
+        <div class="flex items-center gap-2 mt-1">
+          ${q.row_count != null
+            ? `<span class="text-xs text-slate-500">${q.row_count.toLocaleString()} rows</span>`
+            : ''}
+          <span class="text-xs text-slate-600">· ${q.use_count}× used</span>
+        </div>
+      </div>
+      <div class="flex flex-col gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button title="Refresh (re-run SQL)" onclick="event.stopPropagation(); refreshQuery(${q.id})"
+                class="text-slate-400 hover:text-green-400 p-0.5 rounded transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+        <button title="Delete query" onclick="event.stopPropagation(); confirmDelete(${q.id})"
+                class="text-slate-400 hover:text-red-400 p-0.5 rounded transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+          </svg>
+        </button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+// ── ASK (NLQ → check similarity → generate SQL) ───────────────────────────────
+async function handleAsk() {
+  const nlqText = document.getElementById('nlq-input').value.trim();
+  if (!nlqText) return;
+
+  state.currentNlq = nlqText;
+  state.matchedQuery = null;
+
+  hideAll();
+  setAsking(true);
+
+  try {
+    const resp = await api('POST', '/nlq/process', { nlq: nlqText });
+
+    if (resp.type === 'match') {
+      state.matchedQuery = resp.matched_query;
+      showMatchBanner(resp.matched_query);
+      if (resp.cached_results) {
+        showResults(resp.cached_results, false);
+      }
+    } else {
+      state.currentSql = resp.sql;
+      showSqlEditor(resp.sql);
+    }
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    setAsking(false);
+  }
+}
+
+// ── RUN (execute SQL) ─────────────────────────────────────────────────────────
+async function handleRun() {
+  const sql = document.getElementById('sql-editor').value.trim();
+  if (!sql) return;
+
+  state.currentSql = sql;
+  hideError();
+  setRunning(true);
+
+  try {
+    const result = await api('POST', '/query/execute', { sql });
+    state.currentResult = result;
+    showResults(result, true);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    setRunning(false);
+  }
+}
+
+// ── LOAD SAVED QUERY ──────────────────────────────────────────────────────────
+async function loadSavedQuery(id) {
+  hideAll();
+  try {
+    const { query, cached_results } = await api('GET', `/queries/${id}`);
+    state.currentNlq = query.nlq;
+    state.currentSql = query.sql;
+    document.getElementById('nlq-input').value = query.nlq;
+    showSqlEditor(query.sql);
+    if (cached_results) {
+      state.currentResult = cached_results;
+      showResults(cached_results, false);
+    }
+    // bump use count (read counts as a use)
+    // we do a silent refresh in background: no
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// ── REFRESH SAVED QUERY ───────────────────────────────────────────────────────
+async function refreshQuery(id) {
+  try {
+    const { result, query } = await api('POST', `/queries/${id}/refresh`);
+    // If this query is currently displayed, update results
+    if (state.currentSql === query.sql || document.getElementById('sql-editor').value === query.sql) {
+      state.currentResult = result;
+      showResults(result, false);
+    }
+    loadBookmarks();
+    flash(`"${query.title}" refreshed — ${result.row_count} rows`, 'green');
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// ── MATCH BANNER ACTIONS ──────────────────────────────────────────────────────
+function showMatchBanner(q) {
+  document.getElementById('match-title').textContent = q.title;
+  document.getElementById('match-nlq').textContent   = `"${q.nlq}"`;
+  document.getElementById('match-banner').classList.remove('hidden');
+}
+
+function loadMatchedResults() {
+  if (!state.matchedQuery) return;
+  loadSavedQuery(state.matchedQuery.id);
+  document.getElementById('match-banner').classList.add('hidden');
+}
+
+function dismissMatch() {
+  document.getElementById('match-banner').classList.add('hidden');
+  state.matchedQuery = null;
+  // Re-run as new: force SQL generation bypassing similarity
+  forceSqlGenerate();
+}
+
+async function forceSqlGenerate() {
+  setAsking(true);
+  try {
+    const resp = await api('POST', '/nlq/process', { nlq: state.currentNlq, force_new: true });
+    if (resp.sql) {
+      state.currentSql = resp.sql;
+      showSqlEditor(resp.sql);
+    } else {
+      showSqlEditor('-- Could not generate SQL. Please type your query manually.');
+    }
+  } catch (e) {
+    showSqlEditor('-- Could not generate SQL. Please type your query manually.');
+  } finally {
+    setAsking(false);
+  }
+}
+
+// ── SAVE MODAL ────────────────────────────────────────────────────────────────
+function openSaveModal() {
+  document.getElementById('save-title').value = '';
+  document.getElementById('save-nlq-preview').textContent = state.currentNlq || '(no NLQ)';
+  document.getElementById('save-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('save-title').focus(), 50);
+}
+
+function closeSaveModal() {
+  document.getElementById('save-modal').classList.add('hidden');
+}
+
+async function confirmSave() {
+  const title = document.getElementById('save-title').value.trim();
+  if (!title) { document.getElementById('save-title').focus(); return; }
+
+  const payload = {
+    title,
+    nlq: state.currentNlq || '',
+    sql: state.currentSql || document.getElementById('sql-editor').value,
+    row_count: state.currentResult?.row_count ?? null,
+  };
+
+  try {
+    await api('POST', '/queries', payload);
+    closeSaveModal();
+    await loadBookmarks();
+    flash(`Query "${title}" saved!`, 'blue');
+    // Hide the save button to avoid double-save
+    document.getElementById('save-btn').classList.add('hidden');
+  } catch (e) {
+    showError(e.message);
+    closeSaveModal();
+  }
+}
+
+// ── DELETE MODAL ──────────────────────────────────────────────────────────────
+function confirmDelete(id) {
+  state.pendingDeleteId = id;
+  document.getElementById('delete-modal').classList.remove('hidden');
+  document.getElementById('confirm-delete-btn').onclick = doDelete;
+}
+
+function closeDeleteModal() {
+  document.getElementById('delete-modal').classList.add('hidden');
+  state.pendingDeleteId = null;
+}
+
+async function doDelete() {
+  if (!state.pendingDeleteId) return;
+  try {
+    await api('DELETE', `/queries/${state.pendingDeleteId}`);
+    closeDeleteModal();
+    await loadBookmarks();
+    flash('Query deleted', 'red');
+  } catch (e) {
+    showError(e.message);
+    closeDeleteModal();
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function showSqlEditor(sql) {
+  document.getElementById('sql-editor').value = sql;
+  document.getElementById('sql-section').classList.remove('hidden');
+  document.getElementById('save-btn').classList.remove('hidden');
+}
+
+function showResults(result, showSaveBtn = true) {
+  const { columns, rows, row_count, truncated } = result;
+
+  // Badge
+  document.getElementById('row-count-badge').textContent =
+    `${row_count.toLocaleString()} row${row_count !== 1 ? 's' : ''}`;
+  const truncBadge = document.getElementById('truncate-badge');
+  truncated ? truncBadge.classList.remove('hidden') : truncBadge.classList.add('hidden');
+
+  // Header
+  const thead = document.getElementById('results-thead');
+  thead.innerHTML = '';
+  const tr = document.createElement('tr');
+  columns.forEach(col => {
+    const th = document.createElement('th');
+    th.className = 'px-3 py-2 text-left text-xs font-semibold text-gray-600 bg-gray-50 border-r border-gray-100 last:border-0 whitespace-nowrap';
+    th.textContent = col;
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+
+  // Body
+  const tbody = document.getElementById('results-tbody');
+  tbody.innerHTML = '';
+  rows.forEach((row, ri) => {
+    const tr = document.createElement('tr');
+    tr.className = ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/60';
+    row.forEach(cell => {
+      const td = document.createElement('td');
+      td.className = 'px-3 py-1.5 text-xs text-gray-700 border-r border-gray-100 last:border-0 whitespace-nowrap max-w-xs truncate';
+      td.title = cell ?? '';
+      td.textContent = cell ?? 'null';
+      if (cell === null) td.classList.add('text-gray-400', 'italic');
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  if (!showSaveBtn) {
+    document.getElementById('save-btn').classList.add('hidden');
+  }
+  document.getElementById('results-section').classList.remove('hidden');
+}
+
+function showError(msg) {
+  document.getElementById('error-message').textContent = msg;
+  document.getElementById('error-section').classList.remove('hidden');
+}
+
+function hideError() {
+  document.getElementById('error-section').classList.add('hidden');
+}
+
+function hideAll() {
+  ['match-banner','sql-section','results-section','error-section'].forEach(id => {
+    document.getElementById(id).classList.add('hidden');
+  });
+}
+
+function resetWorkbench() {
+  document.getElementById('nlq-input').value = '';
+  state = { currentNlq: '', currentSql: '', currentResult: null, matchedQuery: null, pendingDeleteId: null };
+  hideAll();
+  document.getElementById('nlq-input').focus();
+}
+
+function setAsking(busy) {
+  const btn   = document.getElementById('ask-btn');
+  const label = document.getElementById('ask-label');
+  const spin  = document.getElementById('ask-spinner');
+  btn.disabled = busy;
+  label.textContent = busy ? 'Thinking…' : 'Ask';
+  busy ? spin.classList.remove('hidden') : spin.classList.add('hidden');
+}
+
+function setRunning(busy) {
+  const btn   = document.getElementById('run-btn');
+  const label = document.getElementById('run-label');
+  const spin  = document.getElementById('run-spinner');
+  btn.disabled = busy;
+  label.textContent = busy ? 'Running…' : 'Run Query';
+  busy ? spin.classList.remove('hidden') : spin.classList.add('hidden');
+}
+
+function esc(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Flash toast
+function flash(msg, color = 'blue') {
+  const colors = {
+    blue:  'bg-blue-600',
+    green: 'bg-green-600',
+    red:   'bg-red-600',
+  };
+  const toast = document.createElement('div');
+  toast.className = `fixed bottom-6 right-6 z-50 ${colors[color] || 'bg-blue-600'}
+                     text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-lg fade-in`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// Close modals on backdrop click
+document.addEventListener('click', e => {
+  if (e.target.id === 'save-modal')   closeSaveModal();
+  if (e.target.id === 'delete-modal') closeDeleteModal();
+});
+</script>
+</body>
+</html>

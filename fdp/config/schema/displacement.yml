@@ -1,0 +1,58 @@
+# =============================================================================
+# CDM SCHEMA: Population Displacement Metrics
+#
+# Defines the contract for population displacement records produced when
+# comparing two redistricting plans.
+#
+# Python model:       fdp/schema/models.py :: DisplacementMetrics
+# TypeScript mirror:  map-compare/src/lib/types/cdm.ts :: DisplacementMetrics
+#
+# Key concept
+# -----------
+# "Excess displacement" = people moved beyond the minimum required for
+# population equalization. This is the advocacy-facing metric: it shows
+# how much gratuitous disruption each mid-decade redistricting caused.
+# =============================================================================
+
+schema:
+  name: displacement_metrics
+  version: "1.0"
+  description: "Population displacement between two redistricting plans"
+
+displacement_metrics:
+  required_fields:
+    - plan_a_id                 # str: identifier for the baseline plan
+    - plan_b_id                 # str: identifier for the comparison plan
+    - total_pop                 # int: total population (from plan A TOTPOP)
+    - displaced_pop             # int: population in a different district in B vs A
+    - displaced_pct             # float: displaced_pop / total_pop (0–1)
+    - min_required_displaced_pop  # int: minimum displacement needed for population equality
+    - min_required_displaced_pct  # float: min_required / total_pop (0–1)
+    - excess_displaced_pop      # int: displaced_pop - min_required_displaced_pop
+    - excess_displaced_pct      # float: excess_displaced_pop / total_pop (0–1)
+  optional_fields:
+    - district_count            # int: number of districts in each plan
+    - method                    # str: area_weighted | centroid | precinct
+    - computed_at               # str: ISO 8601 timestamp
+
+district_displacement:
+  description: "Per-district breakdown of displacement"
+  required_fields:
+    - district_id_a   # str: Plan A district identifier
+    - district_id_b   # str: dominant Plan B district (largest overlap)
+    - pop_a           # int: Plan A district population
+    - displaced_from_a  # int: estimated population that moved to non-dominant B districts
+    - displaced_pct     # float: displaced_from_a / pop_a (0–1)
+
+computation_methods:
+  area_weighted:
+    description: >
+      Geometric intersection of Plan A and Plan B polygons. Population assigned
+      proportionally by area overlap. Most accurate; slowest.
+    tool: fdp/analysis/displacement.py (Python/geopandas) or browser (Turf.js)
+  centroid:
+    description: >
+      Plan A district centroid is located within Plan B. If centroid falls in a
+      different Plan B district than expected, full district population is counted
+      as displaced. Fast but misses partial boundary changes.
+    tool: map-compare browser (fast mode)

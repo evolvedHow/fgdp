@@ -1,0 +1,119 @@
+# =============================================================================
+# FDP GLOBAL PLATFORM CONFIGURATION
+#
+# These settings apply to ALL apps and CANNOT be overridden at the app level.
+# Keys in this file take precedence over anything in defaults.yml or apps/*.yml.
+# =============================================================================
+
+platform:
+  name: "Fair Districts Data Platform"
+  version: "1.0"
+  # Physical root of the platform — override via FDP_ROOT env var
+  root: "${FDP_ROOT}"
+
+  # Fixed state/cycle context
+  state: GA
+  census_year: 2020
+  acs_year: 2022
+  chambers:
+    - congress
+    - house
+    - senate
+
+# ---------------------------------------------------------------------------
+# Repo registry — every named data source lives here.
+# Apps select a repo (or workspace) via app.repo; they cannot define new ones.
+# ---------------------------------------------------------------------------
+repos:
+  default: main
+  registry:
+    main:
+      path: "${FDP_ROOT}/data/repos/main"
+      description: "Primary shared data repository"
+      read_only: false
+  # All workspace directories live under this path
+  workspaces_dir: "${FDP_ROOT}/data/workspaces"
+
+# ---------------------------------------------------------------------------
+# Canonical data layout within any repo root
+# Loaders use these paths — apps cannot change them.
+# ---------------------------------------------------------------------------
+data_layout:
+  boundaries:
+    congress: "boundaries/congress"
+    house:    "boundaries/house"
+    senate:   "boundaries/senate"
+    reference: "boundaries/reference"
+  demographics: "demographics"
+  elections:    "elections"
+  precincts:    "precincts"
+  graphs:       "graphs"
+  ensembles:    "ensembles"
+  lrdb:         "lrdb"
+  history:      "history"
+
+# ---------------------------------------------------------------------------
+# Schema contracts — required columns and CRS per data type.
+# Loaders enforce these during load(); violations produce QualityWarnings.
+# ---------------------------------------------------------------------------
+data_schema:
+  boundaries:
+    crs: "EPSG:4326"
+    required_geometry: true
+    optional_columns:
+      - DISTRICT
+      - TOTPOP
+      - BVAP
+      - HVAP
+      - AVAP
+      - DEM_VOTES
+      - REP_VOTES
+      - DEM_PCT
+      - REP_PCT
+  precincts:
+    crs: "EPSG:4326"
+    required_geometry: true
+    required_columns:
+      - TOTPOP
+      - BVAP
+      - DEM_VOTES
+      - REP_VOTES
+  ensembles:
+    required_columns:
+      - dem_seats
+      - efficiency_gap
+      - mean_median
+      - polsby_popper_mean
+      - polsby_popper_min
+      - majority_minority_districts
+  redistricting_history:
+    # Schema: fdp/config/schema/redistricting_history.yml
+    # Data:   data/repos/main/history/redistricting_waves.yml
+    required_fields:
+      - source
+      - author
+      - waves
+  displacement_metrics:
+    # Schema: fdp/config/schema/displacement.yml
+    required_fields:
+      - plan_a_id
+      - plan_b_id
+      - total_pop
+      - displaced_pop
+      - displaced_pct
+      - excess_displaced_pct
+
+# ---------------------------------------------------------------------------
+# Quality check suite — all checks run by default; halt_on_error stops load.
+# ---------------------------------------------------------------------------
+quality:
+  halt_on_error: false
+  log_warnings: true
+  checks:
+    - crs_is_wgs84
+    - no_invalid_geometries
+    - no_null_required_columns
+    - population_totals_reasonable
+    - districts_fully_cover_state
+    - no_overlapping_districts
+    - no_disconnected_districts

@@ -1,0 +1,38 @@
+# =============================================================================
+# lrdb — Local Redistricting Database
+# =============================================================================
+
+app:
+  name: lrdb
+  description: "Tracks local redistricting processes across GA counties, cities, and school boards"
+  repo: main
+
+data:
+  main_file:      "lrdb/lrdb_web_20260216.geojson"
+  districts_file: "lrdb/cc_sb_districts15q_nod.geojson"
+  helpers:
+    infopanel_fields: "lrdb/update_helper/infopanel_fields.csv"
+    link_fields:      "lrdb/update_helper/link_fields.csv"
+    name_id_lookup:   "lrdb/update_helper/name_id_lookup.csv"
+
+# Filter fields shown in the sidebar
+filters:
+  - field: redistricted_w
+    label: "Required Redistricting"
+  - field: requirements_w
+    label: "Has Written Requirements"
+  - field: guidelines_w
+    label: "Has Written Guidelines"
+  - field: lcro_w
+    label: "Local Process (not state-imposed)"
+  - field: gga_adjust_w
+    label: "State Legislature Override"
+  - field: participation_w
+    label: "Public Participation"
+  - field: controvery_w
+    label: "Controversy Documented"
+  - field: atlarge_w
+    label: "At-Large Elections"
+
+map:
+  zoom: 6.5

@@ -1,0 +1,15 @@
+[project]
+name = "fdworkbench"
+version = "0.1.0"
+description = "Fair Districts Workbench — NLQ-to-SQL analytics interface for the FDP"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "duckdb>=0.10.0",
+    "litellm>=1.30.0",
+    "python-dotenv>=1.0.0",
+    "pandas>=2.0.0",
+    "pyarrow>=14.0.0",
+    "aiofiles>=23.0.0",
+]

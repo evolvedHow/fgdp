@@ -1,0 +1,27 @@
+# =============================================================================
+# fdworkbench — FDP platform app config
+# Overrides for defaults.yml where the workbench differs.
+# =============================================================================
+
+app:
+  name: fdworkbench
+  description: "Fair Districts Workbench — self-enhancing data exploration"
+  repo: main
+
+# Workbench needs all data types available for DuckDB queries
+data:
+  elections:   "elections/dim_elections.parquet"
+  swings:      "elections/dim_swings.parquet"
+  ensembles:
+    house:    "ensembles/house_ensemble.parquet"
+    senate:   "ensembles/senate_ensemble.parquet"
+    congress: "ensembles/congress_ensemble.parquet"
+  boundaries:
+    congress_enacted: "boundaries/congress/congress_enacted_24_2024update.geojson"
+    house_enacted:    "boundaries/house/house_enacted_24_2024update.geojson"
+    senate_enacted:   "boundaries/senate/senate_enacted_24_2024update.geojson"
+    county:           "boundaries/reference/county.geojson"
+  demographics:
+    congress: "demographics/congress.json"
+    house:    "demographics/house.json"
+    senate:   "demographics/senate.json"

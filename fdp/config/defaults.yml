@@ -1,0 +1,51 @@
+# =============================================================================
+# FDP DEFAULT APP SETTINGS
+#
+# Apps may override any key here in config/apps/<app>.yml.
+# Keys in global.yml ALWAYS win — do not duplicate them here.
+# =============================================================================
+
+# Which data repo to use (overridable so workspaces can be activated)
+app:
+  repo: main
+
+# ---------------------------------------------------------------------------
+# Map display defaults (overridable per app)
+# ---------------------------------------------------------------------------
+map:
+  center: [-83.2, 32.5]
+  zoom: 6.0
+  min_zoom: 4.5
+  max_zoom: 13.0
+  geocoder_bbox: [-85.6, 30.4, -80.8, 35.0]
+
+# ---------------------------------------------------------------------------
+# LLM provider defaults (overridable per app)
+# ---------------------------------------------------------------------------
+llm:
+  provider: "ollama"
+  model: "llama3.2:3b"
+  fallback_provider: "groq"
+  fallback_model: "llama-3.3-70b-versatile"
+  temperature: 0.7
+  max_tokens: 2048
+
+# ---------------------------------------------------------------------------
+# GerryChain ensemble defaults (overridable per app)
+# ---------------------------------------------------------------------------
+chain:
+  steps: 10000
+  epsilon: 0.05
+  pop_col: "TOTPOP_C"
+  algorithm: "recom"
+  random_seed: 42
+
+# ---------------------------------------------------------------------------
+# Export defaults
+# ---------------------------------------------------------------------------
+export:
+  formats:
+    - geojson
+    - csv
+  simplify_tolerance: 0.0001   # degrees; set null to skip
+  include_metadata: true

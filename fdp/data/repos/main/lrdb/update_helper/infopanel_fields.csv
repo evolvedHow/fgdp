@@ -1,0 +1,40 @@
+field,display_type,displayed_text,svelte_page
+name,heading,The name of the jurisdiction (displayed as panel title),InfoPanel.svelte
+type,link text,"Governing body type (e.g., County Commission, City Council, School Board) — links to website_link",InfoPanel.svelte
+website_link,hyperlink URL,URL for the governing body type link,InfoPanel.svelte
+dist_type,emphasized text,"District structure description (e.g., 6 single-member districts)",InfoPanel.svelte
+election_type,emphasized text,"Election method (e.g., members are elected by district)",InfoPanel.svelte
+no_districts,plain text,Message shown when the jurisdiction has no districts,InfoPanel.svelte
+shared_with,plain text,"Indicates if another body (CC or SB) shares the same district map",InfoPanel.svelte
+redist_coord,emphasized text,"Who managed the redistricting process (e.g., the County Commission)",InfoPanel.svelte
+draft1_drew,emphasized text,"Who drew the locally proposed district map (e.g., the LCRO)",InfoPanel.svelte
+local_approval,emphasized text,"Who reviewed the map (e.g., County Commission and the public)",InfoPanel.svelte
+date_loc_approve,emphasized text,Date the map was approved locally,InfoPanel.svelte
+map_approval,emphasized text,"Who approved the map (e.g., the County Commission)",InfoPanel.svelte
+local_vote,emphasized text,"Description of the vote (e.g., unanimous approval)",InfoPanel.svelte
+minutes_src,hyperlink URL,View meeting minutes about the redistricting process.,InfoPanel.svelte
+min_date,plain text,Date shown after the minutes link,InfoPanel.svelte
+no_info,conditional text,"If present, displays 'The local redistricting process:' heading",InfoPanel.svelte
+participation_w,conditional text / map filter checkbox,"InfoPanel: If 'yes': Allowed for community participation. If 'no': Did not allow. App: Local redistricting process included some form of public participation.","InfoPanel.svelte, App.svelte"
+comm_part_redistricting,emphasized text,Description of community participation details,InfoPanel.svelte
+requirements_n,emphasized text,"Written requirements description (e.g., Included, Did not include)",InfoPanel.svelte
+up_require,hyperlink URL,View description of requirements,InfoPanel.svelte
+guide_n,emphasized text,"Written guidelines description (e.g., Included, Did not include)",InfoPanel.svelte
+nonbinding_guidelines,emphasized text,Description of non-binding redistricting criteria,InfoPanel.svelte
+guidelines_list,emphasized text,List of guidelines,InfoPanel.svelte
+guidelines_list_src,hyperlink URL,View guidelines,InfoPanel.svelte
+guidelines_w,conditional text / map filter checkbox,"InfoPanel: If 'yes' and guidelines_list exists, shows guidelines section. App: Written guideline or standards for map drawing.","InfoPanel.svelte, App.svelte"
+gga_adjust_w,conditional text / map filter checkbox,"InfoPanel: If 'yes': legislature rejected local map. Otherwise: legislature passed local map. App: Enacted map drawn by state legislature, not locally.","InfoPanel.svelte, App.svelte"
+bill_num,plain text,"Bill number (e.g., HB 1078) — displayed as link text if bill_num_src exists",InfoPanel.svelte
+bill_num_src,hyperlink URL,Link to the bill on legis.ga.gov (displays bill_num as link text),InfoPanel.svelte
+map_draft1_src,conditional text,"Not displayed as a link, but if present triggers the 'Additional resources:' heading",InfoPanel.svelte
+supporting_docs_src,hyperlink URL,View redistricting resolutions or statutes,InfoPanel.svelte
+add_docs,hyperlink URL,View additional materials,InfoPanel.svelte
+municode,hyperlink URL,View Code of Ordinances,InfoPanel.svelte
+summary,plain text,Full summary paragraph of the local redistricting process,InfoPanel.svelte
+source_n,emphasized text,Author of the summary,InfoPanel.svelte
+redistricted_w,map filter checkbox,Local redistricting was required for 2020 redistricting cycle.,App.svelte
+requirements_w,map filter checkbox,Written requirements about how and when to redistrict.,App.svelte
+lcro_w,map filter checkbox,The locally approved map drawn by the LCRO,App.svelte
+controvery_w,map filter checkbox,Local redistricting had evidence of some controversy,App.svelte
+atlarge_w,map filter checkbox,Elections are at-large.,App.svelte
