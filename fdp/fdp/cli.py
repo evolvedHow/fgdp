@@ -193,37 +193,46 @@ def sync_app(app, dest, repo, dry_run, fdp_root):
     dest_path.mkdir(parents=True, exist_ok=True)
 
     to_copy: list[tuple[Path, Path]] = []  # (src, dst)
+    seen: set[str] = set()
+
+    def _add(rel: str) -> None:
+        if not rel or rel in seen:
+            return
+        seen.add(rel)
+        try:
+            src = p.resolve(rel)
+            if src.is_file():
+                to_copy.append((src, dest_path / src.name))
+        except FileNotFoundError:
+            console.print(f"[yellow]  MISSING  {rel}[/]")
+
+    def _walk(value, skip_keys: set[str] | None = None) -> None:
+        """Recursively collect file-path strings from any config section."""
+        if isinstance(value, dict):
+            for k, v in value.items():
+                if skip_keys and k in skip_keys:
+                    continue
+                _walk(v)
+        elif isinstance(value, list):
+            for item in value:
+                _walk(item)
+        elif isinstance(value, str) and ("/" in value or Path(value).suffix):
+            _add(value)
+
+    # Keys that reference generated output dirs, not FDP inputs — skip them.
+    _OUTPUT_KEYS = {"graphs_dir", "ensembles_dir", "precinct_source"}
 
     # Collect plan files
     for chamber, plans in (cfg.get("plans") or {}).items():
         for plan in plans:
-            rel = plan.get("file", "")
-            if not rel:
-                continue
-            try:
-                src = p.resolve(rel)
-                dst = dest_path / Path(rel).name
-                to_copy.append((src, dst))
-            except FileNotFoundError:
-                console.print(f"[yellow]  MISSING  {rel}[/]")
+            _add(plan.get("file", ""))
 
-    # Collect reference layers
-    for _layer, rel in (cfg.get("reference_layers") or {}).items():
-        try:
-            src = p.resolve(rel)
-            dst = dest_path / Path(rel).name
-            to_copy.append((src, dst))
-        except FileNotFoundError:
-            console.print(f"[yellow]  MISSING  {rel}[/]")
+    # Collect reference layers and demographics (legacy explicit sections)
+    _walk(cfg.get("reference_layers") or {})
+    _walk(cfg.get("demographics") or {})
 
-    # Collect demographics
-    for _key, rel in (cfg.get("demographics") or {}).items():
-        try:
-            src = p.resolve(rel)
-            dst = dest_path / Path(rel).name
-            to_copy.append((src, dst))
-        except FileNotFoundError:
-            console.print(f"[yellow]  MISSING  {rel}[/]")
+    # Collect everything under the generic data: section
+    _walk(cfg.get("data") or {}, skip_keys=_OUTPUT_KEYS)
 
     if dry_run:
         console.print(f"[cyan]Dry run — {len(to_copy)} file(s) would be copied to {dest_path}[/]")
