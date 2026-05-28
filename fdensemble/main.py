@@ -1,0 +1,641 @@
+import argparse, io, json, os
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.staticfiles import StaticFiles
+
+load_dotenv()
+
+# ── Config ────────────────────────────────────────────────────────────────────
+STATE                   = os.getenv('STATE', 'GA')
+PLAN_TYPE               = os.getenv('PLAN_TYPE', 'cd')
+PLAN_YEAR               = os.getenv('PLAN_YEAR', '2020')
+N_DISTRICTS             = int(os.getenv('N_DISTRICTS', '14'))
+ENACTED_PLAN_LABEL      = os.getenv('ENACTED_PLAN_LABEL', 'cd_2020')
+DATA_DIR                = Path(os.getenv('DATA_DIR', 'dataverse_files/GA_cd_2020'))
+RUNS_DIR                = Path(os.getenv('RUNS_DIR', 'runs'))
+COMPETITIVE_MARGIN      = float(os.getenv('COMPETITIVE_MARGIN_MAIN', '0.07'))
+BVAP_THRESHOLD          = float(os.getenv('BVAP_MAJORITY_THRESHOLD', '0.50'))
+MINORITY_THRESHOLD      = float(os.getenv('MAJORITY_THRESHOLD', '0.50'))
+DEM_COLOR               = os.getenv('DEM_COLOR', '#3D77BB')
+FIG_DPI                 = int(os.getenv('FIG_DPI', '120'))
+
+_DATAVERSE_DOI = 'doi:10.7910/DVN/SLCD3E'
+_STATE_NAMES = {
+    'GA': 'Georgia', 'TX': 'Texas', 'FL': 'Florida', 'NC': 'North Carolina',
+    'PA': 'Pennsylvania', 'OH': 'Ohio', 'VA': 'Virginia', 'MI': 'Michigan',
+    'WI': 'Wisconsin', 'AZ': 'Arizona', 'NV': 'Nevada', 'CO': 'Colorado',
+}
+STATE_FULL = _STATE_NAMES.get(STATE, STATE)
+
+# ── Default column mapping (ALARM stats CSV names) ────────────────────────────
+# Override individual keys in meta.json "columns" to support future ALARM releases.
+_DEFAULT_COLS = {
+    'dem_seats':      'e_dem',
+    'partisan_bias':  'pbias',
+    'efficiency_gap': 'egap',
+    'dem_share':      'ndshare',
+    'county_splits':  'county_splits',
+    'muni_splits':    'muni_splits',
+    'polsby_popper':  'comp_polsby',
+    'vap_total':      'total_vap',
+    'vap_black':      'vap_black',
+    'vap_hisp':       'vap_hisp',
+    'vap_aian':       'vap_aian',
+    'vap_asian':      'vap_asian',
+    'vap_nhpi':       'vap_nhpi',
+    'dem_votes':      'ndv',
+    'rep_votes':      'nrv',
+}
+
+
+def _col(df: pd.DataFrame, mapping: dict, key: str):
+    name = mapping.get(key, _DEFAULT_COLS.get(key, key))
+    return df[name] if name in df.columns else None
+
+
+# ── Princeton grading primitives ──────────────────────────────────────────────
+_GRADE_ORDER = ['A', 'B', 'C', 'F']
+
+
+def _pct_rank(dist: np.ndarray, val: float) -> float:
+    return float((dist <= val).mean() * 100)
+
+
+def _ensemble_pass(pct_rank: float) -> bool:
+    """Plan is within 5th–95th percentile of ensemble."""
+    return 5.0 <= pct_rank <= 95.0
+
+
+def _normative_pass(pbias: float, n: int) -> bool:
+    """Cube-law symmetry: |partisan bias| within leeway = max(1, 7%×n) / n."""
+    leeway = max(1.0, 0.07 * n) / n
+    return abs(pbias) <= leeway
+
+
+def _partisan_grade(e_pass: bool, n_pass: bool) -> str:
+    """Princeton 2×2 intersection table."""
+    if e_pass and n_pass:      return 'A'
+    if (not e_pass) and n_pass: return 'B'
+    if e_pass and (not n_pass): return 'C'
+    return 'F'
+
+
+def _adj(grade: str, delta: int) -> str:
+    """Shift grade by delta positions (+1 = improve, -1 = worsen)."""
+    try:
+        i = _GRADE_ORDER.index(grade)
+    except ValueError:
+        return grade
+    return _GRADE_ORDER[max(0, min(len(_GRADE_ORDER) - 1, i - delta))]
+
+
+def _comp_grade(pct_rank: float) -> str:
+    """Higher competitive seats = better."""
+    if pct_rank >= 95: return 'A'
+    if pct_rank >= 64: return 'B'
+    if pct_rank >= 5:  return 'C'
+    return 'F'
+
+
+def _directional_grade(pct_rank: float, higher_is_better: bool) -> str:
+    """For compactness (higher=better) and splits (lower=better)."""
+    rank = pct_rank if higher_is_better else (100 - pct_rank)
+    if rank >= 95: return 'A'
+    if rank >= 64: return 'B'
+    if rank >= 5:  return 'C'
+    return 'F'
+
+
+def _geo_grade(comp_g: str, splits_g: str) -> str:
+    """Princeton geo combination: A+A=A, A+C or C+A=B, F+F=F, else C."""
+    if comp_g == 'A' and splits_g == 'A':             return 'A'
+    if comp_g == 'F' and splits_g == 'F':             return 'F'
+    if {comp_g, splits_g} == {'A', 'C'}:              return 'B'
+    return 'C'
+
+
+def _histogram_data(dist: np.ndarray, enacted, n_bins: int = 40) -> dict:
+    counts, edges = np.histogram(dist, bins=n_bins)
+    return {
+        'edges':   [round(float(v), 4) for v in edges],
+        'counts':  counts.tolist(),
+        'enacted': round(float(enacted), 4) if enacted is not None else None,
+        'p5':      round(float(np.percentile(dist, 5)),  4),
+        'p50':     round(float(np.percentile(dist, 50)), 4),
+        'p95':     round(float(np.percentile(dist, 95)), 4),
+        'mean':    round(float(np.mean(dist)), 4),
+    }
+
+
+# ── Metric definitions ────────────────────────────────────────────────────────
+_METRIC_META = {
+    # key: (label, category, description, higher_is_better)
+    'dem_seats':      ('Dem. Seats',           'partisan',     'Projected Democratic districts at the plan\'s vote share.',                  None),
+    'partisan_bias':  ('Partisan Bias',        'partisan',     'Seat-share advantage at a hypothetical 50/50 election. Near 0 = fair.',     False),
+    'efficiency_gap': ('Efficiency Gap',       'partisan',     'Difference in wasted votes between parties. Near 0 = equal power.',         False),
+    'mean_median':    ('Mean–Median Diff.',    'partisan',     'Mean minus median Dem vote share. Positive favors Republicans.',             False),
+    'comp_seats':     ('Competitive Seats',    'competitive',  f'Districts within {COMPETITIVE_MARGIN*100:.0f}pp of 50/50.',                True),
+    'polsby_popper':  ('Compactness (PP)',     'geographic',   'Mean Polsby-Popper score. Higher = more circular, more compact.',           True),
+    'county_splits':  ('County Splits',        'geographic',   'Counties divided across 2+ districts. Fewer = better community cohesion.',  False),
+    'muni_splits':    ('Municipal Splits',     'geographic',   'Municipalities divided across districts. Fewer = better.',                  False),
+    'maj_black':      ('Majority-Black Dist.', 'minority',     f'Districts where Black VAP > {BVAP_THRESHOLD*100:.0f}%.',                  None),
+    'maj_hisp':       ('Majority-Hispanic',    'minority',     f'Districts where Hispanic VAP > {MINORITY_THRESHOLD*100:.0f}%.',            None),
+    'maj_aian':       ('Majority-AIAN',        'minority',     'Districts where American Indian/Alaska Native VAP > threshold.',            None),
+    'maj_asian':      ('Majority-Asian',       'minority',     'Districts where Asian VAP > threshold.',                                    None),
+    'min_coal':       ('Minority Coalition',   'minority',     'Districts where non-white VAP > 50%.',                                     None),
+}
+
+
+# ── Data loading ──────────────────────────────────────────────────────────────
+
+def _download_from_dataverse(filename: str, dest: Path):
+    print(f'Fetching {filename} from ALARM Harvard Dataverse...')
+    api = ('https://dataverse.harvard.edu/api/datasets/:persistentId/'
+           f'versions/:latest/files?persistentId={_DATAVERSE_DOI}')
+    files = requests.get(api, timeout=30).raise_for_status() or requests.get(api, timeout=30).json()
+    resp = requests.get(api, timeout=30)
+    resp.raise_for_status()
+    match = next((f for f in resp.json()['data']
+                  if f['dataFile']['filename'] == filename), None)
+    if match is None:
+        raise FileNotFoundError(f'{filename} not found on Dataverse')
+    dl = requests.get(
+        f'https://dataverse.harvard.edu/api/access/datafile/{match["dataFile"]["id"]}',
+        stream=True, timeout=120)
+    dl.raise_for_status()
+    dest.write_bytes(dl.content)
+    print(f'  Saved {dest} ({dest.stat().st_size / 1e6:.1f} MB)')
+
+
+def _load_csv(csv_path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+    df = pd.read_csv(csv_path, dtype={'draw': str})
+    df.columns = df.columns.str.strip()
+    mask    = df['draw'].str.strip() == ENACTED_PLAN_LABEL
+    enacted = df[mask].copy()
+    sampled = df[~mask].copy()
+    sampled['draw'] = sampled['draw'].astype(int)
+    return sampled, enacted
+
+
+def _load_meta(meta_file: Path, csv_path: Path, run_id: str, sampled: pd.DataFrame) -> dict:
+    meta = json.loads(meta_file.read_text()) if meta_file.exists() else {}
+    meta.setdefault('id',          run_id)
+    meta.setdefault('name',        run_id.replace('_', ' ').title())
+    meta.setdefault('algorithm',   'SMC')
+    meta.setdefault('date',        datetime.fromtimestamp(csv_path.stat().st_mtime).strftime('%Y-%m-%d'))
+    meta.setdefault('n_plans',     int(sampled['draw'].nunique()))
+    meta.setdefault('description', '')
+    meta.setdefault('tags',        [])
+    meta['id'] = run_id
+    return meta
+
+
+# ── Analysis ──────────────────────────────────────────────────────────────────
+
+def _vap_shares(df: pd.DataFrame, mapping: dict) -> pd.DataFrame:
+    df = df.copy()
+    tv = _col(df, mapping, 'vap_total')
+    if tv is None:
+        return df
+    for key in ('vap_black', 'vap_hisp', 'vap_aian', 'vap_asian', 'vap_nhpi'):
+        v = _col(df, mapping, key)
+        if v is not None:
+            df[f'{key}_share'] = v / tv
+    white = df.get('vap_white')
+    if white is not None:
+        df['min_coal_share'] = 1.0 - white / tv
+    return df
+
+
+def compute_metrics(sampled: pd.DataFrame, enacted: pd.DataFrame, mapping: dict) -> dict:
+    """
+    Returns {metric_key: (sampled_plan_values: np.ndarray, enacted_value: float|None)}.
+    All values are plan-level (one number per plan).
+    """
+    s = _vap_shares(sampled, mapping)
+    e = _vap_shares(enacted, mapping)
+
+    share_col = mapping.get('dem_share', _DEFAULT_COLS['dem_share'])
+    half_margin = COMPETITIVE_MARGIN / 2.0
+
+    raw: dict[str, tuple[np.ndarray, float | None]] = {}
+
+    # Plan-level columns from ALARM (same value every row for a given draw → .first())
+    for mkey, col_key in [
+        ('dem_seats',      'dem_seats'),
+        ('partisan_bias',  'partisan_bias'),
+        ('efficiency_gap', 'efficiency_gap'),
+        ('county_splits',  'county_splits'),
+        ('muni_splits',    'muni_splits'),
+    ]:
+        col_name = mapping.get(col_key, _DEFAULT_COLS.get(col_key, col_key))
+        if col_name not in s.columns:
+            continue
+        s_vals = s.groupby('draw')[col_name].first().to_numpy(dtype=float)
+        e_val  = float(e[col_name].iloc[0]) if col_name in e.columns and len(e) else None
+        raw[mkey] = (s_vals, e_val)
+
+    # Polsby-Popper mean per plan
+    pp_col = mapping.get('polsby_popper', _DEFAULT_COLS['polsby_popper'])
+    if pp_col in s.columns:
+        raw['polsby_popper'] = (
+            s.groupby('draw')[pp_col].mean().to_numpy(dtype=float),
+            float(e[pp_col].mean()) if pp_col in e.columns and len(e) else None,
+        )
+
+    # Computed per-plan from district-level dem_share
+    if share_col in s.columns:
+        # Competitive seats
+        s['_comp'] = (s[share_col] - 0.5).abs() <= half_margin
+        e['_comp'] = (e[share_col] - 0.5).abs() <= half_margin
+        raw['comp_seats'] = (
+            s.groupby('draw')['_comp'].sum().to_numpy(dtype=float),
+            float(e['_comp'].sum()) if len(e) else None,
+        )
+        # Mean-median difference
+        def _mm(x): return x.mean() - x.median()
+        raw['mean_median'] = (
+            s.groupby('draw')[share_col].apply(_mm).to_numpy(dtype=float),
+            float(_mm(e[share_col])) if share_col in e.columns and len(e) else None,
+        )
+
+    # Minority district counts
+    for mkey, share_col_name, thresh in [
+        ('maj_black', 'vap_black_share', BVAP_THRESHOLD),
+        ('maj_hisp',  'vap_hisp_share',  MINORITY_THRESHOLD),
+        ('maj_aian',  'vap_aian_share',  MINORITY_THRESHOLD),
+        ('maj_asian', 'vap_asian_share', MINORITY_THRESHOLD),
+        ('min_coal',  'min_coal_share',  MINORITY_THRESHOLD),
+    ]:
+        if share_col_name not in s.columns:
+            continue
+        s[f'_{mkey}'] = s[share_col_name] > thresh
+        e[f'_{mkey}'] = e[share_col_name] > thresh if share_col_name in e.columns else pd.Series(False)
+        raw[mkey] = (
+            s.groupby('draw')[f'_{mkey}'].sum().to_numpy(dtype=float),
+            float(e[f'_{mkey}'].sum()) if len(e) else None,
+        )
+
+    return raw
+
+
+def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
+    """
+    Build per-metric grades + Princeton composite grades.
+    Returns a flat dict of grade objects keyed by metric or composite name.
+    """
+    result = {}
+
+    for key, (s_vals, e_val) in raw_metrics.items():
+        if e_val is None:
+            continue
+        meta  = _METRIC_META.get(key, (key, 'other', key, None))
+        label, category, desc, higher_is_better = meta
+        dist  = np.array(s_vals, dtype=float)
+        # Skip metrics where the distribution is degenerate (all plans identical)
+        if np.std(dist) < 1e-6:
+            continue
+        pct   = _pct_rank(dist, e_val)
+
+        if higher_is_better is None:
+            # Minority / partisan seat share: center-band grade
+            grade = _simple_grade(pct)
+        elif key == 'comp_seats':
+            grade = _comp_grade(pct)
+        else:
+            grade = _directional_grade(pct, higher_is_better)
+
+        result[key] = {
+            'label':       label,
+            'category':    category,
+            'description': desc,
+            'grade':       grade,
+            'enacted':     round(float(e_val), 4),
+            'pct_rank':    round(pct, 1),
+            'histogram':   _histogram_data(dist, e_val),
+        }
+
+    # ── Princeton composite grades ──────────────────────────────────────────
+
+    # Competitiveness
+    comp_g = result.get('comp_seats', {}).get('grade')
+
+    # Partisan fairness (dual test)
+    partisan_g = None
+    if 'dem_seats' in result:
+        pbias_val = raw_metrics.get('partisan_bias', (None, None))[1]
+        e_pass = _ensemble_pass(result['dem_seats']['pct_rank'])
+        n_pass = _normative_pass(pbias_val, n_districts) if pbias_val is not None else True
+        partisan_g = _partisan_grade(e_pass, n_pass)
+        if comp_g == 'A': partisan_g = _adj(partisan_g, +1)
+        if comp_g == 'F': partisan_g = _adj(partisan_g, -1)
+        result['_partisan_fairness'] = {
+            'label':          'Partisan Fairness',
+            'grade':          partisan_g,
+            'ensemble_pass':  e_pass,
+            'normative_pass': n_pass,
+            'description':    (
+                'Princeton dual test: ensemble (5th–95th %ile) '
+                '+ cube-law normative symmetry. '
+                f'Ensemble: {"PASS" if e_pass else "FAIL"}, '
+                f'Normative: {"PASS" if n_pass else "FAIL"}.'
+            ),
+        }
+
+    # Geographic (compactness + county splits)
+    comp_pp_g = result.get('polsby_popper', {}).get('grade')
+    splits_g  = result.get('county_splits', {}).get('grade')
+    geo_g = None
+    if comp_pp_g and splits_g:
+        geo_g = _geo_grade(comp_pp_g, splits_g)
+        result['_geographic'] = {
+            'label': 'Geographic',
+            'grade': geo_g,
+            'description': 'Combines compactness (Polsby-Popper) and county splits.',
+        }
+
+    # Overall
+    if partisan_g:
+        overall = partisan_g
+        if geo_g == 'F':   overall = _adj(overall, -1)
+        if comp_g == 'A':  overall = _adj(overall, +1)
+        if comp_g == 'F':  overall = _adj(overall, -1)
+        result['_overall'] = {
+            'label': 'Overall',
+            'grade': overall,
+            'description': 'Partisan Fairness ± geographic and competitiveness adjustments.',
+        }
+
+    return result
+
+
+def _simple_grade(pct_rank: float) -> str:
+    """Center-band grade for minority/seat-count metrics."""
+    dist = abs(pct_rank - 50.0) / 50.0
+    if dist <= 0.25:  return 'A'
+    if dist <= 0.375: return 'B'
+    if dist <= 0.5:   return 'C'
+    return 'F'
+
+
+def _river_data(sampled: pd.DataFrame, mapping: dict, n_sample: int = 500) -> dict | None:
+    share_col = mapping.get('dem_share', _DEFAULT_COLS['dem_share'])
+    if share_col not in sampled.columns:
+        return None
+    draws = sampled['draw'].unique()
+    rng   = np.random.default_rng(42)
+    subset = rng.choice(draws, min(n_sample, len(draws)), replace=False)
+    ribbons = []
+    for d in subset:
+        vals = np.sort(sampled.loc[sampled['draw'] == d, share_col].values)
+        ribbons.append(vals.tolist())
+    arr = np.array(ribbons)
+    p5, p50, p95 = np.percentile(arr, [5, 50, 95], axis=0)
+    return {
+        'n_sample': len(subset),
+        'n_districts': arr.shape[1] if arr.ndim == 2 else N_DISTRICTS,
+        'p5':  [round(float(v), 4) for v in p5],
+        'p50': [round(float(v), 4) for v in p50],
+        'p95': [round(float(v), 4) for v in p95],
+    }
+
+
+def _build_analysis(run: dict) -> dict:
+    meta    = run['meta']
+    mapping = meta.get('columns', _DEFAULT_COLS)
+    return {
+        'summary': {
+            'state':         STATE,
+            'state_full':    STATE_FULL,
+            'plan_type':     PLAN_TYPE,
+            'plan_year':     PLAN_YEAR,
+            'n_districts':   N_DISTRICTS,
+            'n_plans':       meta['n_plans'],
+            'enacted_label': ENACTED_PLAN_LABEL,
+            'run':           {k: v for k, v in meta.items() if k != 'columns'},
+        },
+        'grades':  run['grades'],
+        'river':   run['river'],
+    }
+
+
+# ── Run registry ──────────────────────────────────────────────────────────────
+
+def _build_run(run_id: str, csv_path: Path, meta_file: Path) -> dict:
+    if not csv_path.exists():
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        _download_from_dataverse(csv_path.name, csv_path)
+
+    sampled, enacted = _load_csv(csv_path)
+    meta             = _load_meta(meta_file, csv_path, run_id, sampled)
+    mapping          = {**_DEFAULT_COLS, **meta.get('columns', {})}
+    raw              = compute_metrics(sampled, enacted, mapping)
+    grades           = compute_princeton_grades(raw, N_DISTRICTS)
+    river            = _river_data(sampled, mapping)
+
+    return {
+        'meta':    meta,
+        'sampled': sampled,
+        'enacted': enacted,
+        'grades':  grades,
+        'river':   river,
+        'raw':     raw,
+    }
+
+
+def _discover_and_load_runs() -> dict:
+    found = {}
+
+    csv_stem = f'{STATE}_{PLAN_TYPE}_{PLAN_YEAR}'
+    csv      = DATA_DIR / f'{csv_stem}_stats.csv'
+    run_id   = f'{csv_stem}_alarm'
+    print(f'  Loading default run: {run_id}')
+    found[run_id] = _build_run(run_id, csv, DATA_DIR / f'{csv_stem}_meta.json')
+
+    if RUNS_DIR.exists():
+        for run_dir in sorted(d for d in RUNS_DIR.iterdir() if d.is_dir()):
+            csvs = list(run_dir.glob('*_stats.csv'))
+            if csvs:
+                rid = run_dir.name
+                print(f'  Loading run: {rid}')
+                found[rid] = _build_run(rid, csvs[0], run_dir / 'meta.json')
+
+    return found
+
+
+print('Loading runs...')
+_runs = _discover_and_load_runs()
+print(f'Ready — {len(_runs)} run(s): {list(_runs.keys())}')
+
+
+def _get_run(run_id: str | None) -> dict:
+    rid = run_id or next(iter(_runs))
+    if rid not in _runs:
+        raise HTTPException(404, f'Run {rid!r} not found. Available: {list(_runs.keys())}')
+    return _runs[rid]
+
+
+# ── Matplotlib charts (CLI / export only — frontend uses Chart.js) ────────────
+
+def _make_histograms(run: dict):
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    grades  = run['grades']
+    panels  = [k for k in grades if not k.startswith('_')]
+    ncols   = 3
+    nrows   = max(1, (len(panels) + ncols - 1) // ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(14, 4 * nrows))
+    axes = np.array(axes).flatten()
+
+    colors = {
+        'partisan': 'steelblue', 'competitive': 'teal',
+        'geographic': 'slategray', 'minority': 'mediumpurple',
+    }
+    for ax, key in zip(axes, panels):
+        g   = grades[key]
+        h   = g['histogram']
+        col = colors.get(g.get('category', ''), 'steelblue')
+        centers = [(h['edges'][i] + h['edges'][i+1]) / 2 for i in range(len(h['counts']))]
+        ax.bar(centers, h['counts'], width=(h['edges'][1]-h['edges'][0])*0.9, color=col, alpha=0.6)
+        if h['enacted'] is not None:
+            ax.axvline(h['enacted'], color='black', lw=2, ls='--', label='Enacted')
+        ax.axvline(h['p50'], color='gray', lw=1, ls=':', label='Median')
+        ax.set_title(f'{g["label"]}  [{g["grade"]}]', fontsize=9)
+        ax.legend(fontsize=7)
+
+    for ax in axes[len(panels):]:
+        ax.set_visible(False)
+
+    meta = run['meta']
+    fig.suptitle(
+        f'{STATE} {PLAN_TYPE.upper()} {PLAN_YEAR} — Fairness Distributions\n'
+        f'{meta["name"]} · {meta["date"]} · {meta["n_plans"]:,} plans',
+        fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
+def _make_river(run: dict):
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    river = run.get('river')
+    if not river:
+        return None
+
+    x = list(range(1, river['n_districts'] + 1))
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.fill_between(x, river['p5'], river['p95'], alpha=0.2, color=DEM_COLOR, label='5–95th %ile')
+    ax.plot(x, river['p50'], color=DEM_COLOR, lw=1.5, label='Median')
+
+    share_col = run['meta'].get('columns', _DEFAULT_COLS).get('dem_share', 'ndshare')
+    enacted   = run['enacted']
+    if share_col in enacted.columns:
+        ax.plot(x, np.sort(enacted[share_col].values),
+                color='black', lw=2.5, label='Enacted', zorder=5)
+    ax.axhline(0.5, color='gray', lw=0.8, ls=':')
+    ax.set_xlabel('District rank (partisan lean)')
+    ax.set_ylabel('Dem two-party share')
+    ax.legend(fontsize=9)
+
+    meta = run['meta']
+    ax.set_title(
+        f'{STATE} {PLAN_TYPE.upper()} {PLAN_YEAR} — River Chart\n'
+        f'{meta["name"]} · {meta["date"]}', fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
+def _to_png(fig) -> io.BytesIO:
+    import matplotlib.pyplot as plt
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', dpi=FIG_DPI, bbox_inches='tight')
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+# ── FastAPI ───────────────────────────────────────────────────────────────────
+app = FastAPI(title=f'fdensemble — {STATE} {PLAN_TYPE.upper()} {PLAN_YEAR}')
+
+
+@app.get('/api/runs')
+def get_runs():
+    return [r['meta'] for r in _runs.values()]
+
+
+@app.get('/api/analysis')
+def get_analysis(run: str = Query(default=None)):
+    return _build_analysis(_get_run(run))
+
+
+@app.get('/api/river')
+def get_river(run: str = Query(default=None)):
+    r = _get_run(run)
+    return r['river'] or HTTPException(404, 'River data unavailable')
+
+
+@app.get('/api/charts/histograms')
+def chart_histograms(run: str = Query(default=None)):
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(_to_png(_make_histograms(_get_run(run))), media_type='image/png')
+
+
+@app.get('/api/charts/river')
+def chart_river(run: str = Query(default=None)):
+    from fastapi.responses import StreamingResponse
+    fig = _make_river(_get_run(run))
+    if fig is None:
+        raise HTTPException(404, 'River data unavailable')
+    return StreamingResponse(_to_png(fig), media_type='image/png')
+
+
+app.mount('/', StaticFiles(directory='frontend/dist', html=True), name='frontend')
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+def main():
+    parser = argparse.ArgumentParser(description='fdensemble — redistricting ensemble analysis')
+    parser.add_argument('--run',    default=None,    help='Run ID (default: first loaded run)')
+    parser.add_argument('--out',    default='output', help='Output directory')
+    parser.add_argument('--fmt',    default='json',   choices=['json', 'yaml'])
+    parser.add_argument('--charts', action='store_true', help='Save PNG charts')
+    args = parser.parse_args()
+
+    run  = _get_run(args.run)
+    data = _build_analysis(run)
+    slug = f'{STATE}_{PLAN_TYPE}_{PLAN_YEAR}_{run["meta"]["id"]}'
+    out  = Path(args.out)
+    out.mkdir(exist_ok=True)
+
+    if args.fmt == 'yaml':
+        import yaml
+        path = out / f'{slug}.yaml'
+        path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
+    else:
+        path = out / f'{slug}.json'
+        path.write_text(json.dumps(data, indent=2))
+    print(f'Saved {path}')
+
+    if args.charts:
+        for name, fn in [('histograms', _make_histograms), ('river', _make_river)]:
+            fig = fn(run)
+            if fig:
+                import matplotlib.pyplot as plt
+                img = out / f'{slug}_{name}.png'
+                fig.savefig(img, dpi=FIG_DPI, bbox_inches='tight')
+                plt.close(fig)
+                print(f'Saved {img}')
+
+
+if __name__ == '__main__':
+    main()

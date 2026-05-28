@@ -1,0 +1,11 @@
+{
+  "name": "ALARM Benchmark",
+  "algorithm": "SMC",
+  "date": "2021-10-01",
+  "description": "ALARM Project fifty-states benchmark — 2 independent chains × 10,000 simulations, thinned to 5,000 plans. Random seed 2020. Includes BVAP hinge constraints per VRA requirements.",
+  "seed": 2020,
+  "n_sims_per_run": 10000,
+  "n_chains": 2,
+  "pop_tol": 0.005,
+  "tags": ["benchmark", "alarm", "smc"]
+}
