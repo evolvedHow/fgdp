@@ -12,11 +12,12 @@ dependencies = [
     "fiona>=1.9.0",
     "shapely>=2.0.0",
     "pyproj>=3.6.0",
+    "pyogrio>=0.7.0",
     "click>=8.1.0",
     "requests>=2.31.0",
     "census>=0.8.0",
     "rich>=13.0.0",
-    "duckdb>=1.0.0",
+    "psycopg[binary]>=3.1.0",
 ]
 
 [project.optional-dependencies]

@@ -45,6 +45,7 @@ from fdp.loaders.elections import ElectionLoader
 from fdp.loaders.precincts import PrecinctLoader
 from fdp.loaders.ensembles import EnsembleLoader
 from fdp.catalog import DataCatalog
+from fdp.manifest import DataManifest
 
 
 class DataPlatform:
@@ -107,6 +108,9 @@ class DataPlatform:
         # Catalog (lazy)
         self._catalog: DataCatalog | None = None
 
+        # Manifest (lazy)
+        self._manifest: DataManifest | None = None
+
     # ------------------------------------------------------------------
     # Loader accessors
     # ------------------------------------------------------------------
@@ -136,6 +140,18 @@ class DataPlatform:
         if self._catalog is None:
             self._catalog = DataCatalog(self._repo, self.registry, self._config)
         return self._catalog
+
+    @property
+    def manifest(self) -> DataManifest:
+        """
+        Dataset registry — tracks every ingested/derived dataset by ID.
+
+        Reads DATABASE_URL from the environment.  Raises RuntimeError if the
+        env var is not set (set it before calling any manifest operations).
+        """
+        if self._manifest is None:
+            self._manifest = DataManifest()
+        return self._manifest
 
     # ------------------------------------------------------------------
     # Path helpers

@@ -10,6 +10,10 @@ dependencies = [
     "matplotlib",
     "python-dotenv",
     "requests",
+    "geopandas>=1.0.0",
+    "pyogrio>=0.7.0",
+    "pyarrow>=14.0.0",
+    "shapely>=2.0.0",
 ]
 
 [project.optional-dependencies]

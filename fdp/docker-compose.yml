@@ -1,0 +1,50 @@
+# FDP local development stack
+#
+# Mirrors the production architecture:
+#   - postgres  → same image as cloud/Supabase (PostGIS-enabled)
+#   - fdp       → same Docker image as production; mounts local data/
+#
+# Start:
+#   docker compose up -d postgres        # DB only (for local CLI use)
+#   docker compose run --rm fdp init-db  # create schema on first run
+#   docker compose run --rm fdp status   # verify connection
+#
+# Connect with psql / DBeaver / Looker Studio:
+#   postgresql://fdp:fdp_local@localhost:5432/fdp
+#
+# To use Supabase instead of local postgres, update DATABASE_URL in .env
+# and skip the postgres service entirely.
+
+services:
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB:       fdp
+      POSTGRES_USER:     fdp
+      POSTGRES_PASSWORD: fdp_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fdp -d fdp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  fdp:
+    build: .
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://fdp:fdp_local@postgres:5432/fdp}
+      FDP_ROOT:     /fdp-data
+    volumes:
+      # Mount local data/ into the container — parquets are read from here.
+      # Override FDP_DATA_PATH in .env if your data lives elsewhere.
+      - ${FDP_DATA_PATH:-./data}:/fdp-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

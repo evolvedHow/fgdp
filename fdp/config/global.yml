@@ -45,12 +45,16 @@ data_layout:
     senate:   "boundaries/senate"
     reference: "boundaries/reference"
   demographics: "demographics"
-  elections:    "elections"
+  elections:    "elections"       # county-level (legacy, for fdga app)
   precincts:    "precincts"
   graphs:       "graphs"
   ensembles:    "ensembles"
   lrdb:         "lrdb"
   history:      "history"
+  # CDM ingest pipeline — block/VTD data (gitignored, large files)
+  block:        "block"           # block-level parquets (elections, cvap)
+  vtd:          "vtd"             # VTD-level parquets (elections, cvap, alarm_combined)
+  lookups:      "lookups"         # spatial join caches (block→VTD)
 
 # ---------------------------------------------------------------------------
 # Schema contracts — required columns and CRS per data type.

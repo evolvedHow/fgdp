@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# FDP data — large files, gitignored; track only .gitkeep placeholders
+data/repos/main/block/*.parquet
+data/repos/main/vtd/*.parquet
+data/repos/main/lookups/*.parquet
+data/workspaces/
+
+# Raw source files (original downloads — gitignored, keep in Google Drive)
+data/raw/elections/*.zip
+data/raw/elections/*.shp
+data/raw/cvap/*.zip
+data/raw/cvap/*.csv
+data/raw/boundaries/*.zip
+
+# CDM export database (generated, not source)
+data/cdm.duckdb
+
+# Environment — never commit secrets
+.env
