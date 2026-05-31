@@ -36,10 +36,10 @@ COPY pyproject.toml uv.lock* ./
 # Install core + api extras (fastapi + uvicorn) into the system Python
 RUN uv pip install --system --no-cache --extra api .
 
-# Copy source
+# Copy Python package source (the only thing needed for the API server)
+# sql/ and config/ are CLI-only (init-db, scan) — not needed at runtime
+# since the database is already set up in Supabase.
 COPY fdp/       ./fdp/
-COPY config/    ./config/
-COPY sql/       ./sql/
 
 # FDP_ROOT: CLI commands look here for local data files.
 # On Railway, data is in Supabase — this path is unused but harmless.
