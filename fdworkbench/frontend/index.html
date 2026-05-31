@@ -199,6 +199,17 @@
       padding: 12px; border-radius: 6px; overflow-x: auto; white-space: pre;
     }
 
+    /* ── Export toolbar ──────────────────────────────────────────────── */
+    .export-toolbar {
+      display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 6px;
+    }
+    .export-btn {
+      font-size: 11px; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--gray-200);
+      background: white; color: var(--gray-600); cursor: pointer; display: flex;
+      align-items: center; gap: 4px; white-space: nowrap;
+    }
+    .export-btn:hover { background: var(--gray-100); border-color: var(--gray-400); color: var(--gray-800); }
+
     /* Card footer — cache info + bookmark */
     .card-footer {
       display: flex; align-items: center; justify-content: space-between;
@@ -210,6 +221,106 @@
       cursor: pointer; padding: 2px 6px; border-radius: 4px;
     }
     .bookmark-btn:hover { background: var(--gray-100); color: var(--blue); }
+
+    /* ── Chart builder modal ──────────────────────────────────────────── */
+    #chart-modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 1000; align-items: center; justify-content: center;
+    }
+    #chart-modal-overlay.open { display: flex; }
+    #chart-modal {
+      background: white; border-radius: 12px; width: 92vw; max-width: 1100px;
+      height: 86vh; display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0,0,0,.25);
+    }
+    #chart-modal-header {
+      display: flex; align-items: center; padding: 14px 20px;
+      border-bottom: 1px solid var(--gray-200); gap: 12px; flex-shrink: 0;
+    }
+    #chart-modal-header h3 { font-size: 15px; font-weight: 700; flex: 1; }
+    #chart-modal-close {
+      background: none; border: none; cursor: pointer; font-size: 20px;
+      color: var(--gray-400); line-height: 1; padding: 0 4px;
+    }
+    #chart-modal-close:hover { color: var(--gray-800); }
+    #chart-modal-body {
+      display: flex; flex: 1; overflow: hidden;
+    }
+    /* Left panel: controls */
+    #chart-controls {
+      width: 260px; flex-shrink: 0; border-right: 1px solid var(--gray-200);
+      overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px;
+    }
+    .ctrl-section { display: flex; flex-direction: column; gap: 8px; }
+    .ctrl-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .04em; color: var(--gray-400);
+    }
+    /* Chart type grid */
+    #chart-type-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    }
+    .chart-type-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 8px 4px; border: 1px solid var(--gray-200); border-radius: 8px;
+      background: white; cursor: pointer; font-size: 11px; color: var(--gray-600);
+    }
+    .chart-type-btn .ct-icon { font-size: 20px; line-height: 1; }
+    .chart-type-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .chart-type-btn.active { border-color: var(--blue); background: var(--blue-lt); color: var(--blue); font-weight: 600; }
+    /* Column selectors */
+    .ctrl-select {
+      width: 100%; padding: 6px 8px; border: 1px solid var(--gray-200);
+      border-radius: 6px; font-size: 12px; background: white; color: var(--gray-800);
+    }
+    .ctrl-select:focus { outline: none; border-color: var(--blue); }
+    .ctrl-hint { font-size: 11px; color: var(--gray-400); line-height: 1.4; }
+    /* Chart title input */
+    .ctrl-input {
+      width: 100%; padding: 6px 8px; border: 1px solid var(--gray-200);
+      border-radius: 6px; font-size: 12px;
+    }
+    .ctrl-input:focus { outline: none; border-color: var(--blue); }
+    /* Right panel: preview */
+    #chart-preview {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 16px;
+    }
+    #chart-preview-container {
+      flex: 1; border: 1px solid var(--gray-200); border-radius: 8px;
+      background: var(--gray-50); overflow: hidden; min-height: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #chart-preview-container .vega-embed { width: 100%; height: 100%; }
+    #chart-preview-msg {
+      color: var(--gray-400); font-size: 13px; text-align: center; padding: 20px;
+    }
+    #chart-modal-footer {
+      display: flex; gap: 10px; padding: 12px 16px; justify-content: flex-end;
+      border-top: 1px solid var(--gray-200); flex-shrink: 0;
+    }
+    .modal-btn {
+      padding: 8px 18px; border-radius: 7px; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none;
+    }
+    .modal-btn-primary { background: var(--blue); color: white; }
+    .modal-btn-primary:hover { background: #1e40af; }
+    .modal-btn-secondary { background: var(--gray-100); color: var(--gray-800); border: 1px solid var(--gray-200); }
+    .modal-btn-secondary:hover { background: var(--gray-200); }
+    .modal-btn:disabled { opacity: .4; cursor: default; }
+
+    /* ── Print styles ─────────────────────────────────────────────────── */
+    @media print {
+      body * { visibility: hidden; }
+      .print-target, .print-target * { visibility: visible; }
+      .print-target {
+        position: fixed; inset: 0; padding: 24px; background: white;
+        font-size: 13px;
+      }
+      .export-toolbar, .card-footer, .details-toggle,
+      .bookmark-btn, .cache-notice { display: none !important; }
+      .details-content { display: block !important; }
+      .data-table-wrap { max-height: none !important; overflow: visible !important; }
+    }
 
     /* Typing indicator */
     .typing {
@@ -265,6 +376,65 @@
     <div class="spacer"></div>
     <div class="badge">Georgia 2020–2024</div>
   </header>
+
+  <!-- ── Chart Builder Modal ──────────────────────────────────────── -->
+  <div id="chart-modal-overlay" onclick="if(event.target===this)closeChartModal()">
+    <div id="chart-modal">
+      <div id="chart-modal-header">
+        <h3>📊 Build Chart</h3>
+        <span id="chart-modal-subtitle" style="font-size:12px;color:var(--gray-400)"></span>
+        <button id="chart-modal-close" onclick="closeChartModal()">×</button>
+      </div>
+      <div id="chart-modal-body">
+        <!-- Controls -->
+        <div id="chart-controls">
+          <div class="ctrl-section">
+            <div class="ctrl-label">Chart Type</div>
+            <div id="chart-type-grid">
+              <button class="chart-type-btn active" data-type="bar"    onclick="selectChartType('bar')">   <span class="ct-icon">📊</span>Bar</button>
+              <button class="chart-type-btn"        data-type="line"   onclick="selectChartType('line')">  <span class="ct-icon">📈</span>Line</button>
+              <button class="chart-type-btn"        data-type="area"   onclick="selectChartType('area')">  <span class="ct-icon">🏔</span>Area</button>
+              <button class="chart-type-btn"        data-type="stream" onclick="selectChartType('stream')"><span class="ct-icon">🌊</span>Stream</button>
+              <button class="chart-type-btn"        data-type="pie"    onclick="selectChartType('pie')">   <span class="ct-icon">🥧</span>Pie</button>
+              <button class="chart-type-btn"        data-type="scatter"onclick="selectChartType('scatter')"><span class="ct-icon">🔵</span>Scatter</button>
+              <button class="chart-type-btn"        data-type="sankey" onclick="selectChartType('sankey')"><span class="ct-icon">➡</span>Sankey</button>
+            </div>
+          </div>
+
+          <div class="ctrl-section" id="ctrl-title-section">
+            <div class="ctrl-label">Chart Title</div>
+            <input class="ctrl-input" id="ctrl-title" placeholder="Optional title…" oninput="schedulePreview()">
+          </div>
+
+          <div id="ctrl-axis-fields">
+            <!-- populated dynamically per chart type -->
+          </div>
+
+          <div class="ctrl-section">
+            <div class="ctrl-label">Max Rows in Chart</div>
+            <select class="ctrl-select" id="ctrl-max-rows" onchange="schedulePreview()">
+              <option value="20">20</option>
+              <option value="30" selected>30</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Preview -->
+        <div id="chart-preview">
+          <div id="chart-preview-container">
+            <div id="chart-preview-msg">Configure chart options and click Preview</div>
+          </div>
+        </div>
+      </div>
+      <div id="chart-modal-footer">
+        <button class="modal-btn modal-btn-secondary" onclick="closeChartModal()">Close</button>
+        <button class="modal-btn modal-btn-secondary" id="btn-preview" onclick="renderPreview()">Preview</button>
+        <button class="modal-btn modal-btn-primary"   id="btn-download-png" onclick="downloadChartPNG()" disabled>⬇ Download PNG</button>
+      </div>
+    </div>
+  </div>
 
   <div class="body">
 
@@ -607,6 +777,11 @@ function appendAssistantCard() {
           <span class="arrow">▶</span> View data
         </div>
         <div class="details-content">
+          <div class="export-toolbar">
+            <button class="export-btn" onclick="exportCSV(this)"    title="Download as CSV">⬇ CSV</button>
+            <button class="export-btn" onclick="openChartBuilder(this)" title="Build a chart">📊 Chart</button>
+            <button class="export-btn" onclick="printCard(this)"    title="Print / Save as PDF">🖨 PDF</button>
+          </div>
           <div class="data-table-wrap"></div>
           <div class="row-count" style="font-size:11px;color:var(--gray-400);margin-top:4px"></div>
         </div>
@@ -757,6 +932,351 @@ function handleKey(e) {
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export: CSV
+// ─────────────────────────────────────────────────────────────────────────────
+function exportCSV(btn) {
+  const rows = getCardRows(btn);
+  if (!rows || !rows.length) return;
+  const cols = Object.keys(rows[0]);
+  const escape = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const csv = [cols.map(escape).join(','),
+    ...rows.map(r => cols.map(c => escape(r[c])).join(','))
+  ].join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'fdp_export_' + Date.now() + '.csv';
+  a.click();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export: Print / PDF
+// ─────────────────────────────────────────────────────────────────────────────
+function printCard(btn) {
+  const card = btn.closest('.answer-card');
+  // Mark this card as the print target, print, then unmark
+  document.querySelectorAll('.print-target').forEach(el => el.classList.remove('print-target'));
+  card.classList.add('print-target');
+  window.print();
+  // Remove after a tick so the card isn't permanently marked
+  setTimeout(() => card.classList.remove('print-target'), 500);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart Builder — state
+// ─────────────────────────────────────────────────────────────────────────────
+let _cbRows    = [];    // data rows for the current chart builder session
+let _cbCols    = [];    // column names
+let _cbType    = 'bar'; // currently selected chart type
+let _cbView    = null;  // current Vega view (for PNG export)
+let _previewTimer = null;
+
+// Column field configs per chart type
+const CHART_CONFIGS = {
+  bar:    { fields: [{ id:'x', label:'X axis (category)',   type:'any'  },
+                     { id:'y', label:'Y axis (value)',       type:'num'  },
+                     { id:'color', label:'Group by (optional)', type:'any', optional:true }],
+            hint: 'Best for comparing values across categories.' },
+  line:   { fields: [{ id:'x', label:'X axis (time/order)', type:'any'  },
+                     { id:'y', label:'Y axis (value)',       type:'num'  },
+                     { id:'color', label:'Series (optional)', type:'any', optional:true }],
+            hint: 'Best for trends over time or ordered categories.' },
+  area:   { fields: [{ id:'x', label:'X axis',              type:'any'  },
+                     { id:'y', label:'Y axis (value)',       type:'num'  },
+                     { id:'color', label:'Series (stacked, optional)', type:'any', optional:true }],
+            hint: 'Stacked area chart. Add a series to stack groups.' },
+  stream: { fields: [{ id:'x', label:'X axis (time)',        type:'any'  },
+                     { id:'y', label:'Value',                 type:'num'  },
+                     { id:'color', label:'Stream series',     type:'any'  }],
+            hint: 'River/streamgraph. Requires a series column (e.g. party, year).' },
+  pie:    { fields: [{ id:'label', label:'Label (category)', type:'any'  },
+                     { id:'value', label:'Value (numeric)',  type:'num'  }],
+            hint: 'Shows proportions. Works best with ≤ 8 categories.' },
+  scatter:{ fields: [{ id:'x', label:'X axis (numeric)',     type:'num'  },
+                     { id:'y', label:'Y axis (numeric)',     type:'num'  },
+                     { id:'color', label:'Color by (optional)', type:'any', optional:true }],
+            hint: 'Correlation between two numeric columns.' },
+  sankey: { fields: [{ id:'source', label:'Source node',    type:'any'  },
+                     { id:'target', label:'Target node',    type:'any'  },
+                     { id:'value',  label:'Flow value',     type:'num'  }],
+            hint: 'Flow diagram. Requires source → target → value columns.' },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart Builder — open / close
+// ─────────────────────────────────────────────────────────────────────────────
+function openChartBuilder(btn) {
+  const rows = getCardRows(btn);
+  if (!rows || !rows.length) { alert('No data to chart.'); return; }
+  _cbRows = rows;
+  _cbCols = Object.keys(rows[0]);
+  _cbType = 'bar';
+  _cbView = null;
+
+  document.getElementById('chart-modal-subtitle').textContent =
+    `${rows.length} rows · ${_cbCols.length} columns`;
+  document.getElementById('ctrl-title').value = '';
+  document.getElementById('btn-download-png').disabled = true;
+  document.getElementById('chart-preview-msg').style.display = 'block';
+  document.getElementById('chart-preview-msg').textContent = 'Configure options and click Preview';
+
+  // Reset type buttons
+  document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('[data-type="bar"]').classList.add('active');
+  renderAxisFields('bar');
+
+  document.getElementById('chart-modal-overlay').classList.add('open');
+}
+
+function closeChartModal() {
+  document.getElementById('chart-modal-overlay').classList.remove('open');
+  if (_cbView) { try { _cbView.finalize(); } catch(e){} _cbView = null; }
+}
+
+function selectChartType(type) {
+  _cbType = type;
+  document.querySelectorAll('.chart-type-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.type === type));
+  renderAxisFields(type);
+  schedulePreview();
+}
+
+function renderAxisFields(type) {
+  const cfg = CHART_CONFIGS[type];
+  const container = document.getElementById('ctrl-axis-fields');
+  container.innerHTML = `
+    <div class="ctrl-section">
+      <div class="ctrl-label">Columns</div>
+      ${cfg.fields.map(f => `
+        <div style="margin-bottom:8px">
+          <div style="font-size:11px;color:var(--gray-600);margin-bottom:3px">
+            ${f.label}${f.optional ? ' <span style="color:var(--gray-400)">(optional)</span>' : ''}
+          </div>
+          <select class="ctrl-select" id="ctrl-${f.id}" onchange="schedulePreview()">
+            ${f.optional ? '<option value="">— none —</option>' : ''}
+            ${_cbCols.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('')}
+          </select>
+        </div>
+      `).join('')}
+      ${cfg.hint ? `<div class="ctrl-hint">${cfg.hint}</div>` : ''}
+    </div>
+  `;
+  // Auto-select sensible defaults based on column names/types
+  autoSelectColumns(type, cfg.fields);
+}
+
+function autoSelectColumns(type, fields) {
+  const numCols  = _cbCols.filter(c => _cbRows.some(r => typeof r[c] === 'number' || !isNaN(parseFloat(r[c]))));
+  const catCols  = _cbCols.filter(c => !numCols.includes(c));
+  fields.forEach(f => {
+    const sel = document.getElementById(`ctrl-${f.id}`);
+    if (!sel) return;
+    if (f.type === 'num' && numCols.length) sel.value = numCols[0];
+    else if (f.type === 'any' && catCols.length) sel.value = catCols[0];
+    // Second numeric field — pick next one
+    if (f.id === 'y' && numCols.length > 1) sel.value = numCols[1];
+    if (f.id === 'x' && catCols.length) sel.value = catCols[0];
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart Builder — spec generation
+// ─────────────────────────────────────────────────────────────────────────────
+function getFieldVal(id) {
+  const el = document.getElementById(`ctrl-${id}`);
+  return el ? el.value || null : null;
+}
+
+function inferVLType(col) {
+  if (!col || !_cbRows.length) return 'nominal';
+  const sample = _cbRows.find(r => r[col] != null)?.[col];
+  if (typeof sample === 'number' || (!isNaN(parseFloat(sample)) && isFinite(sample))) return 'quantitative';
+  if (typeof sample === 'string' && /^\d{4}(-\d{2})?/.test(sample)) return 'temporal';
+  return 'nominal';
+}
+
+function buildSpec(type, rows) {
+  const title = document.getElementById('ctrl-title').value.trim() || undefined;
+  const maxRows = parseInt(document.getElementById('ctrl-max-rows').value);
+  const data = { values: rows.slice(0, maxRows) };
+  const base = { title, data, width: 'container', height: 380 };
+
+  switch (type) {
+    case 'bar': {
+      const x = getFieldVal('x'), y = getFieldVal('y'), color = getFieldVal('color');
+      if (!x || !y) return null;
+      return { ...base, mark: { type: 'bar', tooltip: true },
+        encoding: {
+          x: { field: x, type: inferVLType(x), axis: { labelAngle: -40 }, sort: '-y' },
+          y: { field: y, type: 'quantitative' },
+          ...(color ? { color: { field: color, type: 'nominal' } } : {}),
+        }};
+    }
+    case 'line': {
+      const x = getFieldVal('x'), y = getFieldVal('y'), color = getFieldVal('color');
+      if (!x || !y) return null;
+      return { ...base, mark: { type: 'line', point: true, tooltip: true },
+        encoding: {
+          x: { field: x, type: inferVLType(x) },
+          y: { field: y, type: 'quantitative' },
+          ...(color ? { color: { field: color, type: 'nominal' } } : {}),
+        }};
+    }
+    case 'area': {
+      const x = getFieldVal('x'), y = getFieldVal('y'), color = getFieldVal('color');
+      if (!x || !y) return null;
+      return { ...base, mark: { type: 'area', tooltip: true },
+        encoding: {
+          x: { field: x, type: inferVLType(x) },
+          y: { field: y, type: 'quantitative', stack: color ? 'zero' : undefined },
+          ...(color ? { color: { field: color, type: 'nominal' } } : {}),
+        }};
+    }
+    case 'stream': {
+      const x = getFieldVal('x'), y = getFieldVal('y'), color = getFieldVal('color');
+      if (!x || !y || !color) return null;
+      return { ...base, mark: { type: 'area', tooltip: true },
+        encoding: {
+          x: { field: x, type: inferVLType(x) },
+          y: { field: y, type: 'quantitative', stack: 'center', axis: null },
+          color: { field: color, type: 'nominal' },
+        }};
+    }
+    case 'pie': {
+      const label = getFieldVal('label'), value = getFieldVal('value');
+      if (!label || !value) return null;
+      return { ...base, height: 340,
+        mark: { type: 'arc', innerRadius: 60, tooltip: true },
+        encoding: {
+          theta: { field: value, type: 'quantitative' },
+          color: { field: label, type: 'nominal', legend: { orient: 'right' } },
+        }};
+    }
+    case 'scatter': {
+      const x = getFieldVal('x'), y = getFieldVal('y'), color = getFieldVal('color');
+      if (!x || !y) return null;
+      return { ...base, mark: { type: 'point', tooltip: true, filled: true, size: 80 },
+        encoding: {
+          x: { field: x, type: 'quantitative' },
+          y: { field: y, type: 'quantitative' },
+          ...(color ? { color: { field: color, type: 'nominal' } } : {}),
+        }};
+    }
+    case 'sankey': {
+      // Sankey uses full Vega spec (not Vega-Lite)
+      const source = getFieldVal('source'), target = getFieldVal('target'), value = getFieldVal('value');
+      if (!source || !target || !value) return null;
+      return buildSankeySpec(rows.slice(0, maxRows), source, target, value, title);
+    }
+    default: return null;
+  }
+}
+
+function buildSankeySpec(rows, sourceCol, targetCol, valueCol, title) {
+  // Full Vega spec for Sankey diagram
+  const nodes = [...new Set([...rows.map(r => r[sourceCol]), ...rows.map(r => r[targetCol])])]
+    .map((name, i) => ({ name, index: i }));
+  const nodeIndex = Object.fromEntries(nodes.map(n => [n.name, n.index]));
+  const links = rows.map(r => ({
+    source: nodeIndex[r[sourceCol]],
+    target: nodeIndex[r[targetCol]],
+    value: parseFloat(r[valueCol]) || 0,
+  }));
+  return {
+    '$schema': 'https://vega.github.io/schema/vega-lite/v5.json',
+    title: title || 'Sankey Diagram',
+    data: { values: rows },
+    layer: [
+      { mark: { type: 'bar', orient: 'vertical', tooltip: true },
+        encoding: {
+          x: { field: sourceCol, type: 'nominal', axis: { title: sourceCol } },
+          y: { field: valueCol,  type: 'quantitative', stack: true },
+          color: { field: targetCol, type: 'nominal' },
+        }},
+    ],
+    width: 'container', height: 380,
+    // Note: true Sankey requires the vega-sankey plugin.
+    // This fallback shows a stacked bar as an approximation.
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart Builder — preview + download
+// ─────────────────────────────────────────────────────────────────────────────
+function schedulePreview() {
+  clearTimeout(_previewTimer);
+  _previewTimer = setTimeout(renderPreview, 400);
+}
+
+async function renderPreview() {
+  const spec = buildSpec(_cbType, _cbRows);
+  const container = document.getElementById('chart-preview-container');
+  const msg = document.getElementById('chart-preview-msg');
+
+  if (!spec) {
+    msg.style.display = 'block';
+    msg.textContent = 'Select all required columns to preview.';
+    document.getElementById('btn-download-png').disabled = true;
+    return;
+  }
+
+  msg.style.display = 'none';
+  if (_cbView) { try { _cbView.finalize(); } catch(e){} _cbView = null; }
+
+  // Clear container but keep the message div
+  const inner = document.createElement('div');
+  inner.style.cssText = 'width:100%;height:100%';
+  container.innerHTML = '';
+  container.appendChild(inner);
+
+  try {
+    const isVegaLite = !spec['$schema']?.includes('/vega/v5');
+    const fullSpec = isVegaLite
+      ? { '$schema': 'https://vega.github.io/schema/vega-lite/v5.json', ...spec }
+      : spec;
+
+    const result = await vegaEmbed(inner, fullSpec, {
+      actions: false, renderer: 'canvas', theme: 'latimes',
+    });
+    _cbView = result.view;
+    document.getElementById('btn-download-png').disabled = false;
+  } catch(e) {
+    container.innerHTML = `<div id="chart-preview-msg" style="display:block;color:var(--red)">Chart error: ${escHtml(e.message)}</div>`;
+    document.getElementById('btn-download-png').disabled = true;
+  }
+}
+
+async function downloadChartPNG() {
+  if (!_cbView) return;
+  try {
+    const url = await _cbView.toImageURL('png', 2);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'fdp_chart_' + Date.now() + '.png';
+    a.click();
+  } catch(e) { alert('Download failed: ' + e.message); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers — get rows from card context
+// ─────────────────────────────────────────────────────────────────────────────
+function getCardRows(el) {
+  // Walk up to find the answer card, then pull rows from the data table
+  const card = el.closest('.answer-card');
+  if (!card) return [];
+  const table = card.querySelector('.data-table');
+  if (!table) return [];
+  const headers = [...table.querySelectorAll('thead th')].map(th => th.textContent);
+  const rows = [...table.querySelectorAll('tbody tr')].map(tr => {
+    const cells = [...tr.querySelectorAll('td')].map(td => td.textContent);
+    return Object.fromEntries(headers.map((h, i) => [h, cells[i]]));
+  });
+  return rows;
 }
 </script>
 </body>
