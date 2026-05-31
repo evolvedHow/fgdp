@@ -1,22 +1,18 @@
 # fdensemble — Redistricting Ensemble Analysis
-# Multi-stage build: Node builds the Svelte frontend, Python runs the API.
 #
-# Railway setup:
-#   Root directory  → fdensemble
-#   Builder         → auto-detect (finds this Dockerfile)
-#   Port            → 8010
+# Railway: Root Directory = fdensemble
+# Build context = repo root (Railway sends full repo for Dockerfile builds)
+# All COPY paths are relative to the repo root.
 #
-# Optional env vars:
-#   FDPAPI_BASE   https://fdp-api.up.railway.app  (enables FDP API mode)
-#   DATA_DIR      path to ALARM CSV files (default: dataverse_files/GA_cd_2020)
+# Multi-stage: Node builds the Svelte frontend, Python runs the API.
 
-# ── Stage 1: build Svelte frontend ────────────────────────────────────────────
+# ── Stage 1: build Svelte frontend ───────────────────────────────────────────
 FROM node:20-slim AS frontend-builder
 
 WORKDIR /build
-COPY frontend/package*.json ./
+COPY fdensemble/frontend/package*.json ./
 RUN npm ci
-COPY frontend/ ./
+COPY fdensemble/frontend/ ./
 RUN npm run build
 
 # ── Stage 2: Python API server ────────────────────────────────────────────────
@@ -48,9 +44,9 @@ RUN pip install --no-cache-dir \
     "pyarrow>=14.0.0" \
     "shapely>=2.0.0"
 
-# Copy application source
-COPY main.py ./
-COPY fdp_client.py ./
+# Copy application source using repo-root-relative paths
+COPY fdensemble/main.py ./
+COPY fdensemble/fdp_client.py ./
 
 # Copy built frontend from Stage 1
 COPY --from=frontend-builder /build/dist/ ./frontend/dist/
