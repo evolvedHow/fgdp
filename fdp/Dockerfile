@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir uv
 COPY fdp/pyproject.toml fdp/uv.lock* ./
 
 # Install the package (fastapi + uvicorn via [api] extra)
-RUN uv pip install --system --no-cache --extra api .
+RUN uv pip install --system --no-cache ".[api]"
 
 # Copy the Python package source
 COPY fdp/fdp/ ./fdp/
