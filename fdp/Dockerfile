@@ -15,7 +15,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 # Copy pyproject.toml from its repo-root-relative path
-COPY fdp/pyproject.toml fdp/uv.lock* ./
+COPY fdp/pyproject.toml fdp/uv.lock* fdp/README.md ./
 
 # Install the package (fastapi + uvicorn via [api] extra)
 RUN uv pip install --system --no-cache ".[api]"
