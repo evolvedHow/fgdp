@@ -1,0 +1,21 @@
+# fdensemble — Railway deployment config
+#
+# Railway service settings:
+#   Root directory  → fdensemble
+#   Builder         → Dockerfile  (auto-detected)
+#   Port            → set to 8010 (or Railway auto-assigns via $PORT)
+#
+# Optional environment variables:
+#   FDPAPI_BASE    https://fdp-api.up.railway.app  (switches to FDP API mode)
+#   DATA_DIR       dataverse_files/GA_cd_2020
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

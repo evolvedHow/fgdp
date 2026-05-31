@@ -11,6 +11,19 @@ from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
 
+# ── FDP platform client (fdp-first architecture) ──────────────────────────────
+# fdp_client wraps the FDP REST API when FDPAPI_BASE env var is set.
+# Falls back to local ALARM dataverse files when FDPAPI_BASE is not set (current default).
+# See fdp_client.py for migration details and prerequisites.
+from fdp_client import using_api, health_check as _fdp_health  # noqa: E402
+
+if using_api():
+    import logging as _logging
+    _logging.getLogger(__name__).info(
+        "FDP API mode active — data will be fetched from %s",
+        __import__("os").environ.get("FDPAPI_BASE"),
+    )
+
 # ── Config ────────────────────────────────────────────────────────────────────
 STATE                   = os.getenv('STATE', 'GA')
 PLAN_TYPE               = os.getenv('PLAN_TYPE', 'cd')
@@ -566,6 +579,17 @@ def _to_png(fig) -> io.BytesIO:
 
 # ── FastAPI ───────────────────────────────────────────────────────────────────
 app = FastAPI(title=f'fdensemble — {STATE} {PLAN_TYPE.upper()} {PLAN_YEAR}')
+
+
+@app.get('/api/health')
+def get_health():
+    """Liveness check — includes FDP API connectivity status."""
+    return {
+        "status": "ok",
+        "runs_loaded": len(_runs),
+        "data_mode": "fdp_api" if using_api() else "local_files",
+        "fdp": _fdp_health(),
+    }
 
 
 @app.get('/api/runs')

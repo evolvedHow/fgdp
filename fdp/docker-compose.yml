@@ -1,19 +1,23 @@
 # FDP local development stack
 #
 # Mirrors the production architecture:
-#   - postgres  → same image as cloud/Supabase (PostGIS-enabled)
-#   - fdp       → same Docker image as production; mounts local data/
+#   - postgres   → same image as cloud/Supabase (PostGIS-enabled)
+#   - fdp-api    → REST API server (FastAPI/uvicorn), port 8080
+#   - fdp-cli    → one-shot CLI runner (override CMD to run any fdp command)
 #
-# Start:
-#   docker compose up -d postgres        # DB only (for local CLI use)
-#   docker compose run --rm fdp init-db  # create schema on first run
-#   docker compose run --rm fdp status   # verify connection
+# Quick start (local DB):
+#   docker compose up -d postgres
+#   docker compose run --rm fdp-cli init-db   # create schema
+#   docker compose up -d fdp-api              # start API
+#   curl http://localhost:8080/api/v1/health
+#
+# Quick start (Supabase):
+#   DATABASE_URL='postgresql://...' docker compose up -d fdp-api
 #
 # Connect with psql / DBeaver / Looker Studio:
 #   postgresql://fdp:fdp_local@localhost:5432/fdp
 #
-# To use Supabase instead of local postgres, update DATABASE_URL in .env
-# and skip the postgres service entirely.
+# To use Supabase instead of local postgres, set DATABASE_URL in .env
 
 services:
 
@@ -33,14 +37,31 @@ services:
       timeout: 5s
       retries: 10
 
-  fdp:
+  # REST API server — default service for production use
+  fdp-api:
     build: .
+    environment:
+      DATABASE_URL:  ${DATABASE_URL:-postgresql://fdp:fdp_local@postgres:5432/fdp}
+      FDPAPI_SECRET: ${FDPAPI_SECRET:-}
+      FDP_ROOT:      /fdp-data
+    ports:
+      - "8080:8080"
+    volumes:
+      - ${FDP_DATA_PATH:-./data}:/fdp-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # CLI runner — override CMD to run any fdp command
+  # Example: docker compose run --rm fdp-cli load-pg --state GA
+  fdp-cli:
+    build: .
+    entrypoint: ["fdp"]
+    command: ["--help"]
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://fdp:fdp_local@postgres:5432/fdp}
       FDP_ROOT:     /fdp-data
     volumes:
-      # Mount local data/ into the container — parquets are read from here.
-      # Override FDP_DATA_PATH in .env if your data lives elsewhere.
       - ${FDP_DATA_PATH:-./data}:/fdp-data
     depends_on:
       postgres:

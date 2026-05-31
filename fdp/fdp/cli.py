@@ -1123,11 +1123,13 @@ def _parse_canonical_filename(fname: str) -> dict | None:
 
 
 @main.command("scan")
+@click.option("--dsn", envvar="DATABASE_URL", default=None,
+              help="PostgreSQL connection string (default: $DATABASE_URL)")
 @click.option("--state", default=None, help="Only scan a specific state (e.g. GA)")
 @click.option("--dry-run", is_flag=True,
               help="Show what would be registered without writing anything")
 @click.option("--fdp-root", envvar="FDP_ROOT", default=None)
-def scan(state, dry_run, fdp_root):
+def scan(dsn, state, dry_run, fdp_root):
     """
     Scan data/repos/main/ for existing parquets and register them in the manifest.
 
@@ -1147,7 +1149,7 @@ def scan(state, dry_run, fdp_root):
     from fdp.manifest import DatasetEntry, auto_id
 
     data_root = _data_root(fdp_root)
-    manifest  = _make_manifest()
+    manifest  = _make_manifest(db_url=dsn)
 
     # Directories and geo labels to scan
     scan_dirs = [

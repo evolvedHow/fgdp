@@ -1,4 +1,4 @@
-"""CDM dataclass models for the Fair Districts Data Platform."""
+"""CDM dataclass models and data dictionary for the Fair Districts Data Platform."""
 
 from fdp.schema.models import (
     ChamberWave,
@@ -7,6 +7,7 @@ from fdp.schema.models import (
     DisplacementMetrics,
     DistrictDisplacement,
 )
+from fdp.schema.data_dictionary import get_data_dictionary, clear_cache
 
 __all__ = [
     "ChamberWave",
@@ -14,4 +15,6 @@ __all__ = [
     "RedistrictingHistory",
     "DisplacementMetrics",
     "DistrictDisplacement",
+    "get_data_dictionary",
+    "clear_cache",
 ]

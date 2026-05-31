@@ -1,15 +1,25 @@
 [project]
 name = "fdworkbench"
-version = "0.1.0"
-description = "Fair Districts Workbench — NLQ-to-SQL analytics interface for the FDP"
+version = "0.2.0"
+description = "FDP Policy Chat — AI chat engine for Georgia redistricting data"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
-    "duckdb>=0.10.0",
     "litellm>=1.30.0",
+    "anthropic>=0.25.0",
     "python-dotenv>=1.0.0",
-    "pandas>=2.0.0",
-    "pyarrow>=14.0.0",
-    "aiofiles>=23.0.0",
+    "psycopg[binary]>=3.1.0",
+    "fdp",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+# uv resolves fdp from the local monorepo sibling directory
+[tool.uv.sources]
+fdp = { path = "../fdp", editable = true }
