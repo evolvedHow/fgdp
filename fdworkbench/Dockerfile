@@ -50,7 +50,8 @@ RUN pip install --no-cache-dir \
 
 # ── Copy application source ────────────────────────────────────────────────
 COPY backend/ ./backend/
-COPY frontend/ ./frontend/
+RUN mkdir -p ./frontend
+COPY frontend/index.html ./frontend/index.html
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8003

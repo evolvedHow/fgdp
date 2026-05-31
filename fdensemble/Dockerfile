@@ -56,8 +56,8 @@ COPY fdp_client.py ./
 # Pre-built frontend (run `npm run build` locally before docker build)
 COPY frontend/dist/ ./frontend/dist/
 
-VOLUME ["/app/dataverse_files"]
-
+# ALARM dataverse files can be baked into the image or fetched at startup.
+# On Railway, mount via Railway Volumes if needed.
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8010
 

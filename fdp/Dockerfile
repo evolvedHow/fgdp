@@ -41,9 +41,8 @@ COPY fdp/       ./fdp/
 COPY config/    ./config/
 COPY sql/       ./sql/
 
-# Data volume — mount your local data/ folder here at runtime (CLI use)
-VOLUME ["/fdp-data"]
-
+# FDP_ROOT: CLI commands look here for local data files.
+# On Railway, data is in Supabase — this path is unused but harmless.
 ENV PYTHONUNBUFFERED=1
 ENV FDP_ROOT=/fdp-data
 
