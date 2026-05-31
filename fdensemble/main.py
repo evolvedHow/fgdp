@@ -468,8 +468,16 @@ def _discover_and_load_runs() -> dict:
     csv_stem = f'{STATE}_{PLAN_TYPE}_{PLAN_YEAR}'
     csv      = DATA_DIR / f'{csv_stem}_stats.csv'
     run_id   = f'{csv_stem}_alarm'
-    print(f'  Loading default run: {run_id}')
-    found[run_id] = _build_run(run_id, csv, DATA_DIR / f'{csv_stem}_meta.json')
+
+    if csv.exists():
+        print(f'  Loading default run: {run_id}')
+        try:
+            found[run_id] = _build_run(run_id, csv, DATA_DIR / f'{csv_stem}_meta.json')
+        except Exception as exc:
+            print(f'  WARNING: failed to load {run_id}: {exc}')
+    else:
+        print(f'  No data file found at {csv} — skipping default run.')
+        print(f'  Set DATA_DIR env var or mount ALARM CSV files to enable analysis.')
 
     if RUNS_DIR.exists():
         for run_dir in sorted(d for d in RUNS_DIR.iterdir() if d.is_dir()):
@@ -477,7 +485,10 @@ def _discover_and_load_runs() -> dict:
             if csvs:
                 rid = run_dir.name
                 print(f'  Loading run: {rid}')
-                found[rid] = _build_run(rid, csvs[0], run_dir / 'meta.json')
+                try:
+                    found[rid] = _build_run(rid, csvs[0], run_dir / 'meta.json')
+                except Exception as exc:
+                    print(f'  WARNING: failed to load {rid}: {exc}')
 
     return found
 
