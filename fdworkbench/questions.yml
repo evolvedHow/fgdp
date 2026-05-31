@@ -1,0 +1,195 @@
+# FDP Policy Chat — Predefined Question Library
+#
+# These questions are seeded into fdp.question_library on startup (upsert).
+# Analysts can also bookmark ad-hoc questions at runtime via the UI.
+#
+# Fields:
+#   id            URL-safe slug (stable across restarts)
+#   question      Display text shown in the sidebar
+#   sql           Pre-written SQL (omit to route through LLM)
+#   expires_hours Auto-expire cache after N hours (omit = manual refresh only)
+#   tags          Optional labels for future filtering
+#   order         Sidebar sort position (lower = higher)
+
+questions:
+
+  - id: county_2024_president
+    order: 10
+    question: "Show me county-level 2024 presidential results across Georgia"
+    expires_hours: 168
+    tags: [elections, 2024, county, president]
+    sql: |
+      SELECT
+        LEFT(er.geoid, 5)                                               AS county_fips,
+        MAX(g.name)                                                     AS county_name,
+        SUM(CASE WHEN er.party = 'dem' THEN er.votes ELSE 0 END)       AS dem_votes,
+        SUM(CASE WHEN er.party = 'rep' THEN er.votes ELSE 0 END)       AS rep_votes,
+        ROUND(
+          100.0 * SUM(CASE WHEN er.party = 'dem' THEN er.votes ELSE 0 END)
+                / NULLIF(
+                    SUM(CASE WHEN er.party IN ('dem','rep') THEN er.votes ELSE 0 END),
+                    0
+                  ), 1
+        )                                                               AS dem_2pv_pct
+      FROM fdp.election_results er
+      LEFT JOIN fdp.geography g
+        ON LEFT(er.geoid, 5) = g.geoid AND g.geo_level = 'county'
+      WHERE er.year = 2024
+        AND er.office = 'president'
+        AND er.geo_level = 'vtd'
+      GROUP BY LEFT(er.geoid, 5)
+      ORDER BY dem_2pv_pct DESC
+      LIMIT 159
+
+  - id: county_2022_senate_warnock
+    order: 20
+    question: "How did the 2022 Warnock vs Walker Senate race break down by county?"
+    expires_hours: 168
+    tags: [elections, 2022, county, senate]
+    sql: |
+      SELECT
+        LEFT(er.geoid, 5)                                               AS county_fips,
+        MAX(g.name)                                                     AS county_name,
+        SUM(CASE WHEN er.party = 'dem' THEN er.votes ELSE 0 END)       AS warnock_votes,
+        SUM(CASE WHEN er.party = 'rep' THEN er.votes ELSE 0 END)       AS walker_votes,
+        ROUND(
+          100.0 * SUM(CASE WHEN er.party = 'dem' THEN er.votes ELSE 0 END)
+                / NULLIF(
+                    SUM(CASE WHEN er.party IN ('dem','rep') THEN er.votes ELSE 0 END),
+                    0
+                  ), 1
+        )                                                               AS warnock_2pv_pct
+      FROM fdp.election_results er
+      LEFT JOIN fdp.geography g
+        ON LEFT(er.geoid, 5) = g.geoid AND g.geo_level = 'county'
+      WHERE er.year = 2022
+        AND er.office = 'senate'
+        AND er.geo_level = 'vtd'
+      GROUP BY LEFT(er.geoid, 5)
+      ORDER BY warnock_2pv_pct DESC
+      LIMIT 159
+
+  - id: statewide_2020_2024_president
+    order: 30
+    question: "Compare 2020 and 2024 presidential vote share statewide"
+    expires_hours: 168
+    tags: [elections, 2020, 2024, statewide, president]
+    sql: |
+      SELECT
+        year,
+        SUM(CASE WHEN party = 'dem' THEN votes ELSE 0 END)             AS dem_votes,
+        SUM(CASE WHEN party = 'rep' THEN votes ELSE 0 END)             AS rep_votes,
+        SUM(votes)                                                      AS total_votes,
+        ROUND(
+          100.0 * SUM(CASE WHEN party = 'dem' THEN votes ELSE 0 END)
+                / NULLIF(
+                    SUM(CASE WHEN party IN ('dem','rep') THEN votes ELSE 0 END),
+                    0
+                  ), 2
+        )                                                               AS dem_2pv_pct
+      FROM fdp.election_results
+      WHERE office = 'president'
+        AND year IN (2020, 2024)
+        AND geo_level = 'vtd'
+      GROUP BY year
+      ORDER BY year
+
+  - id: county_swing_2020_2024
+    order: 40
+    question: "Which counties had the biggest swing between 2020 and 2024?"
+    expires_hours: 168
+    tags: [elections, swing, county, 2020, 2024]
+    sql: |
+      WITH by_year AS (
+        SELECT
+          LEFT(geoid, 5)                                                AS county_fips,
+          year,
+          ROUND(
+            100.0 * SUM(CASE WHEN party = 'dem' THEN votes ELSE 0 END)
+                  / NULLIF(
+                      SUM(CASE WHEN party IN ('dem','rep') THEN votes ELSE 0 END),
+                      0
+                    ), 2
+          )                                                             AS dem_2pv_pct
+        FROM fdp.election_results
+        WHERE office = 'president'
+          AND year IN (2020, 2024)
+          AND geo_level = 'vtd'
+        GROUP BY LEFT(geoid, 5), year
+      )
+      SELECT
+        a.county_fips,
+        a.dem_2pv_pct                                                   AS dem_pct_2020,
+        b.dem_2pv_pct                                                   AS dem_pct_2024,
+        ROUND(b.dem_2pv_pct - a.dem_2pv_pct, 2)                        AS swing_pp
+      FROM by_year a
+      JOIN by_year b ON a.county_fips = b.county_fips AND a.year = 2020 AND b.year = 2024
+      ORDER BY ABS(b.dem_2pv_pct - a.dem_2pv_pct) DESC
+      LIMIT 159
+
+  - id: county_black_cvap
+    order: 50
+    question: "Which counties have the highest Black CVAP percentage?"
+    expires_hours: 720
+    tags: [cvap, demographics, county, black]
+    sql: |
+      SELECT
+        LEFT(c.geoid, 5)                                                AS county_fips,
+        MAX(g.name)                                                     AS county_name,
+        SUM(c.cvap_tot)                                                 AS cvap_total,
+        SUM(c.cvap_black)                                               AS cvap_black,
+        ROUND(
+          100.0 * SUM(c.cvap_black) / NULLIF(SUM(c.cvap_tot), 0), 1
+        )                                                               AS black_cvap_pct
+      FROM fdp.cvap c
+      LEFT JOIN fdp.geography g
+        ON LEFT(c.geoid, 5) = g.geoid AND g.geo_level = 'county'
+      WHERE c.geo_level = 'vtd'
+      GROUP BY LEFT(c.geoid, 5)
+      HAVING SUM(c.cvap_tot) > 0
+      ORDER BY black_cvap_pct DESC
+      LIMIT 159
+
+  - id: metro_atlanta_2020_2024
+    order: 60
+    question: "How did metro Atlanta counties vote in 2024 vs 2020?"
+    expires_hours: 168
+    tags: [elections, metro, atlanta, county, 2020, 2024]
+    sql: |
+      WITH metro AS (
+        -- Core metro Atlanta counties by FIPS
+        SELECT unnest(ARRAY[
+          '13013','13015','13035','13057','13063','13067',
+          '13089','13097','13113','13121','13135','13151',
+          '13217','13223','13247','13255','13297'
+        ]) AS county_fips
+      ),
+      by_year AS (
+        SELECT
+          LEFT(er.geoid, 5)                                             AS county_fips,
+          er.year,
+          ROUND(
+            100.0 * SUM(CASE WHEN er.party = 'dem' THEN er.votes ELSE 0 END)
+                  / NULLIF(
+                      SUM(CASE WHEN er.party IN ('dem','rep') THEN er.votes ELSE 0 END),
+                      0
+                    ), 1
+          )                                                             AS dem_2pv_pct
+        FROM fdp.election_results er
+        WHERE er.office = 'president'
+          AND er.year IN (2020, 2024)
+          AND er.geo_level = 'vtd'
+        GROUP BY LEFT(er.geoid, 5), er.year
+      )
+      SELECT
+        a.county_fips,
+        MAX(g.name)                                                     AS county_name,
+        a.dem_2pv_pct                                                   AS dem_pct_2020,
+        b.dem_2pv_pct                                                   AS dem_pct_2024,
+        ROUND(b.dem_2pv_pct - a.dem_2pv_pct, 1)                        AS swing_pp
+      FROM by_year a
+      JOIN by_year b  ON a.county_fips = b.county_fips AND a.year = 2020 AND b.year = 2024
+      JOIN metro   m  ON a.county_fips = m.county_fips
+      LEFT JOIN fdp.geography g ON a.county_fips = g.geoid AND g.geo_level = 'county'
+      GROUP BY a.county_fips, a.dem_2pv_pct, b.dem_2pv_pct
+      ORDER BY b.dem_2pv_pct DESC

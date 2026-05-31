@@ -30,6 +30,8 @@ import litellm
 
 from .schema import execute_query, get_data_dictionary
 from .prompts import build_sql_prompt, INSIGHT_SYSTEM_PROMPT
+from .cache import get_cached, store_cache
+from .questions import find_library_match
 
 logger = logging.getLogger(__name__)
 
@@ -237,22 +239,59 @@ async def run_pipeline_stream(
     """
     Run the full 3-stage pipeline and yield SSE event dicts.
 
+    Cache-first: checks Supabase query_cache before running any stage.
+    Library-first: uses pre-written SQL for known questions.
+
     Yields events in this order:
       sql → rows → token (×N) → chart → finding → done
-
-    On error at any stage: yields error event and stops.
+      (plus optional: {"event": "cache_hit", "data": {...}})
     """
-    # Stage 1
-    try:
-        sql = generate_sql(question, history)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Stage 1 failed: %s", exc)
-        yield {"event": "error", "data": f"Could not generate SQL: {exc}"}
+    # ── Cache check ──────────────────────────────────────────────────────────
+    cached = get_cached(question)
+    if cached:
+        logger.info("Cache hit for question (hits: %d)", cached["hit_count"])
+        rows = cached["result_rows"] if isinstance(cached["result_rows"], list) \
+               else json.loads(cached["result_rows"] or "[]")
+        yield {"event": "cache_hit", "data": {
+            "refreshed_at": cached["refreshed_at"].isoformat()
+                            if hasattr(cached["refreshed_at"], "isoformat")
+                            else str(cached["refreshed_at"]),
+            "hit_count": cached["hit_count"],
+        }}
+        yield {"event": "sql",  "data": cached["sql_query"] or ""}
+        yield {"event": "rows", "data": rows[:100], "row_count": cached["row_count"] or 0}
+        if rows:
+            async for event in generate_insight_stream(
+                question, cached["sql_query"] or "", rows, cached["row_count"] or 0
+            ):
+                yield event
+        else:
+            yield {"event": "token",   "data": "No results found in cache."}
+            yield {"event": "chart",   "data": None}
+            yield {"event": "finding", "data": "No data found"}
+        yield {"event": "done", "data": ""}
         return
+
+    # ── Library match — use pre-written SQL if available ─────────────────────
+    library_q = find_library_match(question)
+    library_id = library_q["id"] if library_q else None
+    expires_hours = library_q.get("expires_hours") if library_q else None
+
+    # Stage 1 — SQL generation (or use pre-written SQL)
+    if library_q and library_q.get("sql"):
+        sql = library_q["sql"].strip()
+        logger.info("Using predefined SQL for library question: %s", library_id)
+    else:
+        try:
+            sql = generate_sql(question, history)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Stage 1 failed: %s", exc)
+            yield {"event": "error", "data": f"Could not generate SQL: {exc}"}
+            return
 
     yield {"event": "sql", "data": sql}
 
-    # Stage 2
+    # Stage 2 — Execute
     try:
         rows, row_count = execute_sql(sql)
     except Exception as exc:  # noqa: BLE001
@@ -263,15 +302,24 @@ async def run_pipeline_stream(
     yield {"event": "rows", "data": rows[:100], "row_count": row_count}
 
     if not rows:
-        yield {"event": "token", "data": "The query returned no results for this question. "}
-        yield {"event": "token", "data": "This may mean the data isn't available yet, "}
-        yield {"event": "token", "data": "or the question needs to be refined."}
+        yield {"event": "token",   "data": "The query returned no results for this question. "}
+        yield {"event": "token",   "data": "This may mean the data isn't available yet or the question needs to be refined."}
         yield {"event": "chart",   "data": None}
         yield {"event": "finding", "data": "No data found"}
         yield {"event": "done",    "data": ""}
         return
 
-    # Stage 3
+    # Store to cache before streaming Stage 3 (so even a partial Stage 3 doesn't lose the data)
+    store_cache(
+        question=question,
+        sql=sql,
+        rows=rows,
+        row_count=row_count,
+        library_id=library_id,
+        expires_hours=expires_hours,
+    )
+
+    # Stage 3 — Insight + chart
     async for event in generate_insight_stream(question, sql, rows, row_count):
         yield event
 

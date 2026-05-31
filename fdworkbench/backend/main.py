@@ -27,6 +27,13 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Seed question library from YAML on startup (non-fatal if DB unavailable)
+try:
+    from .questions import load_and_seed  # noqa: PLC0415
+    load_and_seed()
+except Exception as _seed_exc:  # noqa: BLE001
+    logger.warning("Question library seed failed (non-fatal): %s", _seed_exc)
+
 app = FastAPI(
     title="FDP Policy Chat",
     description="AI chat engine for Georgia redistricting data",
@@ -169,6 +176,94 @@ def execute_query_endpoint(
         return {"rows": rows, "row_count": len(rows)}
     except QueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# GET /api/questions  — library with cache status
+# ---------------------------------------------------------------------------
+
+@app.get("/api/questions")
+def get_questions():
+    """Return all active library questions with their cache metadata."""
+    from .cache import get_library  # noqa: PLC0415
+    return {"questions": get_library()}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/cache/invalidate  — mark a cached result stale (super user)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/cache/invalidate")
+def invalidate(
+    body: dict,
+    x_workbench_secret: str | None = Header(default=None, alias="X-Workbench-Secret"),
+):
+    """
+    Invalidate cache for a library question or ad-hoc question.
+
+    Body: { "library_id": "county_2024_president" }
+      OR  { "question": "Show me county-level 2024..." }
+
+    Requires X-Workbench-Secret header.
+    """
+    if not _admin_ok(x_workbench_secret):
+        raise HTTPException(status_code=401, detail="Missing or invalid X-Workbench-Secret")
+
+    from .cache import invalidate_cache  # noqa: PLC0415
+    n = invalidate_cache(
+        library_id=body.get("library_id"),
+        question=body.get("question"),
+    )
+    return {"invalidated": n}
+
+
+# ---------------------------------------------------------------------------
+# POST /api/questions/bookmark  — promote an answer to the library (super user)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/questions/bookmark")
+def bookmark_question(
+    body: dict,
+    x_workbench_secret: str | None = Header(default=None, alias="X-Workbench-Secret"),
+):
+    """
+    Bookmark a question+SQL so it appears in the sidebar for all users.
+
+    Body:
+      {
+        "question": "Show me ...",
+        "sql": "SELECT ...",
+        "label": "Optional display label (defaults to question)",
+        "expires_hours": 168
+      }
+
+    Requires X-Workbench-Secret header.
+    Returns the new library id.
+    """
+    if not _admin_ok(x_workbench_secret):
+        raise HTTPException(status_code=401, detail="Missing or invalid X-Workbench-Secret")
+
+    import re, time  # noqa: PLC0415
+    from .cache import upsert_library_question  # noqa: PLC0415
+
+    question: str = body.get("question", "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question is required")
+
+    # Generate a slug from the question text
+    slug = re.sub(r"[^a-z0-9]+", "_", question.lower())[:48].strip("_")
+    lib_id = f"bm_{slug}_{int(time.time()) % 100000}"
+
+    upsert_library_question(
+        id=lib_id,
+        question_text=body.get("label", question),
+        sql_query=body.get("sql"),
+        source="bookmark",
+        created_by=body.get("created_by"),
+        expires_hours=body.get("expires_hours"),
+        display_order=500,  # bookmarks appear after predefined questions
+    )
+    return {"id": lib_id, "question_text": body.get("label", question)}
 
 
 # ---------------------------------------------------------------------------

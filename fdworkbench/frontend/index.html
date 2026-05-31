@@ -58,6 +58,35 @@
     }
     .sidebar-section { padding: 12px 14px 6px; font-size: 11px; font-weight: 700;
                        text-transform: uppercase; letter-spacing: .05em; color: var(--gray-400); }
+    /* ── Question library items ──────────────────────────────────────── */
+    #question-library { overflow-y: auto; flex: 1; }
+    .lib-loading { padding: 10px 14px; font-size: 12px; color: var(--gray-400); }
+
+    .lib-item {
+      position: relative; margin: 1px 6px; border-radius: 6px;
+    }
+    .lib-item-btn {
+      display: block; width: 100%; text-align: left;
+      padding: 9px 14px 9px 14px; border: none; background: none; cursor: pointer;
+      font-size: 13px; line-height: 1.4; color: var(--gray-600);
+      border-radius: 6px; width: 100%;
+    }
+    .lib-item:hover .lib-item-btn { background: var(--gray-100); color: var(--gray-800); }
+
+    /* cache stats + recycle — hidden until hover */
+    .lib-item-meta {
+      display: none; position: absolute; bottom: 2px; right: 6px;
+      font-size: 10px; color: var(--gray-400); gap: 4px; align-items: center;
+    }
+    .lib-item:hover .lib-item-meta { display: flex; }
+    .lib-recycle {
+      background: none; border: none; cursor: pointer; padding: 0 2px;
+      font-size: 11px; color: var(--gray-400); line-height: 1;
+    }
+    .lib-recycle:hover { color: var(--blue); }
+    .lib-cached  { color: #16a34a; }   /* green dot when cached */
+    .lib-stale   { color: var(--gray-400); }
+
     .suggestion-btn {
       display: block; width: 100%; text-align: left;
       padding: 9px 14px; border: none; background: none; cursor: pointer;
@@ -170,6 +199,18 @@
       padding: 12px; border-radius: 6px; overflow-x: auto; white-space: pre;
     }
 
+    /* Card footer — cache info + bookmark */
+    .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 6px; min-height: 22px;
+    }
+    .cache-notice { font-size: 11px; color: var(--gray-400); }
+    .bookmark-btn {
+      font-size: 11px; color: var(--gray-400); background: none; border: none;
+      cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    }
+    .bookmark-btn:hover { background: var(--gray-100); color: var(--blue); }
+
     /* Typing indicator */
     .typing {
       display: flex; align-items: center; gap: 6px; color: var(--gray-400); font-size: 13px;
@@ -230,25 +271,10 @@
     <!-- Sidebar -->
     <nav id="sidebar">
       <div class="sidebar-section">Suggested Questions</div>
-
-      <button class="suggestion-btn" onclick="ask(this.textContent)">
-        Show me county-level 2024 presidential results across Georgia
-      </button>
-      <button class="suggestion-btn" onclick="ask(this.textContent)">
-        How did the 2022 Warnock vs Walker Senate race break down by county?
-      </button>
-      <button class="suggestion-btn" onclick="ask(this.textContent)">
-        Compare 2020 and 2024 presidential vote share statewide
-      </button>
-      <button class="suggestion-btn" onclick="ask(this.textContent)">
-        Which counties had the biggest swing between 2020 and 2024?
-      </button>
-      <button class="suggestion-btn" onclick="ask(this.textContent)">
-        Which counties have the highest Black CVAP percentage?
-      </button>
-      <button class="suggestion-btn" onclick="ask(this.textContent)">
-        How did metro Atlanta counties vote in 2024 vs 2020?
-      </button>
+      <div id="question-library">
+        <!-- populated by loadQuestionLibrary() -->
+        <div class="lib-loading">Loading…</div>
+      </div>
 
       <div class="sidebar-divider"></div>
       <div class="sidebar-section">Conversation History</div>
@@ -288,6 +314,103 @@ let history = [];       // [{role, content}] — sent to backend for context
 let busy = false;
 let chartCounter = 0;   // unique IDs for Vega charts
 
+// Super-user secret — set once via prompt, stored in sessionStorage only
+let _adminSecret = sessionStorage.getItem('workbench_secret') || null;
+
+function getAdminSecret() {
+  if (!_adminSecret) {
+    _adminSecret = prompt('Enter Workbench Secret:');
+    if (_adminSecret) sessionStorage.setItem('workbench_secret', _adminSecret);
+  }
+  return _adminSecret;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Question Library sidebar
+// ────────────────────────────────────────────────────────────────────────────
+
+async function loadQuestionLibrary() {
+  const container = document.getElementById('question-library');
+  try {
+    const res = await fetch('/api/questions');
+    const { questions } = await res.json();
+    if (!questions || questions.length === 0) {
+      container.innerHTML = '<div class="lib-loading">No questions yet.</div>';
+      return;
+    }
+    container.innerHTML = questions.map(q => renderLibItem(q)).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="lib-loading">Could not load questions.</div>';
+  }
+}
+
+function renderLibItem(q) {
+  const cached   = q.cache_is_valid;
+  const dot      = cached ? '<span class="lib-cached" title="Cached">●</span>' : '';
+  const age      = cached && q.cache_refreshed_at ? timeAgo(q.cache_refreshed_at) : 'not cached';
+  const hits     = cached ? `${q.cache_hit_count || 0} hits` : '';
+  const statsStr = cached ? `${age} · ${hits}` : age;
+
+  return `
+  <div class="lib-item" id="lib-${q.id}">
+    <button class="lib-item-btn" onclick="ask(${JSON.stringify(q.question_text)})"
+            title="${escHtml(q.question_text)}">${escHtml(q.question_text)}</button>
+    <div class="lib-item-meta">
+      ${dot}
+      <span>${statsStr}</span>
+      <button class="lib-recycle" title="Refresh cache" onclick="invalidateQuestion(event,'${q.id}','${escHtml(q.question_text)}')">↻</button>
+    </div>
+  </div>`;
+}
+
+async function invalidateQuestion(evt, libraryId, questionText) {
+  evt.stopPropagation();
+  const secret = getAdminSecret();
+  if (!secret) return;
+  try {
+    const res = await fetch('/api/cache/invalidate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Workbench-Secret': secret },
+      body: JSON.stringify({ library_id: libraryId }),
+    });
+    if (res.status === 401) { _adminSecret = null; sessionStorage.removeItem('workbench_secret'); alert('Invalid secret'); return; }
+    const { invalidated } = await res.json();
+    // Refresh the sidebar item to show un-cached state
+    await loadQuestionLibrary();
+  } catch (e) { console.error('Invalidate failed', e); }
+}
+
+// Bookmark current answer as a library question (super-user only)
+async function bookmarkAnswer(questionText, sql) {
+  const secret = getAdminSecret();
+  if (!secret) return;
+  const label = prompt('Label for this question (leave blank to use question text):') ?? '';
+  try {
+    const res = await fetch('/api/questions/bookmark', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Workbench-Secret': secret },
+      body: JSON.stringify({ question: questionText, sql, label: label || questionText }),
+    });
+    if (res.status === 401) { _adminSecret = null; sessionStorage.removeItem('workbench_secret'); alert('Invalid secret'); return; }
+    await loadQuestionLibrary();
+    const btn = document.querySelector(`[data-bookmark-q="${CSS.escape(questionText)}"]`);
+    if (btn) { btn.textContent = '✓ Bookmarked'; btn.disabled = true; }
+  } catch (e) { console.error('Bookmark failed', e); }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function timeAgo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60)     return 'just now';
+  if (diff < 3600)   return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400)  return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Load library on page ready
+document.addEventListener('DOMContentLoaded', loadQuestionLibrary);
+
 // ────────────────────────────────────────────────────────────────────────────
 // Send message
 // ────────────────────────────────────────────────────────────────────────────
@@ -316,7 +439,8 @@ function sendMessage() {
 // SSE streaming
 // ────────────────────────────────────────────────────────────────────────────
 function streamResponse(message, card) {
-  const { narrative, sqlEl, tableWrap, chartWrap, findingEl, typingEl } = card;
+  const { narrative, sqlEl, tableWrap, chartWrap, findingEl, typingEl,
+          cacheNotice, bookmarkBtn } = card;
   let narrativeText = '';
   let sqlText = '';
   let rows = [];
@@ -392,6 +516,10 @@ function streamResponse(message, card) {
         }
         break;
 
+      case 'cache_hit':
+        cacheNotice.textContent = `⚡ cached · ${timeAgo(ev.data.refreshed_at)} · ${ev.data.hit_count} hits`;
+        break;
+
       case 'done':
         onDone();
         break;
@@ -408,6 +536,13 @@ function streamResponse(message, card) {
     // Remove cursor
     narrative.innerHTML = escapeHtml(narrativeText);
     typingEl.style.display = 'none';
+
+    // Show bookmark button (super users can save any answer)
+    if (sqlText && bookmarkBtn) {
+      bookmarkBtn.dataset.question = message;
+      bookmarkBtn.dataset.sql = sqlText;
+      bookmarkBtn.style.display = 'inline';
+    }
 
     // Push to history for multi-turn context
     if (message) {
@@ -483,6 +618,14 @@ function appendAssistantCard() {
         <div class="details-content">
           <pre class="sql-block"></pre>
         </div>
+
+        <!-- Card footer: cache notice + bookmark -->
+        <div class="card-footer">
+          <span class="cache-notice"></span>
+          <button class="bookmark-btn" style="display:none"
+                  onclick="bookmarkAnswer(this.dataset.question, this.dataset.sql)"
+                  title="Save to question library">⊕ Bookmark</button>
+        </div>
       </div>
     </div>
   `;
@@ -499,6 +642,8 @@ function appendAssistantCard() {
     tableWrap: card.querySelector('.data-table-wrap'),
     rowCountEl: card.querySelector('.row-count'),
     sqlEl: card.querySelector('.sql-block'),
+    cacheNotice: card.querySelector('.cache-notice'),
+    bookmarkBtn: card.querySelector('.bookmark-btn'),
   };
 }
 

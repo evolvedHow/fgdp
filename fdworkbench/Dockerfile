@@ -28,10 +28,12 @@ RUN pip install --no-cache-dir \
     "litellm>=1.30.0" \
     "anthropic>=0.25.0" \
     "python-dotenv>=1.0.0" \
-    "psycopg[binary]>=3.1.0"
+    "psycopg[binary]>=3.1.0" \
+    "pyyaml>=6.0"
 
 # Copy application source using repo-root-relative paths
 COPY fdworkbench/backend/ ./backend/
+COPY fdworkbench/questions.yml ./questions.yml
 RUN mkdir -p ./frontend
 COPY fdworkbench/frontend/index.html ./frontend/index.html
 
