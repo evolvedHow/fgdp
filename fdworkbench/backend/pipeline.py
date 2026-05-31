@@ -37,6 +37,29 @@ litellm.set_verbose = False
 
 
 # ---------------------------------------------------------------------------
+# SQL post-processing — fix common LLM generation mistakes
+# ---------------------------------------------------------------------------
+
+def _clean_sql(sql: str) -> str:
+    """
+    Fix common LLM-generated SQL mistakes before execution.
+
+    Currently handles:
+    - Trailing comma after the last CTE in a WITH clause
+      e.g.  ), \\n  SELECT ...  →  ) \\n  SELECT ...
+    """
+    # Remove trailing comma after the last CTE closing paren before SELECT/INSERT/UPDATE
+    # Pattern: ),  (optional whitespace/comments)  SELECT
+    sql = re.sub(
+        r",(\s*(?:--[^\n]*)?\s*)(SELECT|INSERT|UPDATE|DELETE|WITH)\b",
+        r"\1\2",
+        sql,
+        flags=re.IGNORECASE,
+    )
+    return sql.strip()
+
+
+# ---------------------------------------------------------------------------
 # Model selection
 # ---------------------------------------------------------------------------
 
@@ -104,6 +127,9 @@ def generate_sql(
     # Extract first SQL statement (safety)
     statements = [s.strip() for s in raw.split(";") if s.strip()]
     sql = statements[0] if statements else raw
+
+    # Fix common LLM SQL mistakes
+    sql = _clean_sql(sql)
 
     logger.debug("Stage 1 SQL: %s", sql[:200])
     return sql
