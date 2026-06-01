@@ -1,0 +1,110 @@
+# =============================================================================
+# Georgia State House Benchmark — v1
+# 180 districts | 2020 VTD base | 6 elections | 10,000 MCMC steps
+#
+# NOTE: State House (180 districts) is the hardest chamber to sample well.
+#   - Chain mixing is slowest → higher burn_in recommended
+#   - Multiple chains strongly recommended for convergence diagnostics
+#   - Estimated Modal runtime: ~2 hours for 1 chain
+# =============================================================================
+
+benchmark_id: ga_house_2026_v1
+description: "Georgia 180-district State House benchmark for 2026 redistricting process"
+version: "1.0"
+
+geography:
+  state: GA
+  geo_level: vtd
+  vintage_year: 2020
+  graph_file: fdga-chain/data/graphs/ga_house.json   # ✅ pre-built, 2698 nodes
+
+chamber:
+  name: house
+  n_districts: 180                   # ✅  GA has 180 State House districts
+  pop_column: TOTPOP
+  pop_epsilon: 0.05                  # ✅  ±5% — constitutional standard
+
+elections:
+  - label: gov_2018
+    year: 2018
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+  - label: pre_2020
+    year: 2020
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+  - label: uss_2021_war
+    year: 2021
+    election_type: runoff
+    office: senate
+    candidates: [war, loe]
+    partisan_score: true
+    competitive: true
+  - label: gov_2022
+    year: 2022
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+  - label: uss_2022
+    year: 2022
+    election_type: general
+    office: senate
+    partisan_score: true
+    competitive: true
+  - label: pre_2024
+    year: 2024
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+
+competitiveness:
+  thresholds: [0.07, 0.10]
+  method: all_independent
+
+demographics:
+  cvap_year: 2024
+  majority_threshold: 0.50
+  groups:
+    - name: black
+      label: "Majority Black (any-part)"
+      cvap_col: CVAP_BLK24
+    - name: white
+      label: "Majority White"
+      cvap_col: CVAP_WHT24
+    - name: hispanic
+      label: "Majority Hispanic"
+      cvap_col: CVAP_HSP24
+    - name: minority_coalition
+      label: "Majority Minority Coalition"
+      formula: "1 - (CVAP_WHT24 / CVAP_TOT24)"
+
+mcmc:
+  algorithm: recom                   # ❓ TBD — reversible_recom strongly recommended for 180-district chamber
+  n_steps: 10000                     # ✅
+  burn_in: 2000                      # ❓ TBD — 2000 strongly recommended for State House
+  # GUIDANCE: 180-district chamber has the slowest chain mixing.
+  #   Discard first 2,000 steps. Net usable draws: 8,000.
+  #   Consider: n_steps: 12000, burn_in: 2000 → 10,000 usable plans.
+  n_chains: 5                        # ❓ TBD — 5 chains × 2,000 steps STRONGLY recommended for House
+  # GUIDANCE: With 180 districts, a single chain is much more likely to get stuck.
+  #   5 independent chains × 2,000 steps allows Gelman-Rubin convergence check.
+  #   Run in parallel on Modal — same wall-clock time as 1 chain × 10,000.
+  pop_epsilon: 0.05
+  random_seed: null
+  save_assignments: true
+
+grading:
+  pass_band: [1, 99]
+  a_band:    [25, 75]                # ❓ TBD — confirm after seeing distribution
+  b_band:    [10, 90]
+  c_band:    [5, 95]
+  composite: min                     # ❓ TBD
+
+output:
+  dir: fdp/data/repos/main/ensemble

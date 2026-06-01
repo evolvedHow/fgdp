@@ -1,0 +1,194 @@
+# =============================================================================
+# Georgia Congressional Benchmark — v1
+# 14 districts | 2020 VTD base | 6 elections | 10,000 MCMC steps
+#
+# STATUS KEY:
+#   ✅ confirmed  — value is locked
+#   ❓ TBD        — needs your review/confirmation before running
+#   ⚙  default   — reasonable default; can override if needed
+#
+# After confirming all ❓ values, run:
+#   uv run python fdga-chain/scripts/run_ensemble.py \
+#     --config fdp/configs/benchmarks/ga_congress_2026_v1.yml
+# =============================================================================
+
+benchmark_id: ga_congress_2026_v1   # ✅
+description: "Georgia 14-district congressional benchmark for 2026 redistricting process"
+version: "1.0"
+
+# -----------------------------------------------------------------------------
+# INPUT GEOGRAPHY
+# -----------------------------------------------------------------------------
+geography:
+  state: GA                          # ✅
+  geo_level: vtd                     # ✅  vtd (now) | precinct (Phase 6 — pending 2026 shapefile)
+  vintage_year: 2020                 # ✅  2020 Census/VTD boundaries
+  graph_file: fdga-chain/data/graphs/ga_congress.json   # ✅ pre-built dual graph, 2698 nodes
+
+# -----------------------------------------------------------------------------
+# CHAMBER
+# -----------------------------------------------------------------------------
+chamber:
+  name: congress                     # ✅
+  n_districts: 14                    # ✅
+  pop_column: TOTPOP                 # ✅ node attribute in dual graph for total population
+  pop_epsilon: 0.01                  # ❓ TBD — see guidance below
+  # GUIDANCE:
+  #   0.005  ±0.5% — near-exact equal population; slower MCMC mixing
+  #   0.010  ±1.0% — standard for congressional benchmarks (Princeton, MGGG) ← RECOMMENDED
+  #   0.020  ±2.0% — too loose for legal use in Congress
+  # → Confirm: 0.01 (±1%) recommended for published benchmark
+
+# -----------------------------------------------------------------------------
+# ELECTIONS (partisan scoring + competitiveness)
+# -----------------------------------------------------------------------------
+elections:
+
+  - label: gov_2018                  # ✅
+    year: 2018
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+    # NOTE: data not yet in Supabase — will be loaded from ALARM RDS (Phase 0b)
+
+  - label: pre_2020                  # ✅
+    year: 2020
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+    # NOTE: data not yet in Supabase — will be loaded from block CSV (Phase 0c)
+
+  - label: uss_2021_war              # ✅ Warnock/Loeffler ONLY (not Ossoff/Perdue)
+    year: 2021
+    election_type: runoff
+    office: senate
+    candidates: [war, loe]           # filters to R21USSDWAR / R21USSRLOE only
+    partisan_score: true
+    competitive: true
+
+  - label: gov_2022                  # ✅
+    year: 2022
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+
+  - label: uss_2022                  # ✅
+    year: 2022
+    election_type: general
+    office: senate
+    partisan_score: true
+    competitive: true
+
+  - label: pre_2024                  # ✅
+    year: 2024
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+
+# -----------------------------------------------------------------------------
+# COMPETITIVENESS SCORING
+# -----------------------------------------------------------------------------
+competitiveness:
+  thresholds: [0.07, 0.10]          # ✅ 7% primary; 10% secondary
+  method: all_independent            # ❓ TBD
+  # GUIDANCE:
+  #   all_independent — score each election separately → 6 distributions per threshold
+  #                     Shows how competitiveness varies across election cycles.
+  #                     Best for: thorough benchmarking, academic/legal use. ← RECOMMENDED
+  #   composite_avg   — average all 6 elections into one partisan index → 1 distribution
+  #                     Simpler to communicate. Loses cycle-to-cycle variation.
+  #   specific        — use only listed elections (uncomment 'elections' below)
+  # elections: [gov_2022, pre_2024]
+
+# -----------------------------------------------------------------------------
+# DEMOGRAPHICS (CVAP-based majority-minority analysis)
+# -----------------------------------------------------------------------------
+demographics:
+  cvap_year: 2024                    # ✅ ACS 2020–2024 5-year estimates
+  majority_threshold: 0.50           # ✅ >50% CVAP = majority district
+  groups:
+    - name: black
+      label: "Majority Black (any-part)"
+      cvap_col: CVAP_BLK24           # ✅ Black alone or in combination
+    - name: white
+      label: "Majority White"
+      cvap_col: CVAP_WHT24           # ✅ White non-Hispanic
+    - name: hispanic
+      label: "Majority Hispanic"
+      cvap_col: CVAP_HSP24           # ✅
+    - name: minority_coalition
+      label: "Majority Minority Coalition"
+      formula: "1 - (CVAP_WHT24 / CVAP_TOT24)"   # ✅ all non-white CVAP
+
+# -----------------------------------------------------------------------------
+# MCMC ALGORITHM
+# -----------------------------------------------------------------------------
+mcmc:
+  algorithm: recom                   # ❓ TBD
+  # GUIDANCE:
+  #   recom            — fast (~500 steps/s), widely used, NOT statistically rigorous
+  #   reversible_recom — ~30% slower, satisfies detailed balance (proper random sample)
+  #                      Recommended for published/legal benchmarks ← RECOMMENDED
+
+  n_steps: 10000                     # ✅
+  burn_in: 0                         # ❓ TBD
+  # GUIDANCE:
+  #   0    — only if starting from a neutral seed (not the enacted plan)
+  #   500  — minimal warmup; fine for Congress (fast mixing, 14 districts)
+  #   1000 — conservative; use for State Senate
+  #   2000 — for State House (180 districts, much slower to escape starting plan)
+  # → For Congress: 500 is reasonable
+
+  n_chains: 1                        # ❓ TBD
+  # GUIDANCE:
+  #   1   — simple; no convergence diagnostics available; fine for Congress
+  #   5   — enables Gelman-Rubin R̂ diagnostic (R̂ < 1.1 = well-mixed)
+  #          Runs 5 independent chains × 2,000 steps each in parallel on Modal
+  #          → same total steps, same wall-clock time, more defensible
+  # → Congress: 1 chain is standard; 5 chains is gold standard for legal use
+
+  pop_epsilon: 0.01                  # mirrors chamber.pop_epsilon
+  random_seed: null                  # ⚙  null = different each run; set integer to reproduce exactly
+  save_assignments: true             # ✅  MUST be true — required for post-run scoring
+
+# -----------------------------------------------------------------------------
+# GRADING (used when scoring an enacted/proposed map AGAINST this benchmark)
+# -----------------------------------------------------------------------------
+grading:
+  pass_band: [1, 99]                 # ✅ 98% CI — within this = PASS
+  a_band:    [25, 75]                # ❓ TBD — [25,75] = IQR (center 50%)
+  # GUIDANCE:
+  #   [25, 75]  IQR   — center 50% of benchmark plans get an A. Reasonable starting point.
+  #   [37, 63]        — center 26%; more demanding but still defensible
+  #   [40, 60]        — center 20%; high bar, only plans near the median score well
+  # → Recommend starting with [25, 75] and adjusting after seeing the distribution shape.
+
+  b_band:    [10, 90]                # ⚙ center 80%
+  c_band:    [5, 95]                 # ⚙ center 90%
+
+  composite: min                     # ❓ TBD
+  # GUIDANCE:
+  #   min      — worst metric = overall grade. Most conservative/demanding.
+  #              A map excellent on partisan fairness but poor on competitiveness → C.
+  #              Best for: advocacy, press release ("fails on competitiveness") ← RECOMMENDED
+  #   average  — averages all metric grades. Allows trade-offs between dimensions.
+  #   weighted — custom weights (see metric_weights below). Most flexible.
+  # metric_weights:          # only used if composite: weighted
+  #   partisan_lean:   0.40
+  #   competitiveness: 0.35
+  #   demographics:    0.25
+
+# -----------------------------------------------------------------------------
+# OUTPUT
+# -----------------------------------------------------------------------------
+output:
+  dir: fdp/data/repos/main/ensemble
+  # Files written (all named {benchmark_id}_*.parquet):
+  #   ga_congress_2026_v1_plans.parquet       — raw VTD→district per draw (10k draws × 2698 VTDs)
+  #   ga_congress_2026_v1_scores.parquet      — partisan scores per draw×district×election
+  #   ga_congress_2026_v1_demographics.parquet— demographic scores per draw×district
+  #   ga_congress_2026_v1_draw_stats.parquet  — per-draw roll-ups (seat counts, n_competitive, etc.)
