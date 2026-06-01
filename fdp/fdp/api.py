@@ -474,6 +474,151 @@ def schema() -> dict:
 # POST /query  (authenticated — fdworkbench / internal use only)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# GET /ensemble/runs
+# ---------------------------------------------------------------------------
+
+@router.get("/ensemble/runs", summary="List ensemble run catalog")
+def ensemble_runs(
+    status:       str | None = Query(None, description="Filter by status: pending|running|completed|failed"),
+    benchmark_id: str | None = Query(None, description="Filter by benchmark template ID"),
+    chamber:      str | None = Query(None, description="Filter by chamber: congress|senate|house"),
+    limit:        int        = Query(50, le=500, description="Max rows returned"),
+) -> list[dict]:
+    """
+    Return the ensemble run catalog from fdp.ensemble_runs.
+
+    Each row represents one ensemble run (CLI or API-triggered).
+    Key fields: run_name, benchmark_id, status, started_at, completed_at,
+    runtime_minutes, n_draws, n_vtds, algorithm, plans_file.
+    """
+    clauses: list[str] = []
+    params:  list[Any] = []
+
+    if status:
+        clauses.append("status = %s")
+        params.append(status)
+    if benchmark_id:
+        clauses.append("benchmark_id = %s")
+        params.append(benchmark_id)
+    if chamber:
+        clauses.append("params -> 'chamber' ->> 'name' = %s")
+        params.append(chamber)
+
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    sql = (
+        f"SELECT * FROM fdp.v_ensemble_runs{where} "
+        "ORDER BY created_at DESC LIMIT %s"
+    )
+    params.append(limit)
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()
+
+
+# ---------------------------------------------------------------------------
+# GET /ensemble/runs/{run_name}
+# ---------------------------------------------------------------------------
+
+@router.get("/ensemble/runs/{run_name}", summary="Get one ensemble run by name")
+def ensemble_run_detail(run_name: str) -> dict:
+    """
+    Return full detail for one ensemble run, including the complete params JSONB.
+    """
+    sql = (
+        "SELECT run_name, benchmark_id, status, started_at, completed_at, "
+        "params, n_draws, n_vtds, n_chains_run, runtime_seconds, "
+        "plans_file, scores_file, demographics_file, draw_stats_file, "
+        "error_message, notes, created_at, updated_at, loaded_by "
+        "FROM fdp.ensemble_runs WHERE run_name = %s"
+    )
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (run_name,))
+            row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Run '{run_name}' not found")
+    return row
+
+
+# ---------------------------------------------------------------------------
+# POST /ensemble/runs  (create / register a run)
+# ---------------------------------------------------------------------------
+
+@router.post("/ensemble/runs", summary="Register a new ensemble run", status_code=201)
+def ensemble_run_create(
+    body: dict,
+    x_fdpapi_secret: str | None = Header(default=None, alias="X-FDPAPI-Secret"),
+) -> dict:
+    """
+    Register a new ensemble run in the catalog.
+
+    This creates a 'pending' catalog entry.  The actual chain execution is
+    triggered separately (via CLI or Modal).  Use this endpoint to pre-register
+    a run from an orchestration system, or to check that a run_name is available
+    before starting a long compute job.
+
+    Requires the ``X-FDPAPI-Secret`` header.
+
+    Request body
+    ------------
+    {
+        "run_name":     "congress_baseline_v1",       // required
+        "benchmark_id": "ga_congress_2026_v1",        // required
+        "params":       { ... },                       // optional — full params dict
+        "notes":        "test run with 500 steps"      // optional
+    }
+
+    Response
+    --------
+    The created catalog row (status='pending').
+    """
+    if not _secret_ok(x_fdpapi_secret):
+        raise HTTPException(status_code=401, detail="Missing or invalid X-FDPAPI-Secret header")
+
+    run_name     = body.get("run_name", "").strip()
+    benchmark_id = body.get("benchmark_id", "").strip()
+    params       = body.get("params", {})
+    notes        = body.get("notes")
+
+    if not run_name:
+        raise HTTPException(status_code=400, detail="'run_name' is required")
+    if not benchmark_id:
+        raise HTTPException(status_code=400, detail="'benchmark_id' is required")
+
+    import json as _json
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO fdp.ensemble_runs
+                        (run_name, benchmark_id, status, params, notes, loaded_by)
+                    VALUES (%s, %s, 'pending', %s, %s, 'api')
+                    RETURNING run_name, benchmark_id, status, params, notes, created_at
+                    """,
+                    (run_name, benchmark_id, _json.dumps(params), notes),
+                )
+                row = cur.fetchone()
+            conn.commit()
+    except Exception as exc:  # noqa: BLE001
+        if "duplicate key" in str(exc).lower():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Run name '{run_name}' already exists.  Choose a different name.",
+            ) from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return row
+
+
+# ---------------------------------------------------------------------------
+# POST /query  (authenticated — fdworkbench / internal use only)
+# ---------------------------------------------------------------------------
+
 @router.post(
     "/query",
     summary="Raw SQL passthrough (requires FDPAPI_SECRET header)",

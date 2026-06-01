@@ -319,3 +319,133 @@ class BenchmarkConfig:
             f"{e_count} elections  |  "
             f"geo={self.geography.geo_level} {self.geography.vintage_year}"
         )
+
+    # ------------------------------------------------------------------
+    # Override support  (CLI flags applied on top of YAML defaults)
+    # ------------------------------------------------------------------
+
+    def apply_overrides(self, overrides: dict[str, Any]) -> "BenchmarkConfig":
+        """
+        Return a *new* BenchmarkConfig with the given overrides applied.
+        The original config is not mutated.
+
+        Keys are dot-path strings (``mcmc.algorithm``) or the short aliases
+        listed below.  ``None`` values are silently skipped so argparse
+        defaults of ``None`` mean "not overridden."
+
+        Short aliases
+        -------------
+        algorithm   → mcmc.algorithm
+        n_steps     → mcmc.n_steps
+        burn_in     → mcmc.burn_in
+        n_chains    → mcmc.n_chains
+        random_seed → mcmc.random_seed
+        pop_epsilon → mcmc.pop_epsilon   (also syncs chamber.pop_epsilon)
+        graph_file  → geography.graph_file
+        output_dir  → output.dir
+        """
+        import copy
+
+        flat_aliases: dict[str, tuple[str, str]] = {
+            "algorithm":   ("mcmc", "algorithm"),
+            "n_steps":     ("mcmc", "n_steps"),
+            "burn_in":     ("mcmc", "burn_in"),
+            "n_chains":    ("mcmc", "n_chains"),
+            "random_seed": ("mcmc", "random_seed"),
+            "pop_epsilon": ("mcmc", "pop_epsilon"),
+            "graph_file":  ("geography", "graph_file"),
+            "output_dir":  ("output", "dir"),
+        }
+
+        cfg = copy.deepcopy(self)
+
+        for key, value in overrides.items():
+            if value is None:
+                continue  # argparse default — not overridden
+
+            # Resolve section + attribute
+            if "." in key:
+                section, attr = key.split(".", 1)
+            elif key in flat_aliases:
+                section, attr = flat_aliases[key]
+            else:
+                raise ValueError(
+                    f"Unknown override key {key!r}.  "
+                    f"Valid aliases: {sorted(flat_aliases)} or use dot-path (section.attr)."
+                )
+
+            sub = getattr(cfg, section, None)
+            if sub is None:
+                raise ValueError(f"Unknown config section {section!r}")
+            if not hasattr(sub, attr):
+                raise ValueError(f"No attribute {attr!r} on config section {section!r}")
+
+            setattr(sub, attr, value)
+
+        # Keep chamber.pop_epsilon and mcmc.pop_epsilon in sync
+        # when pop_epsilon is explicitly overridden.
+        if overrides.get("pop_epsilon") is not None:
+            cfg.chamber.pop_epsilon = overrides["pop_epsilon"]
+
+        return cfg
+
+    def to_params_dict(self) -> dict[str, Any]:
+        """
+        Serialize all *effective* parameters (YAML + applied overrides) to a
+        JSON-safe dict suitable for storing in ``fdp.ensemble_runs.params``.
+
+        This snapshot is the source of truth for reproducibility — given this
+        dict you can reconstruct the exact config used for the run.
+        """
+        return {
+            "benchmark_id": self.benchmark_id,
+            "description":  self.description,
+            "version":      self.version,
+            "geography": {
+                "state":        self.geography.state,
+                "geo_level":    self.geography.geo_level,
+                "vintage_year": self.geography.vintage_year,
+                "graph_file":   self.geography.graph_file,
+            },
+            "chamber": {
+                "name":        self.chamber.name,
+                "n_districts": self.chamber.n_districts,
+                "pop_column":  self.chamber.pop_column,
+                "pop_epsilon": self.chamber.pop_epsilon,
+            },
+            "elections": [
+                {
+                    "label":          e.label,
+                    "year":           e.year,
+                    "election_type":  e.election_type,
+                    "office":         e.office,
+                    "candidates":     e.candidates,
+                    "partisan_score": e.partisan_score,
+                    "competitive":    e.competitive,
+                }
+                for e in self.elections
+            ],
+            "competitiveness": {
+                "thresholds": self.competitiveness.thresholds,
+                "method":     self.competitiveness.method,
+            },
+            "mcmc": {
+                "algorithm":        self.mcmc.algorithm,
+                "n_steps":          self.mcmc.n_steps,
+                "burn_in":          self.mcmc.burn_in,
+                "n_chains":         self.mcmc.n_chains,
+                "pop_epsilon":      self.mcmc.effective_epsilon(self.chamber),
+                "random_seed":      self.mcmc.random_seed,
+                "save_assignments": self.mcmc.save_assignments,
+            },
+            "grading": {
+                "pass_band": list(self.grading.pass_band),
+                "a_band":    list(self.grading.a_band),
+                "b_band":    list(self.grading.b_band),
+                "c_band":    list(self.grading.c_band),
+                "composite": self.grading.composite,
+            },
+            "output": {
+                "dir": self.output.dir,
+            },
+        }
