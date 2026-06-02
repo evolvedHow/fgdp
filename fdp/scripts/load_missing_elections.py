@@ -100,17 +100,24 @@ def load_election(
         print(long_df.head(4).to_string())
         return
 
-    # Check if already loaded
+    PK = ["geoid", "year", "election_type", "office", "party", "candidate"]
+
+    # Check existing count (read-only, autocommit fine here)
     with psycopg.connect(DB_URL, autocommit=True) as conn:
         existing = check_already_loaded(conn, year, office)
         if existing > 0:
             print(f"  {existing:,} rows already in Supabase — will upsert (update existing)")
 
-    upsert_to_pg(long_df, table="fdp.election_results", db_url=DB_URL)
-    print(f"  ✓ Loaded {len(long_df):,} rows")
-
-    # Verify
+    # Upsert in an explicit READ WRITE transaction
+    # (Supabase session pooler defaults to read-only; BEGIN READ WRITE overrides it)
     with psycopg.connect(DB_URL) as conn:
+        conn.execute("SET SESSION default_transaction_read_only = off")
+        conn.execute("BEGIN READ WRITE")
+        n = upsert_to_pg(conn, long_df, schema="fdp", table="election_results", pk_cols=PK)
+        conn.execute("COMMIT")
+    print(f"  ✓ Loaded {n:,} rows")
+
+    with psycopg.connect(DB_URL, autocommit=True) as conn:
         count = check_already_loaded(conn, year, office)
     print(f"  Supabase now has {count:,} rows for {label}")
 

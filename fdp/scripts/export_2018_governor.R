@@ -46,14 +46,16 @@ if (is.null(rds_path)) {
     quit(status = 1)
 }
 
-out_dir  <- file.path(dirname(dirname(normalizePath(sys.frame(0)$ofile %||% "scripts/"))),
-                      "data/repos/main/vtd")
-# Simpler path derivation for Rscript invocation
-script_dir <- tryCatch(
-    dirname(normalizePath(commandArgs(FALSE)[4])),
-    error = function(e) "scripts"
-)
-out_dir <- file.path(dirname(script_dir), "data/repos/main/vtd")
+# Detect fdp package root from working directory
+wd <- getwd()
+fdp_root <- if (grepl("/fdp$", wd)) {
+    wd                                              # running from fdp/
+} else if (grepl("/fgdp$", wd)) {
+    file.path(wd, "fdp")                            # running from fgdp/
+} else {
+    file.path(Sys.getenv("HOME"), "codebox/fgdp/fdp")  # fallback
+}
+out_dir <- file.path(fdp_root, "data/repos/main/vtd")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 out_path <- file.path(out_dir, "vtd_elections_2018_governor.parquet")
 
