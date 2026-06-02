@@ -32,7 +32,7 @@ chamber:
   name: congress                     # ✅
   n_districts: 14                    # ✅
   pop_column: TOTPOP                 # ✅ node attribute in dual graph for total population
-  pop_epsilon: 0.01                  # ❓ TBD — see guidance below
+  pop_epsilon: 0.02                  # ✅ 0.02 — enacted plan requires ±2% at VTD level
   # GUIDANCE:
   #   0.005  ±0.5% — near-exact equal population; slower MCMC mixing
   #   0.010  ±1.0% — standard for congressional benchmarks (Princeton, MGGG) ← RECOMMENDED
@@ -151,7 +151,7 @@ mcmc:
   #          → same total steps, same wall-clock time, more defensible
   # → Congress: 1 chain is standard; 5 chains is gold standard for legal use
 
-  pop_epsilon: 0.01                  # mirrors chamber.pop_epsilon
+  pop_epsilon: 0.02                  # mirrors chamber.pop_epsilon
   random_seed: null                  # ⚙  null = different each run; set integer to reproduce exactly
   save_assignments: true             # ✅  MUST be true — required for post-run scoring
 
