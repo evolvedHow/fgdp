@@ -2,8 +2,16 @@
 
 > **For AI agents:** This is the top-level context file for the entire
 > fairdistrictsga.org codebase. Read this first, then the README in whichever
-> sub-project you need to work in. See also [TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)
-> for full CDM schemas, metric formulas, and app-by-app metric mapping.
+> sub-project you need to work in.
+
+## Documentation
+
+| Guide | Audience | Contents |
+|---|---|---|
+| [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) | **Admins** | Running ensemble jobs, scoring pipeline, updating elections, DB migrations, secrets |
+| [`docs/ANALYST_GUIDE.md`](docs/ANALYST_GUIDE.md) | **Analysts** | What data was used, every metric formula, how to interpret results, key findings |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Engineers** | System design, technology stack, data flow, DB schema, key decisions |
+| [`TECHNICAL_GUIDE.md`](TECHNICAL_GUIDE.md) | **Engineers** | Full CDM schemas, all metric formulas, app-by-app metric mapping |
 
 ## Mission
 
