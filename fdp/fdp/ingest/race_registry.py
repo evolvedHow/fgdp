@@ -42,7 +42,9 @@ _CODE_TO_NAME: dict[str, str] = {
 _NAME_TO_CODE: dict[str, str] = {v: k for k, v in _CODE_TO_NAME.items()}
 
 # Regex to parse an RDH column: prefix(G/R/S) + YY + RACE_CODE + party + name
-_COL_RE = re.compile(r"^([GRS])(\d{2})([A-Z0-9]{2,6})([DRLGI])([A-Z0-9]{2,4})$")
+# Office codes are capped at 3 chars to prevent greedy overlap with the party code.
+# e.g. R21USSRLOE must parse as USS+R+LOE (not USSR+L+OE).
+_COL_RE = re.compile(r"^([GRS])(\d{2})([A-Z0-9]{2,3})([DRLGI])([A-Z0-9]{2,4})$")
 
 # Columns that are ballot measures / amendments (not candidate races)
 _AMENDMENT_RE = re.compile(r"^[GRS]\d{2}[AR]\d+(NO|YES|YE)$", re.IGNORECASE)

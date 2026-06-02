@@ -18,6 +18,8 @@ dependencies = [
     "census>=0.8.0",
     "rich>=13.0.0",
     "psycopg[binary]>=3.1.0",
+    "matplotlib>=3.10.9",
+    "seaborn>=0.13.2",
 ]
 
 [project.optional-dependencies]

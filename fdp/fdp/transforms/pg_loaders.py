@@ -68,7 +68,10 @@ _PARTY_MAP: dict[str, str] = {
 }
 
 #: RDH column regex — captures (type_prefix, YY, office_code, party_code, candidate_code)
-_COL_RE = re.compile(r"^([GRS])(\d{2})([A-Z0-9]{2,6})([DRLGI])([A-Z0-9]{2,4})$")
+# Office codes are 2–3 chars (GOV, USS, PRE, ATG, SOS, LTG, PSC, INS, LAB, SUP, AGR).
+# Capped at 3 to prevent greedy overlap with the adjacent party code.
+# Example ambiguity fixed: R21USSRLOE must parse as USS+R+LOE, not USSR+L+OE.
+_COL_RE = re.compile(r"^([GRS])(\d{2})([A-Z0-9]{2,3})([DRLGI])([A-Z0-9]{2,4})$")
 
 #: Maps CVAP column base name (without year suffix) to CDM column name
 _CVAP_COL_MAP: dict[str, str] = {

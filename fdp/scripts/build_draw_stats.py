@@ -56,8 +56,8 @@ SELECT
     ROUND(AVG(dem_2pv)::NUMERIC, 6)         AS avg_dem_2pv,
 
     -- Efficiency gap = (wasted_dem - wasted_rep) / total_votes
-    -- wasted_dem: votes above 50% threshold if Dem wins, or all Dem votes if Dem loses
-    -- wasted_rep: votes above 50% threshold if Rep wins, or all Rep votes if Rep loses
+    -- wasted_dem: votes above 50%% threshold if Dem wins, or all Dem votes if Dem loses
+    -- wasted_rep: votes above 50%% threshold if Rep wins, or all Rep votes if Rep loses
     ROUND((
         SUM(
             CASE WHEN winner = 'dem'
@@ -94,7 +94,7 @@ SELECT
     ) AS n_competitive_010
 
 FROM fdp.ensemble_scores
-WHERE plan_id = %(plan_id)s
+WHERE plan_id = %s
 GROUP BY plan_id, draw, year, election_type, office
 
 ON CONFLICT (plan_id, draw, year, election_type, office) DO UPDATE SET
@@ -109,7 +109,7 @@ ON CONFLICT (plan_id, draw, year, election_type, office) DO UPDATE SET
 """
 
 _COUNT_SQL = """
-SELECT COUNT(*) FROM fdp.ensemble_scores WHERE plan_id = %(plan_id)s
+SELECT COUNT(*) FROM fdp.ensemble_scores WHERE plan_id = %s
 """
 
 _VERIFY_SQL = """
@@ -123,7 +123,7 @@ SELECT
     ROUND(AVG(n_competitive_007)::numeric, 2)                   AS avg_competitive_7,
     ROUND(AVG(ABS(efficiency_gap))::numeric, 4)                 AS avg_abs_eg
 FROM fdp.ensemble_draw_stats
-WHERE plan_id = %(plan_id)s AND draw > 1
+WHERE plan_id = %s AND draw > 1
 """
 
 _ENACTED_SQL = """
@@ -131,7 +131,7 @@ SELECT year, office, dem_seats, rep_seats,
        ROUND(efficiency_gap * 100, 2) AS eg_pct,
        n_competitive_007, n_competitive_010
 FROM fdp.ensemble_draw_stats
-WHERE plan_id = %(plan_id)s AND draw = 1
+WHERE plan_id = %s AND draw = 1
 ORDER BY year, office
 """
 
@@ -159,7 +159,7 @@ def main() -> None:
 
     # ── Check source data ────────────────────────────────────────────────────
     with psycopg.connect(DB_URL) as conn:
-        row = conn.execute(_COUNT_SQL, {"plan_id": plan_id}).fetchone()
+        row = conn.execute(_COUNT_SQL, (plan_id,)).fetchone()
         n_source = row[0] if row else 0
 
     if n_source == 0:
@@ -183,7 +183,7 @@ def main() -> None:
     with psycopg.connect(DB_URL) as conn:
         conn.execute("SET SESSION default_transaction_read_only = off")
         conn.execute("BEGIN READ WRITE")
-        conn.execute(_DRAW_STATS_SQL, {"plan_id": plan_id})
+        conn.execute(_DRAW_STATS_SQL, (plan_id,))
         conn.execute("COMMIT")
 
     elapsed = time.time() - t0
@@ -192,7 +192,7 @@ def main() -> None:
     # ── Verify ───────────────────────────────────────────────────────────────
     print("\nVerification:")
     with psycopg.connect(DB_URL) as conn:
-        row = conn.execute(_VERIFY_SQL, {"plan_id": plan_id}).fetchone()
+        row = conn.execute(_VERIFY_SQL, (plan_id,)).fetchone()
         if row:
             print(f"  Rows written     : {row[0]:,}")
             print(f"  Draws            : {row[1]:,}")
@@ -204,7 +204,7 @@ def main() -> None:
     # ── Enacted plan summary ─────────────────────────────────────────────────
     print("\nEnacted plan stats (draw=1):")
     with psycopg.connect(DB_URL) as conn:
-        rows = conn.execute(_ENACTED_SQL, {"plan_id": plan_id}).fetchall()
+        rows = conn.execute(_ENACTED_SQL, (plan_id,)).fetchall()
     print(f"  {'Year':<6} {'Office':<12} {'Seats':>8} {'EG%':>7} {'Comp7':>6} {'Comp10':>7}")
     print("  " + "-" * 50)
     for r in rows:
