@@ -91,7 +91,6 @@ def load_draw_stats(plan_id: str) -> pd.DataFrame:
         SELECT draw, year, election_type, office,
                dem_seats, rep_seats,
                efficiency_gap, mean_median,
-               n_competitive_007, n_competitive_010,
                avg_dem_2pv
         FROM fdp.ensemble_draw_stats
         WHERE plan_id = %s
@@ -101,11 +100,35 @@ def load_draw_stats(plan_id: str) -> pd.DataFrame:
         rows = conn.execute(sql, (plan_id,)).fetchall()
     df = pd.DataFrame(rows)
     if not df.empty:
-        for col in ("dem_seats", "rep_seats", "tied_seats",
-                    "efficiency_gap", "mean_median", "avg_dem_2pv",
-                    "n_competitive_005", "n_competitive_007", "n_competitive_010"):
+        for col in ("dem_seats", "rep_seats",
+                    "efficiency_gap", "mean_median", "avg_dem_2pv"):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def load_competitive_counts(plan_id: str) -> pd.DataFrame:
+    """
+    Load competitive counts from the normalized table.
+
+    Returns a DataFrame with columns:
+        draw, year, election_type, office, threshold, n_competitive
+    threshold is float (e.g. 0.05, 0.07).
+    """
+    sql = """
+        SELECT draw, year, election_type, office,
+               threshold::float AS threshold,
+               n_competitive
+        FROM fdp.ensemble_competitive_counts
+        WHERE plan_id = %s
+        ORDER BY threshold, draw, year, office
+    """
+    with _conn() as conn:
+        rows = conn.execute(sql, (plan_id,)).fetchall()
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df["threshold"]     = pd.to_numeric(df["threshold"],     errors="coerce")
+        df["n_competitive"] = pd.to_numeric(df["n_competitive"], errors="coerce")
     return df
 
 
@@ -215,29 +238,46 @@ def chart_partisan(df: pd.DataFrame, plan_id: str, out_path: Path) -> None:
 # Chart 2: Competitiveness histograms
 # ---------------------------------------------------------------------------
 
-def chart_competitiveness(df: pd.DataFrame, plan_id: str, out_path: Path) -> None:
-    """Competitive district count distributions at 7% and 10% thresholds."""
+def chart_competitiveness(comp_df: pd.DataFrame, plan_id: str,
+                           out_path: Path, threshold: float) -> None:
+    """
+    Competitive district count distribution for a single threshold.
+
+    comp_df — output of load_competitive_counts(), already filtered or full.
+    threshold — the margin threshold to display (e.g. 0.05 = 5%).
+    """
+    if comp_df.empty:
+        print(f"  WARNING: no competitive count data for threshold={threshold:.1%} — skipping")
+        return
+
+    thr_df = comp_df[comp_df.threshold == threshold]
+    if thr_df.empty:
+        print(f"  WARNING: threshold {threshold:.1%} not in data — skipping competitiveness chart")
+        return
+
     races = PRIORITY_RACES
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+    pct_label = f"{threshold:.0%}"
     fig.suptitle(
         f"Competitive Districts Distribution — {plan_id}\n"
-        "Win margin ≤ 5% (primary threshold).  Vertical line = enacted map.",
+        f"Win margin ≤ {pct_label} threshold.  Vertical line = enacted map.",
         fontsize=12, fontweight="bold", y=1.01,
     )
 
     for ax, (year, etype, office) in zip(axes.flat, races):
-        race_df = df[(df.year == year) & (df.election_type == etype) & (df.office == office)]
-        sim     = race_df[race_df.draw > 1]
-        enacted = race_df[race_df.draw == 1]
+        race_thr = thr_df[
+            (thr_df.year == year) & (thr_df.election_type == etype) & (thr_df.office == office)
+        ]
+        sim     = race_thr[race_thr.draw > 1]
+        enacted = race_thr[race_thr.draw == 1]
 
         if sim.empty:
             ax.set_visible(False)
             continue
 
-        enacted_comp = int(enacted.n_competitive_005.iloc[0]) if (not enacted.empty and "n_competitive_005" in enacted.columns) else None
+        enacted_comp = int(enacted.n_competitive.iloc[0]) if not enacted.empty else None
 
-        col = "n_competitive_005" if "n_competitive_005" in sim.columns else "n_competitive_007"
-        counts = sim[col].value_counts().sort_index()
+        counts = sim.n_competitive.value_counts().sort_index()
         xs     = counts.index.tolist()
         total  = len(sim)
 
@@ -248,9 +288,8 @@ def chart_competitiveness(df: pd.DataFrame, plan_id: str, out_path: Path) -> Non
         if enacted_comp is not None:
             ax.axvline(enacted_comp, color=FDGA_RED, linewidth=2.0,
                        linestyle="--", zorder=4)
-            avg = sim[col].mean()
-            pctile = (sim[col] >= enacted_comp).mean() * 100
-            threshold_label = "5%" if col == "n_competitive_005" else "7%"
+            avg    = sim.n_competitive.mean()
+            pctile = (sim.n_competitive >= enacted_comp).mean() * 100
             ax.text(0.97, 0.95,
                     f"Enacted: {enacted_comp}\nEns avg: {avg:.1f}\nPctile: {pctile:.0f}%",
                     transform=ax.transAxes, ha="right", va="top",
@@ -260,7 +299,7 @@ def chart_competitiveness(df: pd.DataFrame, plan_id: str, out_path: Path) -> Non
 
         ax.set_title(RACE_LABELS.get((year, etype, office), f"{year} {office}"),
                      fontsize=10, fontweight="bold")
-        ax.set_xlabel(f"Competitive Districts (margin ≤ {threshold_label})")
+        ax.set_xlabel(f"Competitive Districts (margin ≤ {pct_label})")
         ax.set_ylabel("% of Simulated Maps")
         if xs:
             ax.set_xticks(range(min(xs), max(xs) + 1))
@@ -462,6 +501,15 @@ def main() -> None:
         print("  Run: uv run --project fdp python fdp/scripts/build_draw_stats.py --run-name " + plan_id)
         sys.exit(1)
 
+    print("Loading competitive counts…")
+    comp_df = load_competitive_counts(plan_id)
+    if comp_df.empty:
+        print("  WARNING: no competitive count data found.")
+        print(f"  Run: build_draw_stats.py --run-name {plan_id} --config <yaml>")
+    else:
+        thresholds_available = sorted(comp_df.threshold.unique().tolist())
+        print(f"  Thresholds available: {[f'{t:.1%}' for t in thresholds_available]}")
+
     print("Loading demographic stats…")
     demo_df = load_demographic_draw_stats(plan_id)
 
@@ -470,9 +518,15 @@ def main() -> None:
     chart_partisan(df, plan_id,
                    out_dir / f"{plan_id}_partisan.png")
 
-    # Chart 2: Competitiveness histograms
-    chart_competitiveness(df, plan_id,
-                          out_dir / f"{plan_id}_competitiveness.png")
+    # Chart 2: Competitiveness histograms — one chart per threshold
+    if not comp_df.empty:
+        for t in sorted(comp_df.threshold.unique()):
+            t_str = f"{int(t * 100):02d}"   # 0.05 → "05", 0.07 → "07"
+            chart_competitiveness(comp_df, plan_id,
+                                  out_dir / f"{plan_id}_competitiveness_{t_str}pct.png",
+                                  threshold=t)
+    else:
+        print("  Skipping competitiveness charts (no data)")
 
     # Chart 3: Demographic histograms
     if not demo_df.empty:
