@@ -1,39 +1,45 @@
 # =============================================================================
-# Georgia State Senate Benchmark — v1
-# 56 districts | 2020 VTD base | 6 elections | 10,000 MCMC steps
-# pop_epsilon: 0.05 (±5% — Reynolds v. Sims constitutional standard)
-# competitiveness: 5% win margin (add 7% after seeing distribution)
+# Georgia Congressional Benchmark — v2
+# 14 districts | 2020 VTD base | 6 elections | 10,000 MCMC steps
+#
+# Changes from v1:
+#   - pop_epsilon: 0.02 → 0.01  (±1% — Princeton/MGGG standard for Congress)
+#   - competitiveness thresholds: [0.07, 0.10] → [0.05]  (5% win margin; add 0.07 later)
 # =============================================================================
 
-benchmark_id: ga_senate_2026_v1
-description: "Georgia 56-district State Senate benchmark for 2026 redistricting process"
-version: "1.0"
+benchmark_id: ga_congress_2026_v2
+description: "Georgia 14-district congressional benchmark — v2 (1% pop deviation, 5% competitiveness)"
+version: "2.0"
 
 geography:
   state: GA
   geo_level: vtd
   vintage_year: 2020
-  graph_file: fdga-chain/data/graphs/ga_senate.json   # ✅ pre-built, 2698 nodes
+  graph_file: fdga-chain/data/graphs/ga_congress.json   # pre-built dual graph, 2698 nodes
 
 chamber:
-  name: senate
-  n_districts: 56                    # ✅  GA has 56 State Senate districts
+  name: congress
+  n_districts: 14
   pop_column: TOTPOP
-  pop_epsilon: 0.05                  # ✅  ±5% — constitutional standard (Reynolds v. Sims)
+  pop_epsilon: 0.01                  # ±1% — Princeton/MGGG standard for congressional benchmarks
+  # Note: if 1% produces too few accepted proposals (slow mixing), relax to 0.015 in v3.
 
 elections:
+
   - label: gov_2018
     year: 2018
     election_type: general
     office: governor
     partisan_score: true
     competitive: true
+
   - label: pre_2020
     year: 2020
     election_type: general
     office: president
     partisan_score: true
     competitive: true
+
   - label: uss_2021_war
     year: 2021
     election_type: runoff
@@ -41,18 +47,21 @@ elections:
     candidates: [war, loe]
     partisan_score: true
     competitive: true
+
   - label: gov_2022
     year: 2022
     election_type: general
     office: governor
     partisan_score: true
     competitive: true
+
   - label: uss_2022
     year: 2022
     election_type: general
     office: senate
     partisan_score: true
     competitive: true
+
   - label: pre_2024
     year: 2024
     election_type: general
@@ -61,7 +70,8 @@ elections:
     competitive: true
 
 competitiveness:
-  thresholds: [0.05]                 # 5% win margin primary threshold; add 0.07 after first run
+  thresholds: [0.05]                 # 5% win margin — tight primary threshold
+  # Add 0.07 in v3 once we see the 5% distribution shape.
   method: all_independent
 
 demographics:
@@ -82,22 +92,20 @@ demographics:
       formula: "1 - (CVAP_WHT24 / CVAP_TOT24)"
 
 mcmc:
-  algorithm: recom                   # ❓ TBD — same guidance as congress config
-  n_steps: 10000                     # ✅
-  burn_in: 1000                      # ❓ TBD — 1000 recommended for 56-district chamber
-  # GUIDANCE: State Senate has 56 districts — harder to mix than Congress.
-  #   Discard first 1,000 steps as warm-up. Net usable draws: 9,000.
-  n_chains: 1                        # ❓ TBD — 1 standard; 5 for convergence diagnostics
-  pop_epsilon: 0.05
+  algorithm: recom
+  n_steps: 10000
+  burn_in: 500                       # 500-step warmup for Congress (14 districts, fast mixing)
+  n_chains: 1
+  pop_epsilon: 0.01
   random_seed: null
   save_assignments: true
 
 grading:
   pass_band: [1, 99]
-  a_band:    [25, 75]                # ❓ TBD — confirm after seeing distribution
+  a_band:    [25, 75]
   b_band:    [10, 90]
   c_band:    [5, 95]
-  composite: min                     # ❓ TBD — see guidance in congress config
+  composite: min
 
 output:
   dir: fdp/data/repos/main/ensemble

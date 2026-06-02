@@ -103,7 +103,7 @@ def load_draw_stats(plan_id: str) -> pd.DataFrame:
     if not df.empty:
         for col in ("dem_seats", "rep_seats", "tied_seats",
                     "efficiency_gap", "mean_median", "avg_dem_2pv",
-                    "n_competitive_007", "n_competitive_010"):
+                    "n_competitive_005", "n_competitive_007", "n_competitive_010"):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
@@ -221,7 +221,7 @@ def chart_competitiveness(df: pd.DataFrame, plan_id: str, out_path: Path) -> Non
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
     fig.suptitle(
         f"Competitive Districts Distribution — {plan_id}\n"
-        "Win margin ≤ 7% (primary threshold).  Vertical line = enacted map.",
+        "Win margin ≤ 5% (primary threshold).  Vertical line = enacted map.",
         fontsize=12, fontweight="bold", y=1.01,
     )
 
@@ -234,9 +234,10 @@ def chart_competitiveness(df: pd.DataFrame, plan_id: str, out_path: Path) -> Non
             ax.set_visible(False)
             continue
 
-        enacted_comp = int(enacted.n_competitive_007.iloc[0]) if not enacted.empty else None
+        enacted_comp = int(enacted.n_competitive_005.iloc[0]) if (not enacted.empty and "n_competitive_005" in enacted.columns) else None
 
-        counts = sim.n_competitive_007.value_counts().sort_index()
+        col = "n_competitive_005" if "n_competitive_005" in sim.columns else "n_competitive_007"
+        counts = sim[col].value_counts().sort_index()
         xs     = counts.index.tolist()
         total  = len(sim)
 
@@ -247,8 +248,9 @@ def chart_competitiveness(df: pd.DataFrame, plan_id: str, out_path: Path) -> Non
         if enacted_comp is not None:
             ax.axvline(enacted_comp, color=FDGA_RED, linewidth=2.0,
                        linestyle="--", zorder=4)
-            avg = sim.n_competitive_007.mean()
-            pctile = (sim.n_competitive_007 >= enacted_comp).mean() * 100
+            avg = sim[col].mean()
+            pctile = (sim[col] >= enacted_comp).mean() * 100
+            threshold_label = "5%" if col == "n_competitive_005" else "7%"
             ax.text(0.97, 0.95,
                     f"Enacted: {enacted_comp}\nEns avg: {avg:.1f}\nPctile: {pctile:.0f}%",
                     transform=ax.transAxes, ha="right", va="top",
@@ -258,7 +260,7 @@ def chart_competitiveness(df: pd.DataFrame, plan_id: str, out_path: Path) -> Non
 
         ax.set_title(RACE_LABELS.get((year, etype, office), f"{year} {office}"),
                      fontsize=10, fontweight="bold")
-        ax.set_xlabel("Competitive Districts (margin ≤ 7%)")
+        ax.set_xlabel(f"Competitive Districts (margin ≤ {threshold_label})")
         ax.set_ylabel("% of Simulated Maps")
         if xs:
             ax.set_xticks(range(min(xs), max(xs) + 1))

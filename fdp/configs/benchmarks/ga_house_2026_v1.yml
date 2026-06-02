@@ -64,7 +64,7 @@ elections:
     competitive: true
 
 competitiveness:
-  thresholds: [0.07, 0.10]
+  thresholds: [0.05]                 # 5% win margin primary threshold; add 0.07 after first run
   method: all_independent
 
 demographics:
