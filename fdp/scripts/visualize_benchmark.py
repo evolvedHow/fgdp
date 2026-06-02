@@ -56,23 +56,14 @@ plt.rcParams.update({
 
 DB_URL = os.environ.get("DATABASE_URL")
 
-PRIORITY_RACES = [
-    (2018, "general",  "governor"),
-    (2020, "general",  "president"),
-    (2021, "runoff",   "senate"),
-    (2022, "general",  "governor"),
-    (2022, "general",  "senate"),
-    (2024, "general",  "president"),
-]
 
-RACE_LABELS = {
-    (2018, "general",  "governor"):  "2018 Governor",
-    (2020, "general",  "president"): "2020 President",
-    (2021, "runoff",   "senate"):    "2021 Senate Runoff",
-    (2022, "general",  "governor"):  "2022 Governor",
-    (2022, "general",  "senate"):    "2022 Senate",
-    (2024, "general",  "president"): "2024 President",
-}
+def _race_label(year: int, election_type: str, office: str) -> str:
+    """Human-readable label for any election — no hardcoded list needed."""
+    etype_suffix = {"runoff": " Runoff", "primary": " Primary", "special": " Special"}.get(
+        election_type, ""
+    )
+    office_title = office.replace("-", " ").title()
+    return f"{year} {office_title}{etype_suffix}"
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +74,25 @@ def _conn() -> psycopg.Connection:
     if not DB_URL:
         raise RuntimeError("DATABASE_URL not set")
     return psycopg.connect(DB_URL, row_factory=psycopg.rows.dict_row)
+
+
+def load_races(plan_id: str) -> list[tuple[int, str, str]]:
+    """
+    Return the distinct (year, election_type, office) combinations present
+    in ensemble_draw_stats for this plan, sorted chronologically.
+
+    This replaces the old hardcoded PRIORITY_RACES constant — works for
+    any state, any election set.
+    """
+    sql = """
+        SELECT DISTINCT year, election_type, office
+        FROM fdp.ensemble_draw_stats
+        WHERE plan_id = %s
+        ORDER BY year, office
+    """
+    with _conn() as conn:
+        rows = conn.execute(sql, (plan_id,)).fetchall()
+    return [(r["year"], r["election_type"], r["office"]) for r in rows]
 
 
 def load_draw_stats(plan_id: str) -> pd.DataFrame:
@@ -166,17 +176,21 @@ def load_demographic_draw_stats(plan_id: str) -> pd.DataFrame:
 # Chart 1: Partisan lean histograms
 # ---------------------------------------------------------------------------
 
-def chart_partisan(df: pd.DataFrame, plan_id: str, out_path: Path) -> None:
-    """2×3 grid of dem_seats histograms, one per election."""
-    races = PRIORITY_RACES
-    fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+def chart_partisan(df: pd.DataFrame, plan_id: str, out_path: Path,
+                   races: list[tuple]) -> None:
+    """Dem-seat histograms — one subplot per election, auto-sized grid."""
+    n = len(races)
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(14, 5 * nrows))
     fig.suptitle(
         f"Partisan Lean Distribution — {plan_id}\n"
-        "Each bar = fraction of 10,000 simulated maps producing N Democratic seats",
+        "Each bar = fraction of simulated maps producing N Democratic seats",
         fontsize=12, fontweight="bold", y=1.01,
     )
 
-    for ax, (year, etype, office) in zip(axes.flat, races):
+    axes_flat = np.array(axes).flatten()
+    for ax, (year, etype, office) in zip(axes_flat, races):
         race_df  = df[(df.year == year) & (df.election_type == etype) & (df.office == office)]
         sim      = race_df[race_df.draw > 1]
         enacted  = race_df[race_df.draw == 1]
@@ -217,16 +231,19 @@ def chart_partisan(df: pd.DataFrame, plan_id: str, out_path: Path) -> None:
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
                               edgecolor=FDGA_RED, alpha=0.8))
 
-        ax.set_title(RACE_LABELS.get((year, etype, office), f"{year} {office}"),
-                     fontsize=10, fontweight="bold")
+        ax.set_title(_race_label(year, etype, office), fontsize=10, fontweight="bold")
         ax.set_xlabel("Democratic Seats")
         ax.set_ylabel("% of Simulated Maps")
         ax.set_xticks(range(max(1, min(xs) - 1), max(xs) + 2))
         ax.set_xlim(min(xs) - 0.7, max(xs) + 0.7)
 
         # Legend only on first chart
-        if ax == axes.flat[0]:
+        if ax is axes_flat[0]:
             ax.legend(fontsize=7, loc="upper left")
+
+    # Hide any unused subplot slots
+    for ax in axes_flat[len(races):]:
+        ax.set_visible(False)
 
     plt.tight_layout()
     fig.savefig(out_path, bbox_inches="tight", dpi=150)
@@ -239,12 +256,14 @@ def chart_partisan(df: pd.DataFrame, plan_id: str, out_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def chart_competitiveness(comp_df: pd.DataFrame, plan_id: str,
-                           out_path: Path, threshold: float) -> None:
+                           out_path: Path, threshold: float,
+                           races: list[tuple]) -> None:
     """
     Competitive district count distribution for a single threshold.
 
-    comp_df — output of load_competitive_counts(), already filtered or full.
+    comp_df  — output of load_competitive_counts(), already filtered or full.
     threshold — the margin threshold to display (e.g. 0.05 = 5%).
+    races    — list of (year, election_type, office) to display.
     """
     if comp_df.empty:
         print(f"  WARNING: no competitive count data for threshold={threshold:.1%} — skipping")
@@ -255,8 +274,10 @@ def chart_competitiveness(comp_df: pd.DataFrame, plan_id: str,
         print(f"  WARNING: threshold {threshold:.1%} not in data — skipping competitiveness chart")
         return
 
-    races = PRIORITY_RACES
-    fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+    n     = len(races)
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(nrows, ncols, figsize=(14, 5 * nrows))
     pct_label = f"{threshold:.0%}"
     fig.suptitle(
         f"Competitive Districts Distribution — {plan_id}\n"
@@ -264,7 +285,8 @@ def chart_competitiveness(comp_df: pd.DataFrame, plan_id: str,
         fontsize=12, fontweight="bold", y=1.01,
     )
 
-    for ax, (year, etype, office) in zip(axes.flat, races):
+    axes_flat = np.array(axes).flatten()
+    for ax, (year, etype, office) in zip(axes_flat, races):
         race_thr = thr_df[
             (thr_df.year == year) & (thr_df.election_type == etype) & (thr_df.office == office)
         ]
@@ -297,12 +319,15 @@ def chart_competitiveness(comp_df: pd.DataFrame, plan_id: str,
                     bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
                               edgecolor=FDGA_RED, alpha=0.8))
 
-        ax.set_title(RACE_LABELS.get((year, etype, office), f"{year} {office}"),
-                     fontsize=10, fontweight="bold")
+        ax.set_title(_race_label(year, etype, office), fontsize=10, fontweight="bold")
         ax.set_xlabel(f"Competitive Districts (margin ≤ {pct_label})")
         ax.set_ylabel("% of Simulated Maps")
         if xs:
             ax.set_xticks(range(min(xs), max(xs) + 1))
+
+    # Hide any unused subplot slots
+    for ax in axes_flat[len(races):]:
+        ax.set_visible(False)
 
     plt.tight_layout()
     fig.savefig(out_path, bbox_inches="tight", dpi=150)
@@ -380,7 +405,7 @@ def chart_river(plan_id: str, year: int, etype: str, office: str,
     River chart: districts sorted by median dem_2pv across ensemble.
     Shows 5th/25th/50th/75th/95th percentile bands + enacted plan overlay.
     """
-    label = RACE_LABELS.get((year, etype, office), f"{year} {office}")
+    label = _race_label(year, etype, office)
     print(f"  Loading district scores for river chart ({label})…")
     dist_df = load_district_scores(plan_id, year, etype, office)
 
@@ -471,9 +496,10 @@ def main() -> None:
     ap.add_argument("--out-dir", default=None,
                     help="Output directory for PNG files (default: fdp/data/repos/main/ensemble/charts)")
     ap.add_argument("--river-elections", nargs="*",
-                    default=["2022_general_governor", "2024_general_president"],
+                    default=None,
                     dest="river_elections",
-                    help="Elections to generate river charts for (format: YYYY_type_office)")
+                    help="Elections to generate river charts for (format: YYYY_type_office). "
+                         "Default: all elections found in the DB for this run.")
     args = ap.parse_args()
 
     if not DB_URL:
@@ -501,6 +527,14 @@ def main() -> None:
         print("  Run: uv run --project fdp python fdp/scripts/build_draw_stats.py --run-name " + plan_id)
         sys.exit(1)
 
+    # Discover which elections exist for this run — no hardcoded list
+    print("Discovering elections for this run…")
+    races = load_races(plan_id)
+    if not races:
+        print("  WARNING: no elections found in draw stats — charts may be empty")
+    else:
+        print(f"  Elections: {[(y, o) for y, _, o in races]}")
+
     print("Loading competitive counts…")
     comp_df = load_competitive_counts(plan_id)
     if comp_df.empty:
@@ -513,10 +547,11 @@ def main() -> None:
     print("Loading demographic stats…")
     demo_df = load_demographic_draw_stats(plan_id)
 
-    # Chart 1: Partisan histograms
+    # Chart 1: Partisan histograms — auto-sized grid, all elections in DB
     print("\nGenerating charts…")
     chart_partisan(df, plan_id,
-                   out_dir / f"{plan_id}_partisan.png")
+                   out_dir / f"{plan_id}_partisan.png",
+                   races=races)
 
     # Chart 2: Competitiveness histograms — one chart per threshold
     if not comp_df.empty:
@@ -524,7 +559,8 @@ def main() -> None:
             t_str = f"{int(t * 100):02d}"   # 0.05 → "05", 0.07 → "07"
             chart_competitiveness(comp_df, plan_id,
                                   out_dir / f"{plan_id}_competitiveness_{t_str}pct.png",
-                                  threshold=t)
+                                  threshold=t,
+                                  races=races)
     else:
         print("  Skipping competitiveness charts (no data)")
 
@@ -537,7 +573,13 @@ def main() -> None:
         print("  Run: score_ensemble_demographics.py first")
 
     # Chart 4: River charts
-    for elec_str in args.river_elections:
+    # Default: all elections found for this run; can be overridden via --river-elections
+    if args.river_elections is not None:
+        river_specs = args.river_elections
+    else:
+        river_specs = [f"{y}_{et}_{o}" for y, et, o in races]
+
+    for elec_str in river_specs:
         parts = elec_str.split("_", 2)
         if len(parts) != 3:
             print(f"  WARNING: cannot parse election '{elec_str}' — use YYYY_type_office")

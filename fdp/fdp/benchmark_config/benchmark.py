@@ -46,10 +46,21 @@ class GeographyConfig:
 
 @dataclass
 class ChamberConfig:
-    name: str = "congress"          # congress | senate | house
+    name: str = "congress"          # congress | senate | house (or any custom name)
     n_districts: int = 14
     pop_column: str = "TOTPOP"      # node attribute holding total population
     pop_epsilon: float = 0.01       # ±1% for Congress, ±5% for legislative
+    district_col: str | None = None  # graph node attribute for district assignment
+                                     # (e.g. CDIST, SDIST, HDIST). If None, inferred
+                                     # from chamber name for backward-compat.
+
+    def effective_district_col(self) -> str:
+        """Return the district column, falling back to name-based defaults."""
+        if self.district_col:
+            return self.district_col
+        # Backward-compatible defaults for GA chamber names
+        _defaults = {"congress": "CDIST", "senate": "SDIST", "house": "HDIST"}
+        return _defaults.get(self.name, self.name.upper()[:1] + "DIST")
 
 
 @dataclass
