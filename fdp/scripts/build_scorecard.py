@@ -36,12 +36,63 @@ _GRADE_ORDER = ["A", "B", "C", "F"]
 
 _METRIC_META: dict[str, tuple] = {
     # key: (label, category, description, higher_is_better)
-    "dem_seats":      ("Dem. Seats",          "partisan",    "Projected Democratic districts at the plan's vote share.", None),
-    "efficiency_gap": ("Efficiency Gap",      "partisan",    "Difference in wasted votes between parties. Near 0 = equal power.", False),
-    "mean_median":    ("Mean–Median Diff.",   "partisan",    "Mean minus median Dem vote share. Positive values favor Republicans.", False),
-    "comp_seats":     ("Competitive Seats",   "competitive", f"Districts within {COMPETITIVE_THRESHOLD_DEFAULT*100:.0f}pp of 50/50.", True),
-    "maj_black":      ("Majority-Black Dist.","minority",    "Districts where Black CVAP > 50%.", None),
-    "min_coal":       ("Minority Coalition",  "minority",    "Districts where non-white CVAP > 50%.", None),
+    "dem_seats": (
+        "Dem. Seats", "partisan",
+        "The number of districts projected to elect a Democrat, based on each plan's "
+        "district-level vote shares. A fair map should produce a number of Democratic "
+        "seats roughly proportional to statewide Democratic vote share. The histogram "
+        "shows outcomes across thousands of alternative maps drawn without partisan "
+        "intent — if the enacted map falls far outside this range, it suggests the "
+        "lines were drawn to favor one party.",
+        None),
+    "efficiency_gap": (
+        "Efficiency Gap", "partisan",
+        "The Efficiency Gap counts 'wasted' votes for each party — votes cast in "
+        "losing districts plus surplus votes beyond what was needed to win. A gap "
+        "near zero means both parties waste roughly equal votes. A large positive "
+        "value means Republican votes are used more efficiently, indicating "
+        "Democratic voters have been packed into a few lopsided districts or "
+        "cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, "
+        "this metric has been cited in federal gerrymandering litigation.",
+        False),
+    "mean_median": (
+        "Mean–Median Diff.", "partisan",
+        "The Mean-Median difference is the gap between a party's average vote share "
+        "across all districts and their median (middle) district vote share. A large "
+        "positive value means Democrats pile up huge margins in a few districts while "
+        "Republicans win many districts by modest margins — a sign of packing. "
+        "Values near zero indicate the map does not systematically advantage either "
+        "party in how votes translate to seats.",
+        False),
+    "comp_seats": (
+        "Competitive Seats", "competitive",
+        f"The number of districts where the margin between the two parties is within "
+        f"{COMPETITIVE_THRESHOLD_DEFAULT*100:.0f} percentage points of 50/50. "
+        f"Competitive districts give voters meaningful choice and make elected "
+        f"officials accountable to a broader range of constituents. Maps with few "
+        f"or no competitive seats create 'safe' incumbents who face no meaningful "
+        f"electoral challenge, reducing accountability and responsiveness.",
+        True),
+    "maj_black": (
+        "Majority-Black Dist.", "minority",
+        "The number of districts where Black citizens make up more than 50% of the "
+        "Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights "
+        "Act, states may be required to draw districts that give minority communities "
+        "the opportunity to elect their preferred candidates. The histogram shows how "
+        "many majority-Black districts alternative maps typically produce — if the "
+        "enacted map has significantly fewer, it may indicate illegal dilution of "
+        "Black voting power. Uses CVAP (more accurate than VAP for electoral purposes "
+        "as it excludes non-citizens).",
+        None),
+    "min_coal": (
+        "Minority Coalition", "minority",
+        "The number of districts where voters of color collectively make up more than "
+        "50% of the Citizen Voting Age Population. This 'coalition' measure captures "
+        "districts where communities of color have joint electoral influence even if "
+        "no single group holds a majority on its own — an important consideration "
+        "as Georgia's demographics continue to diversify. Uses CVAP data (2024 ACS "
+        "5-year estimates disaggregated to 2020 Census blocks).",
+        None),
 }
 
 _OFFICE_LABELS = {
@@ -365,16 +416,23 @@ def _build_composite_grades(
 
     if partisan_g:
         e_pass = first_e_pass if first_e_pass is not None else True
+        n_elec = len([e for e in elections if e.get("metrics", {}).get("dem_seats")])
         result["_partisan_fairness"] = {
             "label":          "Partisan Fairness",
             "grade":          partisan_g,
             "ensemble_pass":  e_pass,
             "normative_pass": True,
             "description": (
-                "Princeton ensemble test (5th–95th %ile) across "
-                f"{len([e for e in elections if e.get('metrics', {}).get('dem_seats')])} elections. "
-                f"Most restrictive election: Ensemble {'PASS' if e_pass else 'FAIL'}. "
-                "Normative (cube-law) test skipped — no partisan bias metric for GerryChain."
+                "Assessed using the Princeton Gerrymandering Project's ensemble test "
+                "across all elections in this benchmark. "
+                "The ENSEMBLE test checks whether the enacted map falls within the "
+                "normal range (5th–95th percentile) of outcomes for thousands of "
+                "randomly drawn alternative maps — maps that follow all legal "
+                "requirements but were drawn without partisan intent. "
+                f"Evaluated across {n_elec} elections; the most restrictive result is used. "
+                f"Ensemble: {'✓ PASS — the enacted map is within the normal range' if e_pass else '✗ FAIL — the enacted map produces unusually partisan outcomes compared to neutral alternatives'}. "
+                "Note: The normative (cube-law symmetry) test requires a partisan bias "
+                "metric not available in GerryChain runs — it is conservatively set to Pass."
             ),
         }
 
@@ -384,7 +442,19 @@ def _build_composite_grades(
         result["_overall"] = {
             "label":       "Overall",
             "grade":       overall,
-            "description": "Partisan Fairness ± competitiveness adjustments. Geographic test not applicable (no Polsby-Popper for GerryChain).",
+            "description": (
+                "The Overall grade summarizes how the enacted map compares to "
+                "thousands of alternative maps drawn without partisan intent. "
+                "It starts from the Partisan Fairness grade and adjusts upward "
+                "if the map is unusually competitive (more competitive districts "
+                "than typical), or downward if it has zero competitive districts. "
+                "Geographic quality (compactness, county splits) is not yet "
+                "available for GerryChain runs. "
+                "An A means the enacted map performs as well as or better than "
+                "neutral alternatives — it does not stand out as gerrymandered. "
+                "An F means the map produces outcomes that are highly unlikely "
+                "to occur by chance in a fair redistricting process."
+            ),
         }
 
     # Geographic: not available for GerryChain (no Polsby-Popper or splits)

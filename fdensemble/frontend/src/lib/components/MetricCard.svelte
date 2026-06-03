@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  // onMount/onDestroy not needed — using $effect with cleanup instead
   import type { MetricGrade } from '../types.js';
 
   interface Props { metric: MetricGrade; }
   let { metric }: Props = $props();
 
-  let canvas: HTMLCanvasElement;
+  let canvas: HTMLCanvasElement | undefined = $state();
   let chart: any;
 
   const gradeColor: Record<string, string> = {
@@ -87,9 +87,13 @@
     });
   }
 
-  onMount(() => { buildChart(); });
-  onDestroy(() => { if (chart) chart.destroy(); });
-  $effect(() => { metric; if (canvas) buildChart(); });
+  // In Svelte 5 runes mode, canvas must be $state() for $effect to track it.
+  // onMount/onDestroy replaced by $effect with cleanup return.
+  $effect(() => {
+    if (!canvas) return;
+    buildChart();
+    return () => { if (chart) { chart.destroy(); chart = null; } };
+  });
 </script>
 
 <div style="background:var(--card);border-radius:8px;border:1.5px solid var(--border);

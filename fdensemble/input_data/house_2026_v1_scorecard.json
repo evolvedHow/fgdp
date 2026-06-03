@@ -64,7 +64,7 @@
         "dem_seats": {
           "label": "Dem. Seats",
           "category": "partisan",
-          "description": "Projected Democratic districts at the plan's vote share.",
+          "description": "The number of districts projected to elect a Democrat, based on each plan's district-level vote shares. A fair map should produce a number of Democratic seats roughly proportional to statewide Democratic vote share. The histogram shows outcomes across thousands of alternative maps drawn without partisan intent \u2014 if the enacted map falls far outside this range, it suggests the lines were drawn to favor one party.",
           "grade": "F",
           "enacted": 80.0,
           "pct_rank": 84.1,
@@ -164,7 +164,7 @@
         "efficiency_gap": {
           "label": "Efficiency Gap",
           "category": "partisan",
-          "description": "Difference in wasted votes between parties. Near 0 = equal power.",
+          "description": "The Efficiency Gap counts 'wasted' votes for each party \u2014 votes cast in losing districts plus surplus votes beyond what was needed to win. A gap near zero means both parties waste roughly equal votes. A large positive value means Republican votes are used more efficiently, indicating Democratic voters have been packed into a few lopsided districts or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, this metric has been cited in federal gerrymandering litigation.",
           "grade": "B",
           "enacted": 0.0501,
           "pct_rank": 34.0,
@@ -264,7 +264,7 @@
         "mean_median": {
           "label": "Mean\u2013Median Diff.",
           "category": "partisan",
-          "description": "Mean minus median Dem vote share. Positive values favor Republicans.",
+          "description": "The Mean-Median difference is the gap between a party's average vote share across all districts and their median (middle) district vote share. A large positive value means Democrats pile up huge margins in a few districts while Republicans win many districts by modest margins \u2014 a sign of packing. Values near zero indicate the map does not systematically advantage either party in how votes translate to seats.",
           "grade": "F",
           "enacted": 0.0634,
           "pct_rank": 99.7,
@@ -364,7 +364,7 @@
         "comp_seats": {
           "label": "Competitive Seats",
           "category": "competitive",
-          "description": "Districts within 5pp of 50/50.",
+          "description": "The number of districts where the margin between the two parties is within 5 percentage points of 50/50. Competitive districts give voters meaningful choice and make elected officials accountable to a broader range of constituents. Maps with few or no competitive seats create 'safe' incumbents who face no meaningful electoral challenge, reducing accountability and responsiveness.",
           "grade": "C",
           "enacted": 5.0,
           "pct_rank": 7.2,
@@ -1206,7 +1206,7 @@
         "dem_seats": {
           "label": "Dem. Seats",
           "category": "partisan",
-          "description": "Projected Democratic districts at the plan's vote share.",
+          "description": "The number of districts projected to elect a Democrat, based on each plan's district-level vote shares. A fair map should produce a number of Democratic seats roughly proportional to statewide Democratic vote share. The histogram shows outcomes across thousands of alternative maps drawn without partisan intent \u2014 if the enacted map falls far outside this range, it suggests the lines were drawn to favor one party.",
           "grade": "F",
           "enacted": 85.0,
           "pct_rank": 85.6,
@@ -1306,7 +1306,7 @@
         "efficiency_gap": {
           "label": "Efficiency Gap",
           "category": "partisan",
-          "description": "Difference in wasted votes between parties. Near 0 = equal power.",
+          "description": "The Efficiency Gap counts 'wasted' votes for each party \u2014 votes cast in losing districts plus surplus votes beyond what was needed to win. A gap near zero means both parties waste roughly equal votes. A large positive value means Republican votes are used more efficiently, indicating Democratic voters have been packed into a few lopsided districts or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, this metric has been cited in federal gerrymandering litigation.",
           "grade": "C",
           "enacted": 0.0502,
           "pct_rank": 39.2,
@@ -1406,7 +1406,7 @@
         "mean_median": {
           "label": "Mean\u2013Median Diff.",
           "category": "partisan",
-          "description": "Mean minus median Dem vote share. Positive values favor Republicans.",
+          "description": "The Mean-Median difference is the gap between a party's average vote share across all districts and their median (middle) district vote share. A large positive value means Democrats pile up huge margins in a few districts while Republicans win many districts by modest margins \u2014 a sign of packing. Values near zero indicate the map does not systematically advantage either party in how votes translate to seats.",
           "grade": "F",
           "enacted": 0.0509,
           "pct_rank": 97.9,
@@ -1506,7 +1506,7 @@
         "comp_seats": {
           "label": "Competitive Seats",
           "category": "competitive",
-          "description": "Districts within 5pp of 50/50.",
+          "description": "The number of districts where the margin between the two parties is within 5 percentage points of 50/50. Competitive districts give voters meaningful choice and make elected officials accountable to a broader range of constituents. Maps with few or no competitive seats create 'safe' incumbents who face no meaningful electoral challenge, reducing accountability and responsiveness.",
           "grade": "C",
           "enacted": 6.0,
           "pct_rank": 5.3,
@@ -2348,7 +2348,7 @@
         "dem_seats": {
           "label": "Dem. Seats",
           "category": "partisan",
-          "description": "Projected Democratic districts at the plan's vote share.",
+          "description": "The number of districts projected to elect a Democrat, based on each plan's district-level vote shares. A fair map should produce a number of Democratic seats roughly proportional to statewide Democratic vote share. The histogram shows outcomes across thousands of alternative maps drawn without partisan intent \u2014 if the enacted map falls far outside this range, it suggests the lines were drawn to favor one party.",
           "grade": "A",
           "enacted": 83.0,
           "pct_rank": 61.5,
@@ -2448,7 +2448,7 @@
         "efficiency_gap": {
           "label": "Efficiency Gap",
           "category": "partisan",
-          "description": "Difference in wasted votes between parties. Near 0 = equal power.",
+          "description": "The Efficiency Gap counts 'wasted' votes for each party \u2014 votes cast in losing districts plus surplus votes beyond what was needed to win. A gap near zero means both parties waste roughly equal votes. A large positive value means Republican votes are used more efficiently, indicating Democratic voters have been packed into a few lopsided districts or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, this metric has been cited in federal gerrymandering litigation.",
           "grade": "C",
           "enacted": 0.0714,
           "pct_rank": 77.5,
@@ -2548,7 +2548,7 @@
         "mean_median": {
           "label": "Mean\u2013Median Diff.",
           "category": "partisan",
-          "description": "Mean minus median Dem vote share. Positive values favor Republicans.",
+          "description": "The Mean-Median difference is the gap between a party's average vote share across all districts and their median (middle) district vote share. A large positive value means Democrats pile up huge margins in a few districts while Republicans win many districts by modest margins \u2014 a sign of packing. Values near zero indicate the map does not systematically advantage either party in how votes translate to seats.",
           "grade": "F",
           "enacted": 0.0602,
           "pct_rank": 99.7,
@@ -2648,7 +2648,7 @@
         "comp_seats": {
           "label": "Competitive Seats",
           "category": "competitive",
-          "description": "Districts within 5pp of 50/50.",
+          "description": "The number of districts where the margin between the two parties is within 5 percentage points of 50/50. Competitive districts give voters meaningful choice and make elected officials accountable to a broader range of constituents. Maps with few or no competitive seats create 'safe' incumbents who face no meaningful electoral challenge, reducing accountability and responsiveness.",
           "grade": "F",
           "enacted": 6.0,
           "pct_rank": 3.1,
@@ -3490,7 +3490,7 @@
         "dem_seats": {
           "label": "Dem. Seats",
           "category": "partisan",
-          "description": "Projected Democratic districts at the plan's vote share.",
+          "description": "The number of districts projected to elect a Democrat, based on each plan's district-level vote shares. A fair map should produce a number of Democratic seats roughly proportional to statewide Democratic vote share. The histogram shows outcomes across thousands of alternative maps drawn without partisan intent \u2014 if the enacted map falls far outside this range, it suggests the lines were drawn to favor one party.",
           "grade": "F",
           "enacted": 78.0,
           "pct_rank": 96.5,
@@ -3590,7 +3590,7 @@
         "efficiency_gap": {
           "label": "Efficiency Gap",
           "category": "partisan",
-          "description": "Difference in wasted votes between parties. Near 0 = equal power.",
+          "description": "The Efficiency Gap counts 'wasted' votes for each party \u2014 votes cast in losing districts plus surplus votes beyond what was needed to win. A gap near zero means both parties waste roughly equal votes. A large positive value means Republican votes are used more efficiently, indicating Democratic voters have been packed into a few lopsided districts or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, this metric has been cited in federal gerrymandering litigation.",
           "grade": "B",
           "enacted": 0.0265,
           "pct_rank": 14.4,
@@ -3690,7 +3690,7 @@
         "mean_median": {
           "label": "Mean\u2013Median Diff.",
           "category": "partisan",
-          "description": "Mean minus median Dem vote share. Positive values favor Republicans.",
+          "description": "The Mean-Median difference is the gap between a party's average vote share across all districts and their median (middle) district vote share. A large positive value means Democrats pile up huge margins in a few districts while Republicans win many districts by modest margins \u2014 a sign of packing. Values near zero indicate the map does not systematically advantage either party in how votes translate to seats.",
           "grade": "F",
           "enacted": 0.0682,
           "pct_rank": 99.9,
@@ -3790,7 +3790,7 @@
         "comp_seats": {
           "label": "Competitive Seats",
           "category": "competitive",
-          "description": "Districts within 5pp of 50/50.",
+          "description": "The number of districts where the margin between the two parties is within 5 percentage points of 50/50. Competitive districts give voters meaningful choice and make elected officials accountable to a broader range of constituents. Maps with few or no competitive seats create 'safe' incumbents who face no meaningful electoral challenge, reducing accountability and responsiveness.",
           "grade": "F",
           "enacted": 6.0,
           "pct_rank": 1.9,
@@ -4632,7 +4632,7 @@
         "dem_seats": {
           "label": "Dem. Seats",
           "category": "partisan",
-          "description": "Projected Democratic districts at the plan's vote share.",
+          "description": "The number of districts projected to elect a Democrat, based on each plan's district-level vote shares. A fair map should produce a number of Democratic seats roughly proportional to statewide Democratic vote share. The histogram shows outcomes across thousands of alternative maps drawn without partisan intent \u2014 if the enacted map falls far outside this range, it suggests the lines were drawn to favor one party.",
           "grade": "B",
           "enacted": 84.0,
           "pct_rank": 36.1,
@@ -4732,7 +4732,7 @@
         "efficiency_gap": {
           "label": "Efficiency Gap",
           "category": "partisan",
-          "description": "Difference in wasted votes between parties. Near 0 = equal power.",
+          "description": "The Efficiency Gap counts 'wasted' votes for each party \u2014 votes cast in losing districts plus surplus votes beyond what was needed to win. A gap near zero means both parties waste roughly equal votes. A large positive value means Republican votes are used more efficiently, indicating Democratic voters have been packed into a few lopsided districts or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, this metric has been cited in federal gerrymandering litigation.",
           "grade": "C",
           "enacted": 0.0736,
           "pct_rank": 89.7,
@@ -4832,7 +4832,7 @@
         "mean_median": {
           "label": "Mean\u2013Median Diff.",
           "category": "partisan",
-          "description": "Mean minus median Dem vote share. Positive values favor Republicans.",
+          "description": "The Mean-Median difference is the gap between a party's average vote share across all districts and their median (middle) district vote share. A large positive value means Democrats pile up huge margins in a few districts while Republicans win many districts by modest margins \u2014 a sign of packing. Values near zero indicate the map does not systematically advantage either party in how votes translate to seats.",
           "grade": "C",
           "enacted": 0.0503,
           "pct_rank": 83.3,
@@ -4932,7 +4932,7 @@
         "comp_seats": {
           "label": "Competitive Seats",
           "category": "competitive",
-          "description": "Districts within 5pp of 50/50.",
+          "description": "The number of districts where the margin between the two parties is within 5 percentage points of 50/50. Competitive districts give voters meaningful choice and make elected officials accountable to a broader range of constituents. Maps with few or no competitive seats create 'safe' incumbents who face no meaningful electoral challenge, reducing accountability and responsiveness.",
           "grade": "C",
           "enacted": 7.0,
           "pct_rank": 22.4,
@@ -5774,7 +5774,7 @@
         "dem_seats": {
           "label": "Dem. Seats",
           "category": "partisan",
-          "description": "Projected Democratic districts at the plan's vote share.",
+          "description": "The number of districts projected to elect a Democrat, based on each plan's district-level vote shares. A fair map should produce a number of Democratic seats roughly proportional to statewide Democratic vote share. The histogram shows outcomes across thousands of alternative maps drawn without partisan intent \u2014 if the enacted map falls far outside this range, it suggests the lines were drawn to favor one party.",
           "grade": "B",
           "enacted": 84.0,
           "pct_rank": 67.7,
@@ -5874,7 +5874,7 @@
         "efficiency_gap": {
           "label": "Efficiency Gap",
           "category": "partisan",
-          "description": "Difference in wasted votes between parties. Near 0 = equal power.",
+          "description": "The Efficiency Gap counts 'wasted' votes for each party \u2014 votes cast in losing districts plus surplus votes beyond what was needed to win. A gap near zero means both parties waste roughly equal votes. A large positive value means Republican votes are used more efficiently, indicating Democratic voters have been packed into a few lopsided districts or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, this metric has been cited in federal gerrymandering litigation.",
           "grade": "C",
           "enacted": 0.0507,
           "pct_rank": 63.4,
@@ -5974,7 +5974,7 @@
         "mean_median": {
           "label": "Mean\u2013Median Diff.",
           "category": "partisan",
-          "description": "Mean minus median Dem vote share. Positive values favor Republicans.",
+          "description": "The Mean-Median difference is the gap between a party's average vote share across all districts and their median (middle) district vote share. A large positive value means Democrats pile up huge margins in a few districts while Republicans win many districts by modest margins \u2014 a sign of packing. Values near zero indicate the map does not systematically advantage either party in how votes translate to seats.",
           "grade": "C",
           "enacted": 0.0478,
           "pct_rank": 94.6,
@@ -6074,7 +6074,7 @@
         "comp_seats": {
           "label": "Competitive Seats",
           "category": "competitive",
-          "description": "Districts within 5pp of 50/50.",
+          "description": "The number of districts where the margin between the two parties is within 5 percentage points of 50/50. Competitive districts give voters meaningful choice and make elected officials accountable to a broader range of constituents. Maps with few or no competitive seats create 'safe' incumbents who face no meaningful electoral challenge, reducing accountability and responsiveness.",
           "grade": "C",
           "enacted": 8.0,
           "pct_rank": 24.2,
@@ -6915,7 +6915,7 @@
       "maj_black": {
         "label": "Majority-Black Dist.",
         "category": "minority",
-        "description": "Districts where Black CVAP > 50%.",
+        "description": "The number of districts where Black citizens make up more than 50% of the Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights Act, states may be required to draw districts that give minority communities the opportunity to elect their preferred candidates. The histogram shows how many majority-Black districts alternative maps typically produce \u2014 if the enacted map has significantly fewer, it may indicate illegal dilution of Black voting power. Uses CVAP (more accurate than VAP for electoral purposes as it excludes non-citizens).",
         "grade": "F",
         "enacted": 50.0,
         "pct_rank": 100.0,
@@ -7015,7 +7015,7 @@
       "min_coal": {
         "label": "Minority Coalition",
         "category": "minority",
-        "description": "Districts where non-white CVAP > 50%.",
+        "description": "The number of districts where voters of color collectively make up more than 50% of the Citizen Voting Age Population. This 'coalition' measure captures districts where communities of color have joint electoral influence even if no single group holds a majority on its own \u2014 an important consideration as Georgia's demographics continue to diversify. Uses CVAP data (2024 ACS 5-year estimates disaggregated to 2020 Census blocks).",
         "grade": "F",
         "enacted": 70.0,
         "pct_rank": 98.2,
@@ -7125,17 +7125,17 @@
       "grade": "C",
       "ensemble_pass": true,
       "normative_pass": true,
-      "description": "Princeton ensemble test (5th\u201395th %ile) across 6 elections. Most restrictive election: Ensemble PASS. Normative (cube-law) test skipped \u2014 no partisan bias metric for GerryChain."
+      "description": "Assessed using the Princeton Gerrymandering Project's ensemble test across all elections in this benchmark. The ENSEMBLE test checks whether the enacted map falls within the normal range (5th\u201395th percentile) of outcomes for thousands of randomly drawn alternative maps \u2014 maps that follow all legal requirements but were drawn without partisan intent. Evaluated across 6 elections; the most restrictive result is used. Ensemble: \u2713 PASS \u2014 the enacted map is within the normal range. Note: The normative (cube-law symmetry) test requires a partisan bias metric not available in GerryChain runs \u2014 it is conservatively set to Pass."
     },
     "_overall": {
       "label": "Overall",
       "grade": "C",
-      "description": "Partisan Fairness \u00b1 competitiveness adjustments. Geographic test not applicable (no Polsby-Popper for GerryChain)."
+      "description": "The Overall grade summarizes how the enacted map compares to thousands of alternative maps drawn without partisan intent. It starts from the Partisan Fairness grade and adjusts upward if the map is unusually competitive (more competitive districts than typical), or downward if it has zero competitive districts. Geographic quality (compactness, county splits) is not yet available for GerryChain runs. An A means the enacted map performs as well as or better than neutral alternatives \u2014 it does not stand out as gerrymandered. An F means the map produces outcomes that are highly unlikely to occur by chance in a fair redistricting process."
     },
     "maj_black": {
       "label": "Majority-Black Dist.",
       "category": "minority",
-      "description": "Districts where Black CVAP > 50%.",
+      "description": "The number of districts where Black citizens make up more than 50% of the Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights Act, states may be required to draw districts that give minority communities the opportunity to elect their preferred candidates. The histogram shows how many majority-Black districts alternative maps typically produce \u2014 if the enacted map has significantly fewer, it may indicate illegal dilution of Black voting power. Uses CVAP (more accurate than VAP for electoral purposes as it excludes non-citizens).",
       "grade": "F",
       "enacted": 50.0,
       "pct_rank": 100.0,
@@ -7235,7 +7235,7 @@
     "min_coal": {
       "label": "Minority Coalition",
       "category": "minority",
-      "description": "Districts where non-white CVAP > 50%.",
+      "description": "The number of districts where voters of color collectively make up more than 50% of the Citizen Voting Age Population. This 'coalition' measure captures districts where communities of color have joint electoral influence even if no single group holds a majority on its own \u2014 an important consideration as Georgia's demographics continue to diversify. Uses CVAP data (2024 ACS 5-year estimates disaggregated to 2020 Census blocks).",
       "grade": "F",
       "enacted": 70.0,
       "pct_rank": 98.2,

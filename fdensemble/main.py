@@ -149,19 +149,122 @@ def _histogram_data(dist: np.ndarray, enacted, n_bins: int = 40) -> dict:
 # ── Metric definitions ────────────────────────────────────────────────────────
 _METRIC_META = {
     # key: (label, category, description, higher_is_better)
-    'dem_seats':      ('Dem. Seats',           'partisan',     'Projected Democratic districts at the plan\'s vote share.',                  None),
-    'partisan_bias':  ('Partisan Bias',        'partisan',     'Seat-share advantage at a hypothetical 50/50 election. Near 0 = fair.',     False),
-    'efficiency_gap': ('Efficiency Gap',       'partisan',     'Difference in wasted votes between parties. Near 0 = equal power.',         False),
-    'mean_median':    ('Mean–Median Diff.',    'partisan',     'Mean minus median Dem vote share. Positive favors Republicans.',             False),
-    'comp_seats':     ('Competitive Seats',    'competitive',  f'Districts within {COMPETITIVE_MARGIN*100:.0f}pp of 50/50.',                True),
-    'polsby_popper':  ('Compactness (PP)',     'geographic',   'Mean Polsby-Popper score. Higher = more circular, more compact.',           True),
-    'county_splits':  ('County Splits',        'geographic',   'Counties divided across 2+ districts. Fewer = better community cohesion.',  False),
-    'muni_splits':    ('Municipal Splits',     'geographic',   'Municipalities divided across districts. Fewer = better.',                  False),
-    'maj_black':      ('Majority-Black Dist.', 'minority',     f'Districts where Black VAP > {BVAP_THRESHOLD*100:.0f}%.',                  None),
-    'maj_hisp':       ('Majority-Hispanic',    'minority',     f'Districts where Hispanic VAP > {MINORITY_THRESHOLD*100:.0f}%.',            None),
-    'maj_aian':       ('Majority-AIAN',        'minority',     'Districts where American Indian/Alaska Native VAP > threshold.',            None),
-    'maj_asian':      ('Majority-Asian',       'minority',     'Districts where Asian VAP > threshold.',                                    None),
-    'min_coal':       ('Minority Coalition',   'minority',     'Districts where non-white VAP > 50%.',                                     None),
+    'dem_seats': (
+        'Dem. Seats', 'partisan',
+        'The number of districts projected to elect a Democrat, based on each plan\'s '
+        'district-level vote shares. A fair map should produce a number of Democratic '
+        'seats roughly proportional to statewide Democratic vote share. The histogram '
+        'shows outcomes across thousands of alternative maps drawn without partisan '
+        'intent — if the enacted map falls far outside this range, it suggests the '
+        'lines were drawn to favor one party.',
+        None),
+    'partisan_bias': (
+        'Partisan Bias', 'partisan',
+        'Partisan bias measures the seat-share advantage one party would receive at '
+        'a perfectly tied 50/50 election. A value near zero means both parties convert '
+        'votes into seats at the same rate. A positive value here means Republicans '
+        'would win more seats than Democrats even if both parties received equal votes '
+        'statewide — a hallmark of a gerrymandered map. This metric is part of the '
+        'Princeton Gerrymandering Project\'s normative (cube-law) fairness test.',
+        False),
+    'efficiency_gap': (
+        'Efficiency Gap', 'partisan',
+        'The Efficiency Gap counts "wasted" votes for each party — votes cast in '
+        'losing districts (opponent wins) plus surplus votes beyond what was needed '
+        'to win. A gap near zero means both parties waste roughly equal votes. A '
+        'large positive value means Republican votes are used more efficiently, '
+        'indicating Democrats\' voters have been packed into a few lopsided districts '
+        'or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, '
+        'this metric has been cited in federal gerrymandering litigation.',
+        False),
+    'mean_median': (
+        'Mean–Median Diff.', 'partisan',
+        'The Mean-Median difference is the gap between a party\'s average vote share '
+        'across all districts and their median (middle) district vote share. A large '
+        'positive value means Democrats pile up huge margins in a few districts while '
+        'Republicans win many districts by modest margins — a sign of packing. '
+        'Values near zero indicate the map does not systematically advantage either '
+        'party in how votes translate to seats.',
+        False),
+    'comp_seats': (
+        'Competitive Seats', 'competitive',
+        f'The number of districts where the margin between the two parties is within '
+        f'{COMPETITIVE_MARGIN*100:.0f} percentage points of 50/50. Competitive '
+        f'districts give voters meaningful choice and make elected officials '
+        f'accountable to a broader range of constituents. Maps with few or no '
+        f'competitive seats create "safe" incumbents who face no meaningful electoral '
+        f'challenge, reducing accountability and responsiveness to voters.',
+        True),
+    'polsby_popper': (
+        'Compactness (PP)', 'geographic',
+        'The Polsby-Popper score measures how "normal" shaped each district is, '
+        'comparing its area to the area of a circle with the same perimeter. '
+        'Scores range from 0 to 1, with 1 being a perfect circle. Oddly shaped, '
+        'contorted districts — sometimes called "salamander" districts after the '
+        'original gerrymander of 1812 — can indicate that lines were manipulated '
+        'to include or exclude specific communities. More compact districts are '
+        'generally easier for communities to organize around and for representatives '
+        'to serve effectively.',
+        True),
+    'county_splits': (
+        'County Splits', 'geographic',
+        'The number of counties divided across two or more districts. Counties '
+        'represent natural community boundaries — shared local government, courts, '
+        'schools, emergency services, and civic institutions. Keeping counties '
+        'intact preserves communities of interest and makes it easier for residents '
+        'to understand which district they live in. Fewer splits generally indicates '
+        'a more geographically coherent, community-respecting map.',
+        False),
+    'muni_splits': (
+        'Municipal Splits', 'geographic',
+        'The number of cities and municipalities divided across different districts. '
+        'Like county splits, keeping municipalities intact helps ensure that '
+        'communities with shared local interests — city budgets, zoning, schools, '
+        'local services — can elect a single representative who understands and '
+        'advocates for the whole community.',
+        False),
+    'maj_black': (
+        'Majority-Black Dist.', 'minority',
+        f'The number of districts where Black citizens make up more than '
+        f'{BVAP_THRESHOLD*100:.0f}% of the Voting Age Population. Under Section 2 '
+        f'of the Voting Rights Act, states may be required to draw districts that '
+        f'give minority communities the opportunity to elect their preferred '
+        f'candidates. The histogram shows how many majority-Black districts '
+        f'alternative maps typically produce — if the enacted map has significantly '
+        f'fewer, it may indicate illegal dilution of Black voting power.',
+        None),
+    'maj_hisp': (
+        'Majority-Hispanic', 'minority',
+        f'The number of districts where Hispanic citizens make up more than '
+        f'{MINORITY_THRESHOLD*100:.0f}% of the Voting Age Population. The Voting '
+        f'Rights Act protects Hispanic voters\' ability to elect representatives of '
+        f'their choice. This metric compares the enacted map\'s minority district '
+        f'count against the range of outcomes for alternative maps drawn without '
+        f'racial manipulation.',
+        None),
+    'maj_aian': (
+        'Majority-AIAN', 'minority',
+        'The number of districts where American Indian and Alaska Native citizens '
+        'make up more than 50% of the Voting Age Population. These communities '
+        'have historically faced significant barriers to political representation '
+        'and are specifically protected under the Voting Rights Act.',
+        None),
+    'maj_asian': (
+        'Majority-Asian', 'minority',
+        'The number of districts where Asian American citizens make up more than '
+        '50% of the Voting Age Population. As one of the fastest-growing communities '
+        'in Georgia, Asian Americans\' representation opportunity is an increasingly '
+        'important measure of map fairness.',
+        None),
+    'min_coal': (
+        'Minority Coalition', 'minority',
+        'The number of districts where voters of color collectively make up more '
+        'than 50% of the Voting Age Population (or Citizen Voting Age Population '
+        'for GerryChain runs). This "coalition" measure captures districts where '
+        'communities of color have joint electoral influence even if no single '
+        'group holds a majority on its own — an important consideration as '
+        'Georgia\'s demographics continue to diversify.',
+        None),
 }
 
 
@@ -354,10 +457,17 @@ def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
             'ensemble_pass':  e_pass,
             'normative_pass': n_pass,
             'description':    (
-                'Princeton dual test: ensemble (5th–95th %ile) '
-                '+ cube-law normative symmetry. '
-                f'Ensemble: {"PASS" if e_pass else "FAIL"}, '
-                f'Normative: {"PASS" if n_pass else "FAIL"}.'
+                'Assessed using the Princeton Gerrymandering Project\'s dual test. '
+                'The ENSEMBLE test checks whether the enacted map falls within the '
+                'normal range (5th–95th percentile) of outcomes for thousands of '
+                'randomly drawn alternative maps — maps that follow all legal '
+                'requirements but were drawn without partisan intent. '
+                'The NORMATIVE test uses the mathematical "cube law" of elections '
+                'to check whether both parties convert votes into seats at '
+                'roughly the same rate (symmetry). A map must pass both tests '
+                'for an A grade. '
+                f'Ensemble: {"✓ PASS — the enacted map is within the normal range" if e_pass else "✗ FAIL — the enacted map produces unusually partisan outcomes compared to neutral alternatives"}, '
+                f'Normative: {"✓ PASS" if n_pass else "✗ FAIL — the map systematically advantages one party at equal vote shares"}.'
             ),
         }
 
@@ -382,7 +492,18 @@ def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
         result['_overall'] = {
             'label': 'Overall',
             'grade': overall,
-            'description': 'Partisan Fairness ± geographic and competitiveness adjustments.',
+            'description': (
+                'The Overall grade summarizes how the enacted map compares to '
+                'thousands of alternative maps drawn without partisan intent. '
+                'It starts from the Partisan Fairness grade and adjusts upward '
+                'if the map is unusually competitive (more competitive districts '
+                'than typical), or downward if it has zero competitive districts '
+                'or poor geographic quality (irregular shapes, many county splits). '
+                'An A means the enacted map performs as well as or better than '
+                'neutral alternatives on all dimensions — it does not stand out '
+                'as gerrymandered. An F means the map produces outcomes that are '
+                'highly unlikely to occur by chance in a fair process.'
+            ),
         }
 
     return result

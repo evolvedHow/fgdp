@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  // onMount/onDestroy replaced by $effect with cleanup for Svelte 5 runes compat
   import type { RiverData } from '../types.js';
 
   interface Props {
@@ -8,7 +8,7 @@
   }
   let { river, enactedShares }: Props = $props();
 
-  let canvas: HTMLCanvasElement;
+  let canvas: HTMLCanvasElement | undefined = $state();
   let chart: any;
 
   async function buildChart() {
@@ -122,9 +122,11 @@
     });
   }
 
-  onMount(() => { buildChart(); });
-  onDestroy(() => { if (chart) chart.destroy(); });
-  $effect(() => { river; if (canvas) buildChart(); });
+  $effect(() => {
+    if (!canvas) return;
+    buildChart();
+    return () => { if (chart) { chart.destroy(); chart = null; } };
+  });
 </script>
 
 <div style="background:var(--card);border-radius:10px;padding:1rem 1.2rem;box-shadow:var(--shadow);border:1.5px solid var(--border);">
