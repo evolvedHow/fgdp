@@ -92,17 +92,29 @@ def load_plan_matrix(race_filter: list[str] | None) -> tuple[np.ndarray, list[st
         "SELECT DISTINCT draw FROM read_parquet(?) ORDER BY draw", [plans_str]
     ).fetchall()]
 
-    geoid_idx = {g: i for i, g in enumerate(geoids)}
-    draw_idx  = {d: i for i, d in enumerate(draws)}
+    # Map geoid strings → integer row indices entirely in DuckDB SQL.
+    # Avoids ever creating 64M Python string objects in the Python process.
+    # fetchnumpy() then returns only integer arrays (~650 MB total for house).
+    result = conn.execute("""
+        WITH geoid_map AS (
+            SELECT geoid,
+                   (ROW_NUMBER() OVER (ORDER BY geoid) - 1)::INTEGER AS geoid_idx
+            FROM (SELECT DISTINCT geoid FROM read_parquet(?))
+        ),
+        draw_map AS (
+            SELECT draw,
+                   (ROW_NUMBER() OVER (ORDER BY draw) - 1)::INTEGER AS draw_idx
+            FROM (SELECT DISTINCT draw FROM read_parquet(?))
+        )
+        SELECT g.geoid_idx, d.draw_idx, p.district::SMALLINT AS district
+        FROM read_parquet(?) p
+        JOIN geoid_map g USING (geoid)
+        JOIN draw_map  d USING (draw)
+        ORDER BY d.draw_idx, g.geoid_idx
+    """, [plans_str, plans_str, plans_str]).fetchnumpy()
 
-    # Fetch as numpy (avoids Python object per row)
-    result = conn.execute(
-        "SELECT geoid, draw, district FROM read_parquet(?) ORDER BY draw, geoid",
-        [plans_str]
-    ).fetchnumpy()
-
-    row_idx = np.array([geoid_idx[g] for g in result["geoid"]], dtype=np.int32)
-    col_idx = np.array([draw_idx[d]  for d in result["draw"]],  dtype=np.int32)
+    row_idx = result["geoid_idx"].astype(np.int32)
+    col_idx = result["draw_idx"].astype(np.int32)
     vals    = result["district"].astype(np.int16)
 
     plan_np = np.zeros((n_vtds, n_draws), dtype=np.int16)
