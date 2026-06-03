@@ -48,6 +48,12 @@ RUN pip install --no-cache-dir \
 COPY fdensemble/main.py ./
 COPY fdensemble/fdp_client.py ./
 
+# Copy ALARM dataverse files (GA_cd_2020_stats.csv etc.)
+COPY fdensemble/dataverse_files/ ./dataverse_files/
+
+# Copy canonical scorecard JSONs (GerryChain runs — pre-computed, small)
+COPY fdensemble/input_data/ ./input_data/
+
 # Copy built frontend from Stage 1
 COPY --from=frontend-builder /build/dist/ ./frontend/dist/
 
