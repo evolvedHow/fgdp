@@ -1,5 +1,5 @@
 <script lang="ts">
-  // onMount/onDestroy replaced by $effect with cleanup for Svelte 5 runes compat
+  import { tick } from 'svelte';
   import type { RiverData } from '../types.js';
 
   interface Props {
@@ -8,7 +8,8 @@
   }
   let { river, enactedShares }: Props = $props();
 
-  let canvas: HTMLCanvasElement | undefined = $state();
+  // Plain let — NOT $state(). Chart.js uses Object.defineProperty on canvas.
+  let canvas: HTMLCanvasElement;
   let chart: any;
 
   async function buildChart() {
@@ -123,8 +124,10 @@
   }
 
   $effect(() => {
-    if (!canvas) return;
-    buildChart();
+    const r = river; // track river so chart rebuilds when election switches
+    tick().then(() => {
+      if (canvas && r) buildChart();
+    });
     return () => { if (chart) { chart.destroy(); chart = null; } };
   });
 </script>

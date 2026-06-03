@@ -1,11 +1,13 @@
 <script lang="ts">
-  // onMount/onDestroy not needed — using $effect with cleanup instead
+  import { tick } from 'svelte';
   import type { MetricGrade } from '../types.js';
 
   interface Props { metric: MetricGrade; }
   let { metric }: Props = $props();
 
-  let canvas: HTMLCanvasElement | undefined = $state();
+  // Plain let — NOT $state(). Chart.js calls Object.defineProperty on canvas
+  // elements internally (resize observer), which Svelte 5's reactive proxy blocks.
+  let canvas: HTMLCanvasElement;
   let chart: any;
 
   const gradeColor: Record<string, string> = {
@@ -87,11 +89,13 @@
     });
   }
 
-  // In Svelte 5 runes mode, canvas must be $state() for $effect to track it.
-  // onMount/onDestroy replaced by $effect with cleanup return.
+  // Track metric changes so chart rebuilds when election switches.
+  // tick() ensures the canvas DOM element is mounted before Chart.js runs.
   $effect(() => {
-    if (!canvas) return;
-    buildChart();
+    const m = metric; // declare dependency so effect re-runs on metric change
+    tick().then(() => {
+      if (canvas && m) buildChart();
+    });
     return () => { if (chart) { chart.destroy(); chart = null; } };
   });
 </script>
