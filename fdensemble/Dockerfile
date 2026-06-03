@@ -18,18 +18,9 @@ RUN npm run build
 # ── Stage 2: Python API server ────────────────────────────────────────────────
 FROM python:3.12-slim
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-    ca-certificates git libgdal-dev \
- && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
-# Install fdp from GitHub (shared data platform)
-RUN pip install --no-cache-dir \
-    "git+https://github.com/evolvedHow/fgdp.git#subdirectory=fdp"
-
-# Install fdensemble dependencies
+# Only install what main.py actually imports — no geopandas, no fdp package
 RUN pip install --no-cache-dir \
     "fastapi" \
     "uvicorn[standard]" \
@@ -38,11 +29,7 @@ RUN pip install --no-cache-dir \
     "matplotlib" \
     "python-dotenv" \
     "requests" \
-    "httpx>=0.27.0" \
-    "geopandas>=1.0.0" \
-    "pyogrio>=0.7.0" \
-    "pyarrow>=14.0.0" \
-    "shapely>=2.0.0"
+    "httpx>=0.27.0"
 
 # Copy application source using repo-root-relative paths
 COPY fdensemble/main.py ./
