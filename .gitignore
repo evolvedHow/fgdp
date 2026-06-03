@@ -12,3 +12,14 @@ wheels/
 # Secrets
 .env
 *.env
+
+# Large data files — store in Modal volume or local disk, not git
+*.parquet
+*.parquet.tmp
+fdp/data/repos/
+*.duckdb
+*.duckdb.wal
+
+# Agent/tool infrastructure
+.agents/
+skills-lock.json
