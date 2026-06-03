@@ -53,11 +53,18 @@
       },
     ];
 
-    if (enactedShares) {
-      const sorted = [...enactedShares].sort((a, b) => a - b);
+    // Enacted overlay: use pre-sorted data from scorecard (river.enacted),
+    // or fall back to enactedShares prop (ALARM CSV path, sorted here)
+    const enactedData = river.enacted
+      ? river.enacted
+      : enactedShares
+        ? [...enactedShares].sort((a, b) => a - b)
+        : null;
+
+    if (enactedData) {
       datasets.push({
         label: 'Enacted',
-        data: sorted,
+        data: enactedData,
         borderColor: '#111',
         borderWidth: 2.5,
         backgroundColor: 'transparent',
@@ -128,6 +135,8 @@
     <canvas bind:this={canvas}></canvas>
   </div>
   <div style="font-size:.68rem;color:var(--gray);margin-top:.4rem;">
-    Districts sorted by partisan lean (least to most Democratic). Shaded band = 5th–95th percentile of {river.n_sample.toLocaleString()} sampled plans. Dashed reference line at 50%.
+    Districts sorted by partisan lean (least to most Democratic).
+    Shaded band = 5th–95th percentile of {river.n_sample.toLocaleString()} plans.
+    Dashed reference line at 50%.
   </div>
 </div>

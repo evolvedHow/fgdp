@@ -1,3 +1,10 @@
+export interface ElectionOption {
+  year: number;
+  election_type: string;
+  office: string;
+  label: string;
+}
+
 export interface RunMeta {
   id: string;
   name: string;
@@ -6,6 +13,10 @@ export interface RunMeta {
   n_plans: number;
   description: string;
   tags: string[];
+  source?: string;       // 'gerrychain' | 'alarm' | undefined for legacy runs
+  chamber?: string;      // 'congress' | 'senate' | 'house'
+  elections?: ElectionOption[];  // populated for GerryChain scorecard runs
+  election_idx?: number;
 }
 
 export interface Histogram {
@@ -55,6 +66,7 @@ export interface RiverData {
   p5: number[];
   p50: number[];
   p95: number[];
+  enacted?: number[] | null;  // present for GerryChain scorecard runs
 }
 
 export interface Analysis {

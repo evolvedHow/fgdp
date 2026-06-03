@@ -9,6 +9,7 @@
   let runs: RunMeta[]  = $state([]);
   let analysis: Analysis | null = $state(null);
   let selectedRunId: string  = $state('');
+  let selectedElectionIdx: number = $state(0);
   let loading  = $state(false);
   let error    = $state('');
 
@@ -43,11 +44,12 @@
     }
   }
 
-  async function loadAnalysis(runId: string) {
+  async function loadAnalysis(runId: string, electionIdx: number = 0) {
     loading = true;
     error   = '';
     try {
-      const res = await fetch(`/api/analysis?run=${encodeURIComponent(runId)}`);
+      const url = `/api/analysis?run=${encodeURIComponent(runId)}&election=${electionIdx}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       analysis = await res.json();
     } catch (e: any) {
@@ -59,8 +61,17 @@
 
   async function switchRun(runId: string) {
     selectedRunId = runId;
-    await loadAnalysis(runId);
+    selectedElectionIdx = 0;
+    await loadAnalysis(runId, 0);
   }
+
+  async function switchElection(idx: number) {
+    selectedElectionIdx = idx;
+    await loadAnalysis(selectedRunId, idx);
+  }
+
+  // Available elections for the current run (only GerryChain scorecard runs)
+  const availableElections = $derived(summary?.run?.elections ?? []);
 
   // Enacted district shares for river chart (sorted ascending)
   const enactedShares = $derived(
@@ -89,15 +100,30 @@
     <!-- Run info strip -->
     <div style="background:var(--card);border-radius:8px;padding:.6rem 1rem;box-shadow:var(--shadow);
                 border:1.5px solid var(--border);margin-bottom:.9rem;
-                display:flex;gap:1.5rem;flex-wrap:wrap;font-size:.78rem;color:var(--gray);">
+                display:flex;gap:1.5rem;flex-wrap:wrap;font-size:.78rem;color:var(--gray);align-items:center;">
       <span><b>State:</b> {summary?.state_full}</span>
-      <span><b>Chamber:</b> {summary?.plan_type.toUpperCase()}</span>
+      <span><b>Chamber:</b> {(summary?.run?.chamber ?? summary?.plan_type ?? '').toUpperCase()}</span>
       <span><b>Cycle:</b> {summary?.plan_year}</span>
       <span><b>Plans:</b> {summary?.n_plans.toLocaleString()}</span>
       <span><b>Algorithm:</b> {summary?.run.algorithm}</span>
       <span><b>Run date:</b> {summary?.run.date}</span>
       {#if summary?.run.description}
         <span style="flex:1;min-width:200px;">{summary.run.description}</span>
+      {/if}
+      {#if availableElections.length > 1}
+        <span style="margin-left:auto;display:flex;align-items:center;gap:.4rem;">
+          <b>Election:</b>
+          <select
+            value={selectedElectionIdx}
+            onchange={(e) => switchElection(parseInt((e.target as HTMLSelectElement).value))}
+            style="font-size:.78rem;padding:.2rem .4rem;border:1px solid var(--border);
+                   border-radius:4px;background:var(--card);color:inherit;cursor:pointer;"
+          >
+            {#each availableElections as elec, i}
+              <option value={i}>{elec.label}</option>
+            {/each}
+          </select>
+        </span>
       {/if}
     </div>
 

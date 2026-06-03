@@ -12,7 +12,7 @@ how they connect.
 2. [Technology Stack](#2-technology-stack)
 3. [Component Descriptions](#3-component-descriptions)
 4. [Data Flow](#4-data-flow)
-5. [Database Schema](#5-database-schema)
+5. [Canonical Scorecard Format](#5-canonical-scorecard-format)
 6. [Ensemble Pipeline Deep Dive](#6-ensemble-pipeline-deep-dive)
 7. [Configuration System](#7-configuration-system)
 8. [Deployment Architecture](#8-deployment-architecture)
@@ -26,23 +26,27 @@ how they connect.
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                        FAIR DISTRICTS GA SYSTEM                              │
 │                                                                              │
-│  INPUT DATA                COMPUTE (Modal)        STORAGE (Supabase)        │
-│  ──────────                ──────────────────     ─────────────────         │
-│  Census VTDs (2020)  ──→  GerryChain ReCom  ──→  fdp.ensemble_scores       │
-│  RDH Election blocks ──→  run_ensemble.py   ──→  fdp.ensemble_draw_stats    │
-│  RDH CVAP blocks     ──→  5 parallel chains ──→  fdp.ensemble_demographics  │
-│  Enacted shapefiles  ──→                         fdp.ensemble_competitive_  │
-│                            GRAPHS (Modal vol)         counts                │
-│                            ga_congress.json   ──→  fdp.election_results     │
-│                            ga_senate.json     ──→  fdp.ensemble_runs        │
+│  INPUT DATA                COMPUTE (Modal)        LOCAL PARQUET FILES       │
+│  ──────────                ──────────────────     ─────────────────────     │
+│  Census VTDs (2020)  ──→  GerryChain ReCom  ──→  *_plans.parquet           │
+│  RDH Election blocks ──→  run_ensemble.py   ──→  (Modal volume)             │
+│  RDH CVAP blocks     ──→  5 parallel chains                                 │
+│  Enacted shapefiles  ──→                                                    │
+│                            GRAPHS (Modal vol)                               │
+│                            ga_congress.json                                 │
+│                            ga_senate.json                                   │
 │                            ga_house.json                                    │
 │                                                                              │
-│  LOCAL SCORING SCRIPTS               OUTPUT                                 │
-│  ─────────────────────               ──────                                 │
-│  score_ensemble_plans.py  ──────→    Charts (PNG)                           │
-│  score_ensemble_demographics.py ──→  fdensemble frontend                    │
-│  build_draw_stats.py       ──────→   v_enacted_vs_benchmark                 │
-│  visualize_benchmark.py    ──────→                                          │
+│  SCORING PIPELINE (fdp/scripts/)              OUTPUT                        │
+│  ────────────────────────────────             ──────                        │
+│  score_ensemble_plans.py    ──────→           *_scores.parquet              │
+│  score_ensemble_demographics.py ──→           *_demographics.parquet        │
+│  build_draw_stats.py        ──────→           *_draw_stats.parquet          │
+│  build_scorecard.py         ──────→           *_scorecard.json   ──→  UI   │
+│  visualize_benchmark.py     ──────→           charts/*.png                  │
+│                                                                              │
+│  All aggregation: DuckDB in-process  (no database server)                  │
+│  ALARM/Harvard data: fdensemble/dataverse_files/ (direct CSV read)         │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -55,7 +59,7 @@ how they connect.
 | Language | Where used | Version |
 |---|---|---|
 | Python | All backend scripts, fdp package, fdga-chain | 3.12 |
-| SQL (PostgreSQL) | Supabase schema, all analytics | PostgreSQL 15 |
+| SQL (DuckDB) | All analytics queries — runs in-process, no server | DuckDB 1.1+ |
 | TypeScript/Svelte | fdensemble frontend, fdex, map-compare | Svelte 5, Vite |
 | R | ALARM data exports (archived) | 4.x |
 
@@ -67,7 +71,7 @@ how they connect.
 | `geopandas 1.1` | Spatial data processing, CRS management, geometry operations |
 | `shapely 2.1` | Geometry predicates (used by geopandas) |
 | `pyarrow 23` | Parquet I/O for plans files and scoring output |
-| `psycopg 3.x` | PostgreSQL driver (async-capable, psycopg3 style with `%s` params) |
+| `duckdb 1.1+` | In-process OLAP engine — reads Parquet via `read_parquet(?)`, replaces PostgreSQL |
 | `numpy` | Vectorized matrix operations for ensemble scoring |
 | `pandas` | DataFrame manipulation |
 | `matplotlib / seaborn` | Chart generation |
@@ -78,10 +82,13 @@ how they connect.
 
 | Service | Role | Plan |
 |---|---|---|
-| **Modal** | Serverless compute for GerryChain runs; persistent volume for plans parquets | Compute (pay-per-use) |
-| **Supabase** | PostgreSQL database storing all scored results and run catalog | Free tier |
+| **Modal** | Serverless compute for GerryChain runs; persistent volume for `*_plans.parquet` | Compute (pay-per-use) |
+| **Local disk** | All scored Parquet files (`fdp/data/repos/main/ensemble/`) | Free — not committed to git |
 | **GitHub Actions** | CI/CD for frontend apps (fdex, lrdb, map-compare) | Free |
 | **GitHub Pages** | Static hosting for frontend apps | Free |
+| **Railway** | fdensemble FastAPI backend (reads local dataverse CSV + scorecard JSON) | Hobby plan |
+
+> **Note:** Supabase was used in earlier versions of this project. It has been eliminated entirely. All data is now stored as Parquet files on local disk / Modal volume and queried via DuckDB in-process.
 
 ---
 
@@ -92,11 +99,11 @@ how they connect.
 The shared data layer. A Python package used by all other components.
 
 **Key responsibilities:**
-- Owns the canonical copies of all data files (VTD shapefiles, election parquets, CVAP data)
+- Owns the canonical copies of all reference data (VTD shapefiles, election Parquets, CVAP data)
 - Provides typed loaders with built-in data quality checks
 - Manages the benchmark config YAML hierarchy (`BenchmarkConfig` class)
 - Contains all scoring and pipeline scripts
-- Defines and manages the Supabase schema via numbered SQL migrations
+- Produces `*_scorecard.json` files (canonical format shared with fdensemble UI)
 
 **Important classes:**
 - `fdp.benchmark_config.BenchmarkConfig` — loads YAML configs, resolves thresholds,
@@ -241,174 +248,137 @@ BenchmarkConfig.from_yaml(config_path)
 ### Scoring pipeline
 
 ```
-{run_name}_plans.parquet  (Modal volume)
+{run_name}_plans.parquet  (downloaded from Modal volume)
   ── plan_id, draw, geoid, district
            │
            ├─▶ score_ensemble_plans.py
-           │     ├─ Load election_results from Supabase for all 6 elections
-           │     ├─ Build VTD→votes lookup dict
-           │     ├─ Vectorized numpy: for each draw, sum votes per district
-           │     └─ Upsert to fdp.ensemble_scores
+           │     ├─ Load election_results_vtd.parquet via DuckDB
+           │     ├─ Load plan matrix: DuckDB SQL index mapping (avoids 64M Python string objects)
+           │     ├─ Vectorized numpy: boolean mask × matrix multiply per district
+           │     └─ Write {run_name}_scores.parquet (dem_2pv, winner per draw×district×election)
            │
            ├─▶ score_ensemble_demographics.py
-           │     ├─ Load CVAP columns from Supabase
+           │     ├─ Load cvap_vtd.parquet via pandas
+           │     ├─ Same DuckDB plan matrix loader
            │     ├─ Vectorized numpy matrix multiply
-           │     └─ Upsert to fdp.ensemble_demographics
+           │     └─ Write {run_name}_demographics.parquet (CVAP, majority flags per draw×district)
            │
-           └─▶ build_draw_stats.py
-                 ├─ INSERT...SELECT (all computation server-side in PostgreSQL)
-                 ├─ Writes fdp.ensemble_draw_stats (partisan rollup)
-                 └─ Writes fdp.ensemble_competitive_counts (per threshold)
+           ├─▶ build_draw_stats.py
+           │     ├─ DuckDB aggregation on {run_name}_scores.parquet (in-process)
+           │     ├─ Write {run_name}_draw_stats.parquet (EG, mean-median, seats per draw×election)
+           │     └─ Write {run_name}_competitive_counts.parquet (n_competitive per threshold)
+           │
+           ├─▶ visualize_benchmark.py
+           │     ├─ DuckDB reads all scored Parquets
+           │     └─ Write charts/*.png (partisan, competitiveness, demographics, river per election)
+           │
+           └─▶ build_scorecard.py  ← NEW
+                 ├─ DuckDB reads draw_stats, competitive_counts, demographics, scores
+                 ├─ Computes Princeton grades + histograms + river chart per election
+                 └─ Write {run_name}_scorecard.json  →  copy to fdensemble/input_data/
 ```
+
+**Key:** All computation uses DuckDB in-process — no database server, no network calls. The entire pipeline runs from a WSL terminal with `uv run --project fdp python fdp/scripts/<script>.py`.
 
 ---
 
-## 5. Database Schema
+## 5. Canonical Scorecard Format
 
-All tables live in the `fdp` schema in Supabase (PostgreSQL 15).
+The canonical scorecard (`{run_name}_scorecard.json`) is the shared data model
+that allows both GerryChain runs and ALARM/Harvard pre-computed ensembles to be
+displayed in the same fdensemble UI.
 
-### `fdp.election_results`
+**Produced by:** `fdp/scripts/build_scorecard.py` (GerryChain Parquets → scorecard)
 
-VTD-level election results and CVAP data. One row per VTD per election.
+**Consumed by:** `fdensemble/main.py` (`_build_run_from_scorecard()`)
 
-```sql
-CREATE TABLE fdp.election_results (
-    geoid          TEXT NOT NULL,         -- 11-char Census VTD GEOID20
-    year           INT  NOT NULL,         -- Election year (2018, 2020, 2021, 2022, 2024)
-    election_type  TEXT NOT NULL,         -- 'general' | 'runoff'
-    office         TEXT NOT NULL,         -- 'governor' | 'president' | 'senate'
-    dem_votes      INT,
-    rep_votes      INT,
-    total_votes    INT,
-    CVAP_TOT       INT,
-    CVAP_BLK       INT,
-    CVAP_HSP       INT,
-    CVAP_WHT       INT,
-    CVAP_ASN       INT,
-    PRIMARY KEY (geoid, year, election_type, office)
-);
+### Parquet file schemas (on disk)
+
+These are the intermediate files in `fdp/data/repos/main/ensemble/`. They are
+**not committed to git** (excluded by `.gitignore`). They live on local disk and
+Modal volume only.
+
+| File | Key columns | Rows (congress 9.5k draws) |
+|---|---|---|
+| `{run}_plans.parquet` | plan_id, draw, geoid, district | 25.6M (2698×9501) |
+| `{run}_scores.parquet` | plan_id, draw, district, year, office, dem_2pv, winner | ~798k (14×9501×6) |
+| `{run}_draw_stats.parquet` | plan_id, draw, year, office, dem_seats, efficiency_gap, mean_median | ~57k (9501×6) |
+| `{run}_competitive_counts.parquet` | plan_id, draw, year, office, threshold, n_competitive | ~57k (9501×6×1 threshold) |
+| `{run}_demographics.parquet` | plan_id, draw, district, cvap_blk, pct_black, majority_black, … | ~133k (14×9501) |
+| `{run}_scorecard.json` | Pre-computed Princeton grades + histograms + river per election | ~500 KB |
+
+### Scorecard JSON structure
+
+```json
+{
+  "run": {
+    "id": "congress_2026_v2",
+    "name": "Congress 2026 V2",
+    "source": "gerrychain",
+    "chamber": "congress",
+    "n_districts": 14,
+    "n_draws": 9501,
+    "n_plans": 9501,
+    "algorithm": "ReCom",
+    "date": "2026-06-03",
+    "description": "GerryChain ReCom MCMC ensemble — congress, 9,501 draws across 6 elections.",
+    "elections": [
+      {"year": 2022, "election_type": "general", "office": "governor", "label": "2022 Governor"},
+      {"year": 2024, "election_type": "general", "office": "president", "label": "2024 President"}
+    ]
+  },
+  "elections": [
+    {
+      "year": 2022, "election_type": "general", "office": "governor",
+      "label": "2022 Governor",
+      "metrics": {
+        "dem_seats":      {"label": "Dem. Seats", "grade": "C", "enacted": 5, "pct_rank": 32.4, "histogram": {...}},
+        "efficiency_gap": {"label": "Efficiency Gap", "grade": "F", "enacted": 0.089, ...},
+        "mean_median":    {"label": "Mean–Median Diff.", "grade": "B", "enacted": -0.023, ...},
+        "comp_seats":     {"label": "Competitive Seats", "grade": "D", "enacted": 2, "threshold": 0.05, ...},
+        "partisan_bias":  null
+      },
+      "river": {
+        "n_districts": 14, "n_draws": 9500,
+        "p5": [...], "p50": [...], "p95": [...], "enacted": [...]
+      }
+    }
+  ],
+  "demographics": {
+    "source": "cvap", "year": 2024,
+    "metrics": {
+      "maj_black": {"label": "Majority-Black Dist.", "grade": "B", "enacted": 1, ...},
+      "min_coal":  {"label": "Minority Coalition", "grade": "A", "enacted": 5, ...}
+    }
+  },
+  "compactness": {"polsby_popper": null, "county_splits": null, "muni_splits": null},
+  "grades": {
+    "maj_black":           {...},
+    "min_coal":            {...},
+    "_partisan_fairness":  {"grade": "C", "ensemble_pass": false, "normative_pass": true, ...},
+    "_overall":            {"grade": "C", ...}
+  }
+}
 ```
 
-### `fdp.ensemble_runs`
+### Metric coverage by source
 
-Catalog of all ensemble runs — one row per named run.
+| Metric | ALARM (CSV) | GerryChain (scorecard) |
+|---|---|---|
+| Dem seats | ✅ | ✅ |
+| Efficiency gap | ✅ | ✅ |
+| Mean-median | ✅ (computed) | ✅ |
+| Partisan bias | ✅ `pbias` | ❌ null |
+| Competitive seats | ✅ (7pp default) | ✅ (5pp default) |
+| Polsby-Popper | ✅ | ❌ null |
+| County/muni splits | ✅ | ❌ null |
+| Majority-Black | ✅ (VAP) | ✅ (CVAP — more accurate) |
+| Minority coalition | ✅ (VAP) | ✅ (CVAP) |
+| Multiple elections | ❌ (one average) | ✅ (6 elections, selector in UI) |
+| River chart enacted | ❌ (loaded from raw CSV at runtime) | ✅ (pre-computed in scorecard) |
 
-```sql
-CREATE TABLE fdp.ensemble_runs (
-    run_name       TEXT PRIMARY KEY,
-    benchmark_id   TEXT,           -- YAML config name
-    status         TEXT,           -- 'pending' | 'running' | 'completed' | 'failed'
-    chamber        TEXT,           -- 'congress' | 'senate' | 'house'
-    n_draws        INT,
-    runtime_minutes NUMERIC,
-    params         JSONB,          -- Full resolved config (reproducible)
-    plans_file     TEXT,           -- Modal volume path
-    started_at     TIMESTAMPTZ,
-    updated_at     TIMESTAMPTZ
-);
-```
-
-### `fdp.ensemble_scores`
-
-Per-draw × district × election partisan scores. The largest table (~840k rows per run).
-
-```sql
-CREATE TABLE fdp.ensemble_scores (
-    plan_id        TEXT NOT NULL,   -- = run_name
-    draw           INT  NOT NULL,   -- 1 = enacted, 2..N = simulated
-    district       INT  NOT NULL,   -- district number (1-indexed)
-    year           INT  NOT NULL,
-    election_type  TEXT NOT NULL,
-    office         TEXT NOT NULL,
-    dem_votes      INT,
-    rep_votes      INT,
-    total_votes    INT,
-    dem_2pv        NUMERIC(8,6),    -- dem / (dem + rep), 0.0 to 1.0
-    winner         TEXT,            -- 'dem' | 'rep' | 'tie'
-    PRIMARY KEY (plan_id, draw, district, year, election_type, office)
-);
-```
-
-### `fdp.ensemble_draw_stats`
-
-Per-draw partisan rollup. Aggregated from ensemble_scores server-side.
-
-```sql
-CREATE TABLE fdp.ensemble_draw_stats (
-    plan_id        TEXT NOT NULL,
-    draw           INT  NOT NULL,
-    year           INT  NOT NULL,
-    election_type  TEXT NOT NULL,
-    office         TEXT NOT NULL,
-    dem_seats      INT,
-    rep_seats      INT,
-    tied_seats     INT,
-    avg_dem_2pv    NUMERIC(8,6),
-    efficiency_gap NUMERIC(8,6),   -- + = Republican advantage
-    mean_median    NUMERIC(8,6),   -- + = Democratic skew
-    PRIMARY KEY (plan_id, draw, year, election_type, office)
-);
-```
-
-### `fdp.ensemble_competitive_counts`
-
-Competitive district counts — normalized by threshold (no hardcoded column names).
-
-```sql
-CREATE TABLE fdp.ensemble_competitive_counts (
-    plan_id        TEXT         NOT NULL,
-    draw           INT          NOT NULL,
-    year           INT          NOT NULL,
-    election_type  TEXT         NOT NULL,
-    office         TEXT         NOT NULL,
-    threshold      NUMERIC(5,3) NOT NULL,   -- e.g. 0.050, 0.070
-    n_competitive  INT          NOT NULL,
-    PRIMARY KEY (plan_id, draw, year, election_type, office, threshold)
-);
-```
-
-**Design note:** Thresholds are data values, not column names. Adding a new
-threshold (e.g. 0.03) only requires updating the YAML config and rerunning
-`build_draw_stats.py` — no schema changes needed.
-
-### `fdp.ensemble_demographics`
-
-CVAP-based district demographics per draw.
-
-```sql
-CREATE TABLE fdp.ensemble_demographics (
-    plan_id                    TEXT NOT NULL,
-    draw                       INT  NOT NULL,
-    district                   INT  NOT NULL,
-    cvap_tot                   INT,
-    cvap_blk                   INT,
-    cvap_hsp                   INT,
-    cvap_wht                   INT,
-    cvap_asn                   INT,
-    pct_black                  NUMERIC(7,5),
-    pct_hispanic               NUMERIC(7,5),
-    pct_white                  NUMERIC(7,5),
-    pct_asian                  NUMERIC(7,5),
-    pct_minority_coalition     NUMERIC(7,5),
-    majority_black             BOOLEAN,
-    majority_white             BOOLEAN,
-    majority_hispanic          BOOLEAN,
-    majority_minority_coalition BOOLEAN,
-    PRIMARY KEY (plan_id, draw, district)
-);
-```
-
-### Key Views
-
-| View | Purpose |
-|---|---|
-| `v_ensemble_runs` | Formatted run catalog with runtime in minutes |
-| `v_partisan_distribution` | Histogram data: fraction of draws producing N dem seats |
-| `v_competitive_distribution` | Histogram: competitive district counts by threshold |
-| `v_demographic_draw_stats` | Per-draw majority-X district counts |
-| `v_demographic_distribution` | Histogram: majority-minority district counts |
-| `v_enacted_vs_benchmark` | **Main grading view** — enacted plan vs. ensemble on all metrics |
-| `v_correlation_competitive_partisan` | Correlation between competitiveness and seat count |
+`null` metrics are skipped by fdensemble — sections with no available metrics
+(e.g., "Geographic" for GerryChain runs) are hidden automatically.
 
 ---
 
@@ -560,45 +530,47 @@ without noting the version difference.
 ```
 fdga-chain/ repo
     │
-    ├─ modal_app.py          ← App definition: secrets, volume, functions
+    ├─ modal_app.py             ← App definition: secrets, volume, functions
     ├─ scripts/run_ensemble.py  ← Mounted into container as /root/scripts/
-    └─ api/                  ← Mounted as /root/api/
+    └─ api/                     ← Mounted as /root/api/
 
 Modal Volume: fdga-chain-data
     /graphs/     ← ga_congress.json, ga_senate.json, ga_house.json (~4 MB)
     /ensemble/   ← {run}_plans.parquet files (~8–80 MB each)
     /raw/        ← Enacted district shapefiles (used by build_graph.py)
     /states/     ← GA state config JSON
-
-Modal Secrets:
-    fdga-chain-db      → DATABASE_URL
-    fdga-chain-secrets → MAPBOX_TOKEN
 ```
 
 **After any code change to `scripts/run_ensemble.py` or `modal_app.py`:**
 ```bash
+cd ~/codebox/fgdp/fdga-chain
 modal deploy modal_app.py
 ```
 
-**After any change to the graphs or raw data:**
+**Download plans after a run completes:**
 ```bash
-uv run python scripts/upload_to_modal.py
-modal deploy modal_app.py
+modal volume get fdga-chain-data /ensemble/{run_name}_plans.parquet .
 ```
 
-**After updating a Modal secret:**
+### fdensemble (visualization backend)
+
+Runs on Railway (hobby plan) or locally. Reads two data sources:
+1. **ALARM CSV** — `fdensemble/dataverse_files/GA_cd_2020/GA_cd_2020_stats.csv` (committed to repo)
+2. **Canonical scorecard JSON** — `fdensemble/input_data/{run_name}_scorecard.json` (generated locally, committed to repo)
+
+To add a new GerryChain run to fdensemble:
 ```bash
-modal secret create <name> <KEY>=<value> --force
-modal deploy modal_app.py    # required — secret IDs change with --force
+# 1. Build scorecard from scored Parquets
+uv run --project fdp python fdp/scripts/build_scorecard.py --run-name congress_2026_v2
+
+# 2. Copy to fdensemble input_data/
+cp fdp/data/repos/main/ensemble/congress_2026_v2_scorecard.json fdensemble/input_data/
+
+# 3. Commit and push → Railway redeploys automatically
+git add fdensemble/input_data/congress_2026_v2_scorecard.json
+git commit -m "Add congress_2026_v2 scorecard to fdensemble"
+git push
 ```
-
-### Supabase (data storage)
-
-Session pooler URL used by all scripts. The pooler handles connection multiplexing
-for the serverless Modal containers. Direct connections can be used for migrations.
-
-All writes use explicit `BEGIN READ WRITE` transactions because Supabase defaults
-to read-only mode in some configurations.
 
 ### GitHub Actions (frontend CI/CD)
 
@@ -658,9 +630,27 @@ at ~30 steps/second. Locally on a laptop it would take 6+ hours. Modal's
 serverless containers spin up in < 2 minutes and shut down automatically, with
 no idle cost.
 
-### Why score in Python, not in Modal?
+### Why score in Python (locally), not in Modal?
 
 The scoring step (matching plan VTD assignments to election vote totals) is
-a data-join operation that runs against Supabase. Running it locally means the
-developer can inspect, debug, and re-run individual scoring steps without
-re-running the entire ensemble. Scoring takes ~30 seconds for a 10,000-draw run.
+a data-join operation that runs against local Parquet files via DuckDB. Running
+it locally means the developer can inspect, debug, and re-run individual steps
+without re-running the ensemble. Scoring takes ~30s for congress (9,501 draws × 6 elections),
+~90s for senate, and ~3 minutes for house (24,003 draws × 180 districts).
+
+### Why DuckDB instead of PostgreSQL/Supabase?
+
+The scoring pipeline produces large write-once, read-rarely datasets (e.g.,
+`congress_2026_v2_scores.parquet` is ~60MB; the equivalent Supabase table was
+~900MB due to PostgreSQL row overhead). DuckDB reads columnar Parquet directly
+and runs analytical SQL in-process with zero server setup. For the scoring
+pattern (one writer, infrequent reads), Parquet + DuckDB is 10–50× more compact
+and requires no paid infrastructure. Supabase was eliminated after hitting the
+500MB free-tier limit.
+
+### Why pre-compute scorecard grades instead of computing at request time?
+
+For house runs (24,003 draws × 180 districts × 6 elections = 25.9M rows of scored
+data), computing histograms and percentile ranks at HTTP request time would take
+30+ seconds. Pre-computing all metrics in `build_scorecard.py` reduces the
+fdensemble API response to a simple JSON file read (<1ms).

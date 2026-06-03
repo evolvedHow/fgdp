@@ -421,12 +421,11 @@ def _river_data(sampled: pd.DataFrame, mapping: dict, n_sample: int = 500) -> di
 
 def _build_analysis(run: dict) -> dict:
     meta    = run['meta']
-    mapping = meta.get('columns', _DEFAULT_COLS)
     return {
         'summary': {
             'state':         STATE,
             'state_full':    STATE_FULL,
-            'plan_type':     PLAN_TYPE,
+            'plan_type':     meta.get('chamber', PLAN_TYPE),
             'plan_year':     PLAN_YEAR,
             'n_districts':   N_DISTRICTS,
             'n_plans':       meta['n_plans'],
@@ -462,6 +461,81 @@ def _build_run(run_id: str, csv_path: Path, meta_file: Path) -> dict:
     }
 
 
+def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0) -> dict:
+    """
+    Load a canonical scorecard JSON (produced by fdp/scripts/build_scorecard.py)
+    and return a run dict in the same shape as _build_run() for ALARM CSVs.
+
+    The scorecard already contains pre-computed Princeton grades and river data,
+    so no re-computation is needed. The returned 'grades' dict is in the same
+    format that compute_princeton_grades() produces — fdensemble renders it unchanged.
+    """
+    sc = json.loads(scorecard_path.read_text())
+    run_info = sc['run']
+
+    # Select the requested election (clamp to valid range)
+    elections = sc.get('elections', [])
+    election_idx = max(0, min(election_idx, len(elections) - 1)) if elections else 0
+
+    # Build grades dict for the selected election
+    # Scorecard grades already include _partisan_fairness, _overall, and
+    # demographics metrics (maj_black, min_coal).  Election-specific metrics
+    # (dem_seats, efficiency_gap, mean_median, comp_seats) come from the selected
+    # election's 'metrics' block.
+    grades: dict = {}
+
+    if elections:
+        elec = elections[election_idx]
+        for key, val in elec.get('metrics', {}).items():
+            if val is not None:
+                grades[key] = val
+
+    # Merge in cross-election grades (composites, demographics)
+    for key, val in sc.get('grades', {}).items():
+        if val is not None:
+            grades[key] = val
+
+    # River for selected election
+    river = None
+    if elections:
+        elec_river = elections[election_idx].get('river')
+        if elec_river:
+            river = {
+                'n_sample':    elec_river.get('n_draws', 0),
+                'n_districts': elec_river.get('n_districts', run_info.get('n_districts', N_DISTRICTS)),
+                'p5':          elec_river.get('p5', []),
+                'p50':         elec_river.get('p50', []),
+                'p95':         elec_river.get('p95', []),
+                'enacted':     elec_river.get('enacted'),  # may be None for ALARM scorecards
+            }
+
+    # Build meta dict (fdensemble RunMeta shape + extra fields for UI)
+    meta = {
+        'id':          run_info['id'],
+        'name':        run_info.get('name', run_info['id']),
+        'algorithm':   run_info.get('algorithm', 'GerryChain ReCom'),
+        'date':        run_info.get('date', ''),
+        'n_plans':     run_info.get('n_plans', run_info.get('n_draws', 0)),
+        'description': run_info.get('description', ''),
+        'tags':        run_info.get('tags', []),
+        'source':      run_info.get('source', 'scorecard'),
+        'chamber':     run_info.get('chamber', ''),
+        # Elections list — passed to frontend for the election selector
+        'elections':   run_info.get('elections', []),
+        'election_idx': election_idx,
+    }
+
+    return {
+        'meta':    meta,
+        'grades':  grades,
+        'river':   river,
+        # These are unused by fdensemble render paths but kept for compat
+        'sampled': None,
+        'enacted': None,
+        'raw':     {},
+    }
+
+
 def _discover_and_load_runs() -> dict:
     found = {}
 
@@ -489,6 +563,22 @@ def _discover_and_load_runs() -> dict:
                     found[rid] = _build_run(rid, csvs[0], run_dir / 'meta.json')
                 except Exception as exc:
                     print(f'  WARNING: failed to load {rid}: {exc}')
+
+    # Discover canonical scorecard JSON files in input_data/ and RUNS_DIR/
+    input_data_dir = Path('input_data')
+    scorecard_dirs = [input_data_dir, RUNS_DIR]
+    for scan_dir in scorecard_dirs:
+        if not scan_dir.exists():
+            continue
+        for sc_path in sorted(scan_dir.glob('*_scorecard.json')):
+            rid = sc_path.stem.replace('_scorecard', '')
+            if rid in found:
+                continue  # don't overwrite ALARM CSV run with same id
+            print(f'  Loading scorecard: {rid}')
+            try:
+                found[rid] = _build_run_from_scorecard(sc_path, election_idx=0)
+            except Exception as exc:
+                print(f'  WARNING: failed to load scorecard {rid}: {exc}')
 
     return found
 
@@ -609,8 +699,32 @@ def get_runs():
 
 
 @app.get('/api/analysis')
-def get_analysis(run: str = Query(default=None)):
-    return _build_analysis(_get_run(run))
+def get_analysis(run: str = Query(default=None), election: int = Query(default=0)):
+    """
+    Return the full analysis for a run.
+
+    For scorecard-based runs (GerryChain), the `election` parameter selects which
+    election's metrics to display (0-indexed). ALARM CSV runs ignore this parameter.
+    """
+    run_data = _get_run(run)
+
+    # If this is a scorecard run and a non-zero election is requested,
+    # reload the scorecard with the new election index
+    if election != 0 and run_data['meta'].get('source') in ('gerrychain', 'scorecard'):
+        sc_path = _find_scorecard_path(run_data['meta']['id'])
+        if sc_path:
+            run_data = _build_run_from_scorecard(sc_path, election_idx=election)
+
+    return _build_analysis(run_data)
+
+
+def _find_scorecard_path(run_id: str) -> Path | None:
+    """Locate the scorecard JSON file for a given run_id."""
+    for scan_dir in [Path('input_data'), RUNS_DIR]:
+        p = scan_dir / f'{run_id}_scorecard.json'
+        if p.exists():
+            return p
+    return None
 
 
 @app.get('/api/river')
