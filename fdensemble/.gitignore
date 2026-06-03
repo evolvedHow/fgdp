@@ -7,6 +7,5 @@ figs/
 input_data/*
 !input_data/*_scorecard.json
 frontend/node_modules/
-frontend/dist/
 .env
 *.pyc
