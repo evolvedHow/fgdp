@@ -347,7 +347,7 @@ def chart_demographics(demo_df: pd.DataFrame, plan_id: str, out_path: Path) -> N
             ax.set_visible(False)
             continue
 
-        counts = sim[col].value_counts().sort_index()
+        counts = sim[col].astype(int).value_counts().sort_index()
         xs     = counts.index.tolist()
         total  = len(sim)
         enacted_val = int(enacted[col].iloc[0]) if not enacted.empty else None
