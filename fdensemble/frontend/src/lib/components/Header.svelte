@@ -55,12 +55,16 @@
 
 <!-- Credits bar -->
 <div style="background:#163e78;color:rgba(255,255,255,.65);font-size:.7rem;
-            padding:.3rem 1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap;">
-  <span>Data &amp; methodology:</span>
-  <a href="https://alarm-redist.org" target="_blank" rel="noopener"
+            padding:.3rem 1.5rem;display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center;">
+  <span>Methodology:</span>
+  <a href="https://alarm-redist.org/" target="_blank" rel="noopener"
      style="color:rgba(255,255,255,.8);text-decoration:none;">ALARM Project</a>
-  <a href="https://mggg.org/gerrychain" target="_blank" rel="noopener"
+  <a href="https://gerrychain.readthedocs.io/en/v0.3.2docfix/" target="_blank" rel="noopener"
      style="color:rgba(255,255,255,.8);text-decoration:none;">GerryChain / MGGG</a>
-  <a href="https://gerrymander.princeton.edu" target="_blank" rel="noopener"
+  <a href="https://gerrymander.princeton.edu/about/" target="_blank" rel="noopener"
      style="color:rgba(255,255,255,.8);text-decoration:none;">Princeton Gerrymandering Project</a>
+  <span style="margin-left:.5rem;opacity:.5;">|</span>
+  <span>Data:</span>
+  <a href="https://redistrictingdatahub.org/" target="_blank" rel="noopener"
+     style="color:rgba(255,255,255,.8);text-decoration:none;">Redistricting Data Hub</a>
 </div>
