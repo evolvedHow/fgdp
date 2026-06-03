@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import type { MetricGrade } from '../types.js';
 
   interface Props { metric: MetricGrade; }
@@ -31,16 +31,20 @@
 
     if (chart) { chart.destroy(); chart = null; }
 
-    const h = metric.histogram;
-    const labels = h.edges.slice(0, -1).map((e, i) => ((e + h.edges[i + 1]) / 2).toFixed(2));
-    const col    = barColor();
+    // $state.snapshot() converts reactive proxy → plain JS object so Chart.js
+    // can safely call Object.defineProperty on the data arrays internally.
+    const snap  = $state.snapshot(metric);
+    const h     = snap.histogram;
+    const edges = Array.from(h.edges);
+    const labels = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
+    const col    = categoryColor[snap.category] ?? '#888';
 
     chart = new Chart(canvas, {
       type: 'bar',
       data: {
         labels,
         datasets: [{
-          data:            h.counts,
+          data:            Array.from(h.counts),
           backgroundColor: col + '88',
           borderColor:     col,
           borderWidth:     0.5,

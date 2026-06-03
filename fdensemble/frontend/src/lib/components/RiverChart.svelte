@@ -20,13 +20,16 @@
 
     if (chart) { chart.destroy(); chart = null; }
 
-    const labels = river.p50.map((_, i) => `District ${i + 1}`);
+    // $state.snapshot() converts reactive prop → plain JS so Chart.js can
+    // safely call Object.defineProperty on data arrays internally.
+    const r = $state.snapshot(river);
+    const labels = r.p50.map((_: number, i: number) => `District ${i + 1}`);
     const dem = '#3D77BB';
 
     const datasets: any[] = [
       {
         label: '5th–95th %ile',
-        data: river.p95,
+        data: r.p95,
         borderColor: 'transparent',
         backgroundColor: dem + '25',
         fill: '+1',
@@ -35,7 +38,7 @@
       },
       {
         label: '_lower',
-        data: river.p5,
+        data: r.p5,
         borderColor: 'transparent',
         backgroundColor: dem + '25',
         fill: false,
@@ -44,7 +47,7 @@
       },
       {
         label: 'Median',
-        data: river.p50,
+        data: r.p50,
         borderColor: dem,
         borderWidth: 2,
         backgroundColor: 'transparent',
@@ -56,8 +59,8 @@
 
     // Enacted overlay: use pre-sorted data from scorecard (river.enacted),
     // or fall back to enactedShares prop (ALARM CSV path, sorted here)
-    const enactedData = river.enacted
-      ? river.enacted
+    const enactedData = r.enacted
+      ? r.enacted
       : enactedShares
         ? [...enactedShares].sort((a, b) => a - b)
         : null;
