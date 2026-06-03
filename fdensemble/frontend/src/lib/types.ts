@@ -31,8 +31,10 @@ export interface Histogram {
 
 export interface MetricGrade {
   label: string;
+  headline: string;
   category: string;
   description: string;
+  takeaway: string;
   grade: string;
   enacted: number;
   pct_rank: number;

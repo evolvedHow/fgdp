@@ -147,123 +147,331 @@ def _histogram_data(dist: np.ndarray, enacted, n_bins: int = 40) -> dict:
 
 
 # ── Metric definitions ────────────────────────────────────────────────────────
+def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dict) -> str:
+    """
+    Generate a factual, non-partisan takeaway for a metric result.
+    States the finding and which party (if any) structurally benefits — as
+    neutral observation, not endorsement.
+    """
+    p50  = histogram.get("p50", 0)
+    p5   = histogram.get("p5", 0)
+    p95  = histogram.get("p95", 0)
+    diff = enacted - p50
+
+    def _outlier_phrase(pr: float) -> str:
+        if pr >= 97.5 or pr <= 2.5:
+            return "an extreme outlier — this result would occur in fewer than 1 in 40 neutral maps"
+        if pr >= 95 or pr <= 5:
+            return "outside the normal range for neutral maps"
+        if pr >= 90 or pr <= 10:
+            return "toward the edge of the normal range"
+        return "within the normal range for neutral maps"
+
+    if key == "dem_seats":
+        if abs(diff) < 0.5:
+            return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
+                    f"close to the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
+                    f"No significant seat-count advantage detected for either party.")
+        elif diff > 0:
+            return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
+                    f"{diff:.1f} above the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
+                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}, "
+                    f"suggesting a structural seat advantage for Democrats.")
+        else:
+            return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
+                    f"{abs(diff):.1f} below the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
+                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}, "
+                    f"suggesting a structural seat advantage for Republicans.")
+
+    elif key == "efficiency_gap":
+        if abs(diff) < 0.01:
+            return (f"Wasted votes are distributed nearly equally between parties "
+                    f"(gap: {enacted:.3f}, neutral median: {p50:.3f}). "
+                    f"Neither party has a structural vote-efficiency advantage.")
+        elif enacted > p50:
+            return (f"The enacted map's efficiency gap ({enacted:.3f}) is above the neutral "
+                    f"median ({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Democratic votes are wasted at a higher "
+                    f"rate, giving Republicans a structural advantage in translating votes to seats.")
+        else:
+            return (f"The enacted map's efficiency gap ({enacted:.3f}) is below the neutral "
+                    f"median ({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Republican votes are wasted at a higher "
+                    f"rate, giving Democrats a structural advantage in translating votes to seats.")
+
+    elif key == "mean_median":
+        if abs(diff) < 0.005:
+            return (f"Both parties convert votes to seats at nearly equal rates "
+                    f"(mean–median: {enacted:.3f}, neutral median: {p50:.3f}). "
+                    f"No systematic asymmetry detected.")
+        elif enacted > p50:
+            return (f"The mean–median difference ({enacted:.3f}) is above the neutral median "
+                    f"({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Democratic voters are disproportionately "
+                    f"concentrated, giving Republicans a more efficient geographic spread of support.")
+        else:
+            return (f"The mean–median difference ({enacted:.3f}) is below the neutral median "
+                    f"({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Republican voters are disproportionately "
+                    f"concentrated, giving Democrats a more efficient geographic spread of support.")
+
+    elif key == "comp_seats":
+        if enacted == 0:
+            return (f"The enacted map has zero competitive districts. "
+                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}. "
+                    f"Every district has a predetermined partisan lean — voters have no "
+                    f"meaningful choice in any race.")
+        elif pct_rank < 25:
+            return (f"The enacted map has just {enacted:.0f} competitive district(s) — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps. "
+                    f"Most voters live in districts where outcomes are predetermined.")
+        elif pct_rank > 75:
+            return (f"The enacted map has {enacted:.0f} competitive districts — "
+                    f"more than most neutral alternatives. "
+                    f"Voters have meaningful choice in more races than typical.")
+        else:
+            return (f"The enacted map has {enacted:.0f} competitive district(s), "
+                    f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
+
+    elif key == "partisan_bias":
+        n = COMPETITIVE_MARGIN  # proxy for context
+        if abs(enacted) < 0.02:
+            return (f"At a tied 50/50 election, both parties would win seats at nearly "
+                    f"equal rates (bias: {enacted:.3f}). The map is symmetrical.")
+        elif enacted > 0:
+            return (f"At a tied 50/50 election, Republicans would win more seats than "
+                    f"Democrats (bias: {enacted:.3f}, at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}). The map structurally favors Republicans.")
+        else:
+            return (f"At a tied 50/50 election, Democrats would win more seats than "
+                    f"Republicans (bias: {enacted:.3f}, at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}). The map structurally favors Democrats.")
+
+    elif key == "polsby_popper":
+        if pct_rank > 75:
+            return (f"Districts are compact (score: {enacted:.3f}) — more so than "
+                    f"{pct_rank:.0f}% of neutral alternatives. Shape alone does not "
+                    f"indicate manipulation.")
+        elif pct_rank < 25:
+            return (f"Districts are less compact than typical (score: {enacted:.3f}), "
+                    f"below {100-pct_rank:.0f}% of neutral alternatives. "
+                    f"Unusual shapes may warrant further scrutiny.")
+        else:
+            return (f"District compactness (score: {enacted:.3f}) is within the typical range. "
+                    f"Shape alone does not indicate manipulation.")
+
+    elif key in ("county_splits", "muni_splits"):
+        unit = "county" if key == "county_splits" else "municipal"
+        if pct_rank < 25:
+            return (f"The enacted map splits {enacted:.0f} {unit} boundaries — "
+                    f"fewer than most neutral alternatives. Communities are kept more intact.")
+        elif pct_rank > 75:
+            return (f"The enacted map splits {enacted:.0f} {unit} boundaries — "
+                    f"more than most neutral alternatives ({pct_rank:.0f}th percentile). "
+                    f"More communities are divided across multiple districts.")
+        else:
+            return (f"The enacted map splits {enacted:.0f} {unit} boundaries, "
+                    f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
+
+    elif key == "maj_black":
+        if pct_rank < 10:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                    f"(typical range: {p5:.0f}–{p95:.0f}). "
+                    f"This is below what geography alone suggests, "
+                    f"raising potential Voting Rights Act concerns.")
+        elif pct_rank > 90:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
+                    f"more than most neutral alternatives. "
+                    f"Black communities have strong electoral representation opportunity.")
+        else:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s), "
+                    f"within the typical range ({p5:.0f}–{p95:.0f}) for neutral maps.")
+
+    elif key in ("maj_hisp", "maj_aian", "maj_asian"):
+        groups = {"maj_hisp": "Hispanic", "maj_aian": "Indigenous", "maj_asian": "Asian American"}
+        group = groups.get(key, "minority")
+        if pct_rank < 10:
+            return (f"The enacted map has {enacted:.0f} majority-{group} district(s) — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps. "
+                    f"Potential concern for Voting Rights Act compliance.")
+        elif pct_rank > 90:
+            return (f"The enacted map has {enacted:.0f} majority-{group} district(s) — "
+                    f"more than most neutral alternatives.")
+        else:
+            return (f"The enacted map has {enacted:.0f} majority-{group} district(s), "
+                    f"within the typical range ({p5:.0f}–{p95:.0f}).")
+
+    elif key == "min_coal":
+        if pct_rank < 10:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                    f"(typical: {p5:.0f}–{p95:.0f}). Communities of color have less "
+                    f"collective electoral influence than geography alone would support.")
+        elif pct_rank > 90:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
+                    f"more than most neutral alternatives. Communities of color have "
+                    f"strong collective electoral influence.")
+        else:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s), "
+                    f"within the typical range ({p5:.0f}–{p95:.0f}) for neutral maps.")
+
+    else:
+        return (f"Enacted: {enacted:.3f}. Neutral median: {p50:.3f} "
+                f"(range: {p5:.3f}–{p95:.3f}). "
+                f"Percentile rank: {pct_rank:.0f}th — {_outlier_phrase(pct_rank)}.")
+
+
 _METRIC_META = {
-    # key: (label, category, description, higher_is_better)
+    # key: (label, headline, category, description, higher_is_better)
     'dem_seats': (
-        'Dem. Seats', 'partisan',
-        'The number of districts projected to elect a Democrat, based on each plan\'s '
-        'district-level vote shares. A fair map should produce a number of Democratic '
-        'seats roughly proportional to statewide Democratic vote share. The histogram '
-        'shows outcomes across thousands of alternative maps drawn without partisan '
-        'intent — if the enacted map falls far outside this range, it suggests the '
-        'lines were drawn to favor one party.',
+        'Seat–Vote Proportionality', 'Does the seat count reflect how people actually voted?',
+        'partisan',
+        'In a fair map, the share of seats each party wins should reflect its share '
+        'of statewide votes. This metric counts districts projected to lean Democratic '
+        'based on each plan\'s vote patterns — not as a partisan goal, but as a '
+        'measuring stick for proportionality. The histogram shows how many '
+        'Democratic-leaning seats thousands of neutrally drawn alternative maps '
+        'produce. If the enacted map falls far from this range, lines were likely '
+        'drawn to systematically over- or under-represent one party.',
         None),
     'partisan_bias': (
-        'Partisan Bias', 'partisan',
-        'Partisan bias measures the seat-share advantage one party would receive at '
-        'a perfectly tied 50/50 election. A value near zero means both parties convert '
-        'votes into seats at the same rate. A positive value here means Republicans '
-        'would win more seats than Democrats even if both parties received equal votes '
-        'statewide — a hallmark of a gerrymandered map. This metric is part of the '
-        'Princeton Gerrymandering Project\'s normative (cube-law) fairness test.',
+        'Seat Symmetry at Equal Votes', 'Would both parties win equally if the vote were tied?',
+        'partisan',
+        'Partisan bias asks: if both parties received exactly 50% of the vote '
+        'statewide, would they win the same number of seats? A value near zero '
+        'means the map treats both parties symmetrically. A positive value means '
+        'Republicans would win more seats than Democrats at equal vote shares; a '
+        'negative value means the reverse. This is the Princeton Gerrymandering '
+        'Project\'s normative (cube-law) symmetry test — it is not about who '
+        'should win, but whether the map\'s structure gives either party a built-in '
+        'advantage independent of how people vote.',
         False),
     'efficiency_gap': (
-        'Efficiency Gap', 'partisan',
-        'The Efficiency Gap counts "wasted" votes for each party — votes cast in '
-        'losing districts (opponent wins) plus surplus votes beyond what was needed '
-        'to win. A gap near zero means both parties waste roughly equal votes. A '
-        'large positive value means Republican votes are used more efficiently, '
-        'indicating Democrats\' voters have been packed into a few lopsided districts '
-        'or cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, '
-        'this metric has been cited in federal gerrymandering litigation.',
+        'Wasted Votes Balance', 'Are both parties\' votes equally effective at winning seats?',
+        'partisan',
+        'Every election produces "wasted" votes — votes cast in losing districts '
+        '(all wasted) and surplus votes beyond what was needed to win (also wasted). '
+        'A fair map wastes votes at roughly equal rates for both parties. The '
+        'Efficiency Gap measures the imbalance: a value far from zero means one '
+        'party\'s votes are being systematically wasted at a higher rate than the '
+        'other\'s — a sign that district lines are concentrating or dispersing that '
+        'party\'s voters artificially. Developed by Stephanopoulos & McGhee; '
+        'cited in federal gerrymandering litigation.',
         False),
     'mean_median': (
-        'Mean–Median Diff.', 'partisan',
-        'The Mean-Median difference is the gap between a party\'s average vote share '
-        'across all districts and their median (middle) district vote share. A large '
-        'positive value means Democrats pile up huge margins in a few districts while '
-        'Republicans win many districts by modest margins — a sign of packing. '
-        'Values near zero indicate the map does not systematically advantage either '
-        'party in how votes translate to seats.',
+        'Vote Distribution Symmetry', 'Does each party need the same number of votes to win a district?',
+        'partisan',
+        'The Mean-Median difference reveals whether one party\'s votes are '
+        'systematically spread more efficiently across districts than the other\'s. '
+        'When one party wins many districts by modest margins while the other piles '
+        'up large majorities in fewer districts, the map gives the first party a '
+        'structural seat advantage — even when both parties receive equal votes '
+        'statewide. A value near zero means both parties convert votes to seats '
+        'at roughly the same rate. A large deviation in either direction signals '
+        'asymmetric voter distribution — often a hallmark of deliberate mapmaking.',
         False),
     'comp_seats': (
-        'Competitive Seats', 'competitive',
-        f'The number of districts where the margin between the two parties is within '
-        f'{COMPETITIVE_MARGIN*100:.0f} percentage points of 50/50. Competitive '
-        f'districts give voters meaningful choice and make elected officials '
-        f'accountable to a broader range of constituents. Maps with few or no '
-        f'competitive seats create "safe" incumbents who face no meaningful electoral '
-        f'challenge, reducing accountability and responsiveness to voters.',
+        'Electoral Competitiveness', 'How many districts give voters a genuine choice?',
+        'competitive',
+        f'A competitive district is one where the outcome is genuinely uncertain — '
+        f'the margin between the two parties is within '
+        f'{COMPETITIVE_MARGIN*100:.0f} percentage points of 50/50. '
+        f'Competitive districts force elected officials to be responsive to a '
+        f'broad range of constituents, not just their party base. Maps designed '
+        f'to protect incumbents — whether Republican or Democratic — tend to '
+        f'minimize competitiveness. This metric asks whether the enacted map '
+        f'produces fewer competitive districts than neutral alternatives would, '
+        f'regardless of which party benefits from the reduced accountability.',
         True),
     'polsby_popper': (
-        'Compactness (PP)', 'geographic',
-        'The Polsby-Popper score measures how "normal" shaped each district is, '
+        'Compactness (Polsby-Popper)', 'Are district shapes compact and geographically coherent?',
+        'geographic',
+        'The Polsby-Popper score measures how "normal" shaped each district is by '
         'comparing its area to the area of a circle with the same perimeter. '
         'Scores range from 0 to 1, with 1 being a perfect circle. Oddly shaped, '
-        'contorted districts — sometimes called "salamander" districts after the '
-        'original gerrymander of 1812 — can indicate that lines were manipulated '
-        'to include or exclude specific communities. More compact districts are '
-        'generally easier for communities to organize around and for representatives '
-        'to serve effectively.',
+        'contorted districts — nicknamed "salamander" districts after the original '
+        'gerrymander of 1812 — can indicate that lines were drawn to include or '
+        'exclude specific communities for partisan or racial reasons. More compact '
+        'districts are generally easier for representatives to serve and for '
+        'communities to organize around.',
         True),
     'county_splits': (
-        'County Splits', 'geographic',
+        'County Integrity', 'Are natural community boundaries being respected?',
+        'geographic',
         'The number of counties divided across two or more districts. Counties '
         'represent natural community boundaries — shared local government, courts, '
-        'schools, emergency services, and civic institutions. Keeping counties '
-        'intact preserves communities of interest and makes it easier for residents '
-        'to understand which district they live in. Fewer splits generally indicates '
-        'a more geographically coherent, community-respecting map.',
+        'schools, emergency services, and civic institutions built up over generations. '
+        'Keeping counties intact preserves communities of interest and makes it easier '
+        'for residents to understand who represents them. Unnecessarily splitting '
+        'counties can divide communities and dilute their collective voice. Fewer '
+        'splits generally indicates a more geographically coherent, community-respecting map.',
         False),
     'muni_splits': (
-        'Municipal Splits', 'geographic',
+        'Municipal Integrity', 'Are cities and towns being kept whole?',
+        'geographic',
         'The number of cities and municipalities divided across different districts. '
-        'Like county splits, keeping municipalities intact helps ensure that '
-        'communities with shared local interests — city budgets, zoning, schools, '
-        'local services — can elect a single representative who understands and '
-        'advocates for the whole community.',
+        'Like county splits, dividing municipalities weakens the ability of city '
+        'residents to elect a single representative who understands and advocates for '
+        'their shared local concerns — city budgets, zoning decisions, schools, '
+        'local infrastructure. Maps that unnecessarily split municipalities may be '
+        'doing so to achieve a partisan or racial outcome rather than respecting '
+        'existing community boundaries.',
         False),
     'maj_black': (
-        'Majority-Black Dist.', 'minority',
-        f'The number of districts where Black citizens make up more than '
-        f'{BVAP_THRESHOLD*100:.0f}% of the Voting Age Population. Under Section 2 '
-        f'of the Voting Rights Act, states may be required to draw districts that '
-        f'give minority communities the opportunity to elect their preferred '
-        f'candidates. The histogram shows how many majority-Black districts '
-        f'alternative maps typically produce — if the enacted map has significantly '
-        f'fewer, it may indicate illegal dilution of Black voting power.',
+        'Black Community Representation', 'Do Black voters have a fair opportunity to elect representatives of their choice?',
+        'minority',
+        f'This counts districts where Black citizens make up more than '
+        f'{BVAP_THRESHOLD*100:.0f}% of the Voting Age Population — enough to '
+        f'typically determine electoral outcomes. Under Section 2 of the Voting '
+        f'Rights Act, mapmakers must not draw lines that dilute minority communities\' '
+        f'ability to elect their preferred candidates. The histogram shows how many '
+        f'majority-Black districts thousands of neutrally drawn alternative maps '
+        f'produce, establishing a baseline of what geography alone would support. '
+        f'An enacted map with significantly fewer such districts than neutral '
+        f'alternatives may indicate illegal dilution of Black voting power.',
         None),
     'maj_hisp': (
-        'Majority-Hispanic', 'minority',
-        f'The number of districts where Hispanic citizens make up more than '
+        'Hispanic Community Representation', 'Do Hispanic voters have a fair opportunity to elect their preferred candidates?',
+        'minority',
+        f'This counts districts where Hispanic citizens make up more than '
         f'{MINORITY_THRESHOLD*100:.0f}% of the Voting Age Population. The Voting '
         f'Rights Act protects Hispanic voters\' ability to elect representatives of '
-        f'their choice. This metric compares the enacted map\'s minority district '
-        f'count against the range of outcomes for alternative maps drawn without '
-        f'racial manipulation.',
+        f'their choice. As Georgia\'s Hispanic population has grown significantly, '
+        f'this metric compares the enacted map\'s minority district count against '
+        f'what neutral, geography-based alternatives would naturally produce.',
         None),
     'maj_aian': (
-        'Majority-AIAN', 'minority',
-        'The number of districts where American Indian and Alaska Native citizens '
+        'Indigenous Community Representation', 'Do American Indian and Alaska Native voters have fair representation?',
+        'minority',
+        'This counts districts where American Indian and Alaska Native citizens '
         'make up more than 50% of the Voting Age Population. These communities '
-        'have historically faced significant barriers to political representation '
-        'and are specifically protected under the Voting Rights Act.',
+        'have historically faced some of the most significant barriers to political '
+        'representation in American history and are specifically protected under '
+        'the Voting Rights Act. The comparison against neutral alternatives reveals '
+        'whether the enacted map preserves or diminishes their electoral opportunity.',
         None),
     'maj_asian': (
-        'Majority-Asian', 'minority',
-        'The number of districts where Asian American citizens make up more than '
+        'Asian American Representation', 'Do Asian American voters have fair electoral opportunity?',
+        'minority',
+        'This counts districts where Asian American citizens make up more than '
         '50% of the Voting Age Population. As one of the fastest-growing communities '
         'in Georgia, Asian Americans\' representation opportunity is an increasingly '
-        'important measure of map fairness.',
+        'important measure of map fairness. The comparison against neutral '
+        'alternatives establishes whether the enacted map reflects what '
+        'natural geography would support.',
         None),
     'min_coal': (
-        'Minority Coalition', 'minority',
-        'The number of districts where voters of color collectively make up more '
-        'than 50% of the Voting Age Population (or Citizen Voting Age Population '
-        'for GerryChain runs). This "coalition" measure captures districts where '
-        'communities of color have joint electoral influence even if no single '
-        'group holds a majority on its own — an important consideration as '
-        'Georgia\'s demographics continue to diversify.',
+        'Minority Coalition Representation', 'Do communities of color collectively have a voice?',
+        'minority',
+        'This counts districts where voters of color — Black, Hispanic, Asian, and '
+        'others — together make up more than 50% of the Voting Age Population '
+        '(or Citizen VAP for GerryChain runs). Even when no single racial group '
+        'holds a majority, communities of color can collectively determine electoral '
+        'outcomes. This "coalition" measure is increasingly important as Georgia\'s '
+        'demographics diversify. The comparison against neutral alternatives reveals '
+        'whether the enacted map preserves or diminishes the collective political '
+        'voice of Georgia\'s communities of color.',
         None),
 }
 
@@ -411,16 +619,17 @@ def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
     for key, (s_vals, e_val) in raw_metrics.items():
         if e_val is None:
             continue
-        meta  = _METRIC_META.get(key, (key, 'other', key, None))
-        label, category, desc, higher_is_better = meta
+        meta  = _METRIC_META.get(key)
+        if meta is None:
+            continue
+        label, headline, category, desc, higher_is_better = meta
         dist  = np.array(s_vals, dtype=float)
-        # Skip metrics where the distribution is degenerate (all plans identical)
         if np.std(dist) < 1e-6:
             continue
-        pct   = _pct_rank(dist, e_val)
+        pct  = _pct_rank(dist, e_val)
+        hist = _histogram_data(dist, e_val)
 
         if higher_is_better is None:
-            # Minority / partisan seat share: center-band grade
             grade = _simple_grade(pct)
         elif key == 'comp_seats':
             grade = _comp_grade(pct)
@@ -429,12 +638,14 @@ def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
 
         result[key] = {
             'label':       label,
+            'headline':    headline,
             'category':    category,
             'description': desc,
+            'takeaway':    _generate_takeaway(key, float(e_val), pct, hist),
             'grade':       grade,
             'enacted':     round(float(e_val), 4),
             'pct_rank':    round(pct, 1),
-            'histogram':   _histogram_data(dist, e_val),
+            'histogram':   hist,
         }
 
     # ── Princeton composite grades ──────────────────────────────────────────

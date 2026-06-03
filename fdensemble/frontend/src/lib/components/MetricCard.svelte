@@ -100,59 +100,87 @@
   });
 </script>
 
-<div style="background:var(--card);border-radius:8px;border:1.5px solid var(--border);
-            box-shadow:var(--shadow);display:grid;
-            grid-template-columns:200px 200px 1fr;min-width:0;overflow:hidden;"
-     class:is-outlier={metric.grade === 'F'}>
+<div class="metric-card" class:is-outlier={metric.grade === 'F'}>
 
-  <!-- Left: label + numbers -->
-  <div style="padding:.75rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.35rem;">
-    <div style="font-weight:700;font-size:.78rem;color:var(--blue);line-height:1.2;">{metric.label}</div>
-    <div style="display:flex;align-items:center;gap:.4rem;margin-top:.1rem;">
-      <span style="display:inline-flex;align-items:center;justify-content:center;
-                   width:1.55rem;height:1.55rem;border-radius:50%;
-                   background:{gradeColor[metric.grade] ?? '#888'};
-                   color:#fff;font-weight:800;font-size:.8rem;flex-shrink:0;">{metric.grade}</span>
-      <span style="font-size:.68rem;color:var(--gray);">{metric.pct_rank}th %ile</span>
+  <!-- Headline -->
+  <div class="headline" style="border-bottom:1px solid var(--border);padding:.55rem 1rem;
+       background:{metric.grade === 'F' ? '#fff5f5' : metric.grade === 'A' ? '#f5fdf8' : 'var(--light)'};">
+    <span style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+                 color:var(--gray);margin-right:.5rem;">{metric.label}</span>
+    <span style="font-size:.82rem;font-weight:700;color:var(--blue);">{metric.headline ?? metric.label}</span>
+  </div>
+
+  <!-- Body: grade info + histogram + description -->
+  <div style="display:grid;grid-template-columns:190px 200px 1fr;min-width:0;">
+
+    <!-- Left: grade + numbers -->
+    <div style="padding:.7rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem;">
+      <div style="display:flex;align-items:center;gap:.4rem;">
+        <span style="display:inline-flex;align-items:center;justify-content:center;
+                     width:1.7rem;height:1.7rem;border-radius:50%;
+                     background:{gradeColor[metric.grade] ?? '#888'};
+                     color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
+        <span style="font-size:.7rem;color:var(--gray);">{metric.pct_rank}th percentile</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
+        <div>
+          <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Enacted</div>
+          <div style="font-weight:700;font-size:.85rem;">{metric.enacted.toFixed(2)}</div>
+        </div>
+        <div>
+          <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral median</div>
+          <div style="font-size:.85rem;">{metric.histogram.p50.toFixed(2)}</div>
+        </div>
+        <div style="grid-column:span 2;">
+          <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral 5th–95th range</div>
+          <div style="font-size:.78rem;font-weight:600;">{metric.histogram.p5.toFixed(2)} – {metric.histogram.p95.toFixed(2)}</div>
+        </div>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .4rem;margin-top:.1rem;">
-      <div>
-        <div style="font-size:.6rem;color:var(--gray);">Enacted</div>
-        <div style="font-weight:700;font-size:.82rem;">{metric.enacted.toFixed(2)}</div>
+
+    <!-- Middle: histogram -->
+    <div style="padding:.6rem .8rem;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;">
+      <div style="height:90px;position:relative;">
+        <canvas bind:this={canvas}></canvas>
       </div>
-      <div>
-        <div style="font-size:.6rem;color:var(--gray);">Median</div>
-        <div style="font-size:.82rem;">{metric.histogram.p50.toFixed(2)}</div>
+      <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">
+        ‒‒ enacted &nbsp;|&nbsp; distribution of {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
       </div>
-      <div style="grid-column:span 2;">
-        <div style="font-size:.6rem;color:var(--gray);">5th–95th %ile range</div>
-        <div style="font-size:.76rem;font-weight:600;">{metric.histogram.p5.toFixed(2)} – {metric.histogram.p95.toFixed(2)}</div>
-      </div>
+    </div>
+
+    <!-- Right: what this metric measures -->
+    <div style="padding:.7rem 1rem;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:.72rem;font-weight:600;color:var(--gray);text-transform:uppercase;
+                  letter-spacing:.04em;margin-bottom:.3rem;">What this measures</div>
+      <div style="font-size:.73rem;color:#444;line-height:1.6;">{metric.description}</div>
     </div>
   </div>
 
-  <!-- Middle: histogram -->
-  <div style="padding:.6rem .8rem;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;">
-    <div style="height:90px;position:relative;">
-      <canvas bind:this={canvas}></canvas>
+  <!-- Takeaway -->
+  {#if metric.takeaway}
+    <div style="border-top:1px solid var(--border);padding:.5rem 1rem;
+         background:{metric.grade === 'F' ? '#fff0f0' : metric.grade === 'A' ? '#f0faf4' : '#f8f9fb'};
+         display:flex;align-items:baseline;gap:.5rem;">
+      <span style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                   color:{gradeColor[metric.grade] ?? '#888'};white-space:nowrap;flex-shrink:0;">Finding →</span>
+      <span style="font-size:.74rem;color:#333;line-height:1.5;font-weight:500;">{metric.takeaway}</span>
     </div>
-    <div style="font-size:.6rem;color:var(--gray);margin-top:.2rem;text-align:center;">
-      — enacted &nbsp;|&nbsp; distribution of {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} plans
-    </div>
-  </div>
-
-  <!-- Right: description -->
-  <div style="padding:.75rem 1rem;display:flex;flex-direction:column;justify-content:center;gap:.3rem;">
-    <div style="font-size:.75rem;color:#444;line-height:1.55;">{metric.description}</div>
-  </div>
+  {/if}
 </div>
 
 <style>
-  .is-outlier { border-color: #f5a9a9; }
-  .is-outlier :global([style*="color:var(--blue)"]) { color: var(--red) !important; }
-
+  .metric-card {
+    background: var(--card);
+    border-radius: 8px;
+    border: 1.5px solid var(--border);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .is-outlier {
+    border-color: #e8a0a0;
+  }
   @media (max-width: 860px) {
-    div[style*="grid-template-columns:200px"] {
+    div[style*="grid-template-columns:190px"] {
       grid-template-columns: 1fr !important;
     }
   }

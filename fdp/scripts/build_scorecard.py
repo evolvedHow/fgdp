@@ -35,65 +35,215 @@ COMPETITIVE_THRESHOLD_DEFAULT = 0.05
 _GRADE_ORDER = ["A", "B", "C", "F"]
 
 _METRIC_META: dict[str, tuple] = {
-    # key: (label, category, description, higher_is_better)
+    # key: (label, headline, category, description, higher_is_better)
     "dem_seats": (
-        "Dem. Seats", "partisan",
-        "The number of districts projected to elect a Democrat, based on each plan's "
-        "district-level vote shares. A fair map should produce a number of Democratic "
-        "seats roughly proportional to statewide Democratic vote share. The histogram "
-        "shows outcomes across thousands of alternative maps drawn without partisan "
-        "intent — if the enacted map falls far outside this range, it suggests the "
-        "lines were drawn to favor one party.",
+        "Seat–Vote Proportionality",
+        "Does the seat count reflect how people actually voted?",
+        "partisan",
+        "In a fair map, the share of seats each party wins should reflect its share "
+        "of statewide votes. This metric counts districts projected to lean Democratic "
+        "based on each plan's vote patterns — not as a partisan goal, but as a "
+        "measuring stick for proportionality. The histogram shows how many "
+        "Democratic-leaning seats thousands of neutrally drawn alternative maps "
+        "produce. If the enacted map falls far from this range, lines were likely "
+        "drawn to systematically over- or under-represent one party.",
         None),
     "efficiency_gap": (
-        "Efficiency Gap", "partisan",
-        "The Efficiency Gap counts 'wasted' votes for each party — votes cast in "
-        "losing districts plus surplus votes beyond what was needed to win. A gap "
-        "near zero means both parties waste roughly equal votes. A large positive "
-        "value means Republican votes are used more efficiently, indicating "
-        "Democratic voters have been packed into a few lopsided districts or "
-        "cracked across unwinnable ones. Developed by Stephanopoulos & McGhee, "
-        "this metric has been cited in federal gerrymandering litigation.",
+        "Wasted Votes Balance",
+        "Are both parties' votes equally effective at winning representation?",
+        "partisan",
+        "Every election produces 'wasted' votes — votes cast in losing districts "
+        "(all wasted) and surplus votes beyond what was needed to win (also wasted). "
+        "A fair map wastes votes at roughly equal rates for both parties. The "
+        "Efficiency Gap measures the difference: a positive value means one party's "
+        "votes are being wasted at a higher rate than the other's — a sign that "
+        "district lines are concentrating or dispersing that party's voters "
+        "artificially. Developed by Stephanopoulos & McGhee; cited in federal "
+        "gerrymandering litigation.",
         False),
     "mean_median": (
-        "Mean–Median Diff.", "partisan",
-        "The Mean-Median difference is the gap between a party's average vote share "
-        "across all districts and their median (middle) district vote share. A large "
-        "positive value means Democrats pile up huge margins in a few districts while "
-        "Republicans win many districts by modest margins — a sign of packing. "
-        "Values near zero indicate the map does not systematically advantage either "
-        "party in how votes translate to seats.",
+        "Vote Distribution Symmetry",
+        "Does each party need the same number of votes to win a district?",
+        "partisan",
+        "The Mean-Median difference reveals whether one party's votes are "
+        "systematically spread more efficiently across districts than the other's. "
+        "When one party wins many districts by modest margins while the other piles "
+        "up large majorities in fewer districts, the map gives the first party a "
+        "structural seat advantage — even when both parties receive equal votes "
+        "statewide. A value near zero means both parties convert votes to seats "
+        "at roughly the same rate. A large deviation in either direction is a "
+        "signal of asymmetric voter distribution — often a hallmark of gerrymandering.",
         False),
     "comp_seats": (
-        "Competitive Seats", "competitive",
-        f"The number of districts where the margin between the two parties is within "
+        "Electoral Competitiveness",
+        "How many districts give voters a meaningful choice?",
+        "competitive",
+        f"A competitive district is one where the outcome is genuinely uncertain — "
+        f"where the margin between the two parties is within "
         f"{COMPETITIVE_THRESHOLD_DEFAULT*100:.0f} percentage points of 50/50. "
-        f"Competitive districts give voters meaningful choice and make elected "
-        f"officials accountable to a broader range of constituents. Maps with few "
-        f"or no competitive seats create 'safe' incumbents who face no meaningful "
-        f"electoral challenge, reducing accountability and responsiveness.",
+        f"Competitive districts force elected officials to be responsive to a "
+        f"broad range of constituents, not just their party base. Maps designed "
+        f"to protect incumbents — whether Republican or Democratic — tend to "
+        f"minimize competitiveness. This metric asks whether the enacted map "
+        f"produces fewer competitive districts than neutral alternatives would.",
         True),
     "maj_black": (
-        "Majority-Black Dist.", "minority",
-        "The number of districts where Black citizens make up more than 50% of the "
+        "Black Community Representation",
+        "Do Black voters have the opportunity to elect representatives of their choice?",
+        "minority",
+        "This counts districts where Black citizens make up more than 50% of the "
         "Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights "
-        "Act, states may be required to draw districts that give minority communities "
-        "the opportunity to elect their preferred candidates. The histogram shows how "
-        "many majority-Black districts alternative maps typically produce — if the "
-        "enacted map has significantly fewer, it may indicate illegal dilution of "
-        "Black voting power. Uses CVAP (more accurate than VAP for electoral purposes "
-        "as it excludes non-citizens).",
+        "Act, mapmakers must not draw lines that dilute minority communities' ability "
+        "to elect their preferred candidates. The histogram shows how many "
+        "majority-Black districts thousands of neutrally drawn alternative maps "
+        "produce — establishing what geography alone would naturally support. "
+        "Enacted maps with significantly fewer majority-Black districts than "
+        "neutral alternatives may indicate illegal dilution of Black voting power. "
+        "Uses CVAP rather than VAP for precision (excludes non-citizens).",
         None),
     "min_coal": (
-        "Minority Coalition", "minority",
-        "The number of districts where voters of color collectively make up more than "
-        "50% of the Citizen Voting Age Population. This 'coalition' measure captures "
-        "districts where communities of color have joint electoral influence even if "
-        "no single group holds a majority on its own — an important consideration "
-        "as Georgia's demographics continue to diversify. Uses CVAP data (2024 ACS "
-        "5-year estimates disaggregated to 2020 Census blocks).",
+        "Minority Coalition Representation",
+        "Do communities of color collectively hold electoral influence?",
+        "minority",
+        "This counts districts where voters of color — Black, Hispanic, Asian, "
+        "and others — together make up more than 50% of the Citizen Voting Age "
+        "Population. Even when no single racial group holds a majority, communities "
+        "of color can collectively influence electoral outcomes. This 'coalition' "
+        "measure is increasingly important as Georgia's demographics diversify. "
+        "The comparison against neutral alternatives reveals whether the enacted "
+        "map preserves or diminishes the collective political voice of "
+        "Georgia's communities of color. Uses 2024 ACS 5-year CVAP estimates.",
         None),
 }
+
+
+def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dict) -> str:
+    """
+    Generate a factual, non-partisan takeaway sentence based on the metric result.
+    States what the enacted map does and which party (if any) benefits — as a
+    neutral observation, not an endorsement.
+    """
+    p50  = histogram["p50"]
+    p5   = histogram["p5"]
+    p95  = histogram["p95"]
+    diff = enacted - p50
+
+    def _outlier_phrase(pr: float) -> str:
+        if pr >= 97.5 or pr <= 2.5:
+            return "an extreme outlier — this result would occur by chance in fewer than 1 in 40 neutral maps"
+        if pr >= 95 or pr <= 5:
+            return "outside the normal range for neutral maps"
+        if pr >= 90 or pr <= 10:
+            return "toward the edge of the normal range"
+        return "within the normal range for neutral maps"
+
+    if key == "dem_seats":
+        if abs(diff) < 0.5:
+            return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
+                    f"close to the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
+                    f"No significant seat-count advantage detected for either party.")
+        elif diff > 0:
+            return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
+                    f"{diff:.1f} above the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
+                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}, "
+                    f"suggesting a structural seat advantage for Democrats.")
+        else:
+            return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
+                    f"{abs(diff):.1f} below the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
+                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}, "
+                    f"suggesting a structural seat advantage for Republicans.")
+
+    elif key == "efficiency_gap":
+        # Positive = Republican structural advantage (Dem votes wasted more)
+        if abs(diff) < 0.01:
+            return (f"Wasted votes are distributed nearly equally between parties "
+                    f"(gap: {enacted:.3f}, neutral median: {p50:.3f}). "
+                    f"Neither party has a structural vote-efficiency advantage.")
+        elif enacted > p50:
+            return (f"The enacted map's efficiency gap ({enacted:.3f}) is above the neutral "
+                    f"median ({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Democratic votes are wasted at a higher "
+                    f"rate, giving Republicans a structural advantage in translating votes to seats.")
+        else:
+            return (f"The enacted map's efficiency gap ({enacted:.3f}) is below the neutral "
+                    f"median ({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Republican votes are wasted at a higher "
+                    f"rate, giving Democrats a structural advantage in translating votes to seats.")
+
+    elif key == "mean_median":
+        # Positive = Republican structural advantage
+        if abs(diff) < 0.005:
+            return (f"Both parties convert votes to seats at nearly equal rates "
+                    f"(mean–median: {enacted:.3f}, neutral median: {p50:.3f}). "
+                    f"No systematic asymmetry detected.")
+        elif enacted > p50:
+            return (f"The mean–median difference ({enacted:.3f}) is above the neutral median "
+                    f"({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Democratic voters are disproportionately "
+                    f"concentrated in fewer districts, giving Republicans a more efficient "
+                    f"geographic spread of support.")
+        else:
+            return (f"The mean–median difference ({enacted:.3f}) is below the neutral median "
+                    f"({p50:.3f}), at the {pct_rank:.0f}th percentile — "
+                    f"{_outlier_phrase(pct_rank)}. Republican voters are disproportionately "
+                    f"concentrated in fewer districts, giving Democrats a more efficient "
+                    f"geographic spread of support.")
+
+    elif key == "comp_seats":
+        if enacted == 0:
+            return (f"The enacted map has zero competitive districts within the "
+                    f"{COMPETITIVE_THRESHOLD_DEFAULT*100:.0f}pp threshold. "
+                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}. "
+                    f"Every district has a predetermined partisan lean — voters have no "
+                    f"meaningful choice in any race.")
+        elif pct_rank < 25:
+            return (f"The enacted map has just {enacted:.0f} competitive district(s) — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps. "
+                    f"Most voters live in districts where outcomes are predetermined.")
+        elif pct_rank > 75:
+            return (f"The enacted map has {enacted:.0f} competitive districts — "
+                    f"more than most neutral alternatives (neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"Voters have meaningful electoral choice in more races than typical.")
+        else:
+            return (f"The enacted map has {enacted:.0f} competitive district(s), "
+                    f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
+
+    elif key == "maj_black":
+        if pct_rank < 10:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                    f"(neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"This is significantly below what geography alone would suggest, "
+                    f"raising potential Voting Rights Act concerns.")
+        elif pct_rank > 90:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
+                    f"more than most neutral alternatives (neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"Black communities have strong electoral representation opportunity.")
+        else:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s), "
+                    f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
+
+    elif key == "min_coal":
+        if pct_rank < 10:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                    f"(neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"Communities of color have less collective electoral influence "
+                    f"than geography alone would support.")
+        elif pct_rank > 90:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
+                    f"more than most neutral alternatives. Communities of color have "
+                    f"strong collective electoral influence.")
+        else:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s), "
+                    f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
+
+    else:
+        # Generic fallback
+        outlier = _outlier_phrase(pct_rank)
+        return (f"Enacted value: {enacted:.3f}. Neutral median: {p50:.3f} "
+                f"(range: {p5:.3f}–{p95:.3f}). "
+                f"At the {pct_rank:.0f}th percentile — {outlier}.")
 
 _OFFICE_LABELS = {
     "president": "President",
@@ -162,8 +312,9 @@ def _histogram_data(dist: np.ndarray, enacted: float, n_bins: int = 40) -> dict:
 def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None:
     if np.std(dist) < 1e-9:
         return None
-    label, category, desc, higher_is_better = _METRIC_META[key]
-    pct = _pct_rank(dist, enacted_val)
+    label, headline, category, desc, higher_is_better = _METRIC_META[key]
+    pct     = _pct_rank(dist, enacted_val)
+    hist    = _histogram_data(dist, enacted_val)
 
     if higher_is_better is None:
         grade = _simple_grade(pct)
@@ -174,12 +325,14 @@ def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None
 
     return {
         "label":       label,
+        "headline":    headline,
         "category":    category,
         "description": desc,
+        "takeaway":    _generate_takeaway(key, enacted_val, pct, hist),
         "grade":       grade,
         "enacted":     round(float(enacted_val), 4),
         "pct_rank":    round(pct, 1),
-        "histogram":   _histogram_data(dist, enacted_val),
+        "histogram":   hist,
     }
 
 
