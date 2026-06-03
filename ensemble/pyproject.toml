@@ -1,0 +1,20 @@
+[project]
+name = "ensemble"
+version = "0.1.0"
+description = "GerryChain ensemble compute layer for Fair Districts GA"
+requires-python = ">=3.12"
+dependencies = [
+    "fiona>=1.10.1",
+    "geopandas>=1.1.3",
+    "gerrychain>=0.3.2",
+    "modal>=1.4.3",
+    "pandas>=2.0",
+    "pyarrow>=14.0",
+    "pyproj>=3.6",
+    "python-dotenv>=1.0",
+    "shapely>=2.0",
+]
+
+# fdp lives in the sibling fdp/ directory (used by run_ensemble.py locally)
+[tool.uv.sources]
+fdp = { path = "../fdp", editable = true }

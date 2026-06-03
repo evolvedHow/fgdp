@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.egg-info/
+.env
+*.pyc
+uv.lock
+
+# Data lives on Modal volume — not in git
+data/
+*.parquet
