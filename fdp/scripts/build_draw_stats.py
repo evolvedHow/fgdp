@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-build_draw_stats.py — Compute per-draw benchmark statistics from ensemble_scores.
+build_draw_stats.py — Compute per-draw benchmark statistics from ensemble scores Parquet.
 
-Reads fdp.ensemble_scores for a given plan_id and computes:
+Reads {run_name}_scores.parquet and computes:
 
-  ensemble_draw_stats        — one row per (plan_id, draw, year, office):
+  {run_name}_draw_stats.parquet        — one row per (plan_id, draw, year, office):
       dem_seats, rep_seats, tied_seats, avg_dem_2pv,
       efficiency_gap, mean_median
 
-  ensemble_competitive_counts — one row per (plan_id, draw, year, office, threshold):
+  {run_name}_competitive_counts.parquet — one row per (plan_id, draw, year, office, threshold):
       n_competitive
 
-All heavy computation is pushed to PostgreSQL — no large data transfers.
+All heavy computation runs via DuckDB in-process — no database server needed.
+DuckDB reads the scores Parquet lazily (no full-file load into RAM).
 
 Thresholds come from --thresholds or --config (YAML). If neither is provided
-the script refuses to write competitive counts (partisan stats are still built).
+the script builds partisan stats only (no competitive counts).
 
 Usage (from fgdp/ root):
     uv run --project fdp python fdp/scripts/build_draw_stats.py \\
@@ -32,12 +33,15 @@ Usage (from fgdp/ root):
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import time
 from pathlib import Path
 
-import psycopg
+import duckdb
+import pandas as pd
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main"
 
 # Optional: load BenchmarkConfig to read thresholds from YAML
 try:
@@ -47,24 +51,14 @@ try:
 except ImportError:
     _HAVE_CONFIG = False
 
-DB_URL = os.environ.get("DATABASE_URL")
-
 
 # ---------------------------------------------------------------------------
-# SQL templates
+# DuckDB query templates
 # ---------------------------------------------------------------------------
 
-_COUNT_SQL = """
-SELECT COUNT(*) FROM fdp.ensemble_scores WHERE plan_id = %s
-"""
-
-# Partisan rollup — no threshold-dependent columns
+# Partisan rollup — identical logic to the old PostgreSQL INSERT...SELECT,
+# now executed in DuckDB against a local Parquet file.
 _DRAW_STATS_SQL = """
-INSERT INTO fdp.ensemble_draw_stats (
-    plan_id, draw, year, election_type, office,
-    dem_seats, rep_seats, tied_seats,
-    avg_dem_2pv, efficiency_gap, mean_median
-)
 SELECT
     plan_id, draw, year, election_type, office,
 
@@ -72,99 +66,66 @@ SELECT
     COUNT(*) FILTER (WHERE winner = 'rep')  AS rep_seats,
     COUNT(*) FILTER (WHERE winner = 'tie')  AS tied_seats,
 
-    ROUND(AVG(dem_2pv)::NUMERIC, 6)         AS avg_dem_2pv,
+    ROUND(AVG(dem_2pv), 6)                  AS avg_dem_2pv,
 
     -- Efficiency gap: (wasted_dem - wasted_rep) / total_votes
     -- Positive = Republican advantage, negative = Democratic advantage
     ROUND((
         SUM(
             CASE WHEN winner = 'dem'
-                 THEN dem_votes::numeric - total_votes::numeric / 2.0
-                 ELSE dem_votes::numeric
+                 THEN dem_votes - total_votes / 2.0
+                 ELSE CAST(dem_votes AS DOUBLE)
             END
         )
         -
         SUM(
             CASE WHEN winner = 'rep'
-                 THEN rep_votes::numeric - total_votes::numeric / 2.0
-                 ELSE rep_votes::numeric
+                 THEN rep_votes - total_votes / 2.0
+                 ELSE CAST(rep_votes AS DOUBLE)
             END
         )
-    ) / NULLIF(SUM(total_votes), 0)::numeric, 6) AS efficiency_gap,
+    ) / NULLIF(SUM(total_votes), 0), 6)     AS efficiency_gap,
 
     -- Mean-median difference: mean(dem_2pv) - median(dem_2pv)
     -- Positive = Democratic skew; negative = Republican advantage
-    ROUND((
+    ROUND(
         AVG(dem_2pv)
-        - PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dem_2pv)
-    )::NUMERIC, 6) AS mean_median
+        - PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dem_2pv),
+        6
+    )                                       AS mean_median
 
-FROM fdp.ensemble_scores
-WHERE plan_id = %s
+FROM read_parquet(?)
+WHERE plan_id = ?
 GROUP BY plan_id, draw, year, election_type, office
-
-ON CONFLICT (plan_id, draw, year, election_type, office) DO UPDATE SET
-    dem_seats      = EXCLUDED.dem_seats,
-    rep_seats      = EXCLUDED.rep_seats,
-    tied_seats     = EXCLUDED.tied_seats,
-    avg_dem_2pv    = EXCLUDED.avg_dem_2pv,
-    efficiency_gap = EXCLUDED.efficiency_gap,
-    mean_median    = EXCLUDED.mean_median
+ORDER BY draw, year, office
 """
 
-# Competitive counts — one INSERT per threshold, value substituted at runtime
+# Competitive counts — parameterised by threshold value
 _COMPETITIVE_SQL = """
-INSERT INTO fdp.ensemble_competitive_counts
-    (plan_id, draw, year, election_type, office, threshold, n_competitive)
 SELECT
     plan_id, draw, year, election_type, office,
-    %(threshold)s AS threshold,
+    ? AS threshold,
     COUNT(*) FILTER (
         WHERE dem_2pv IS NOT NULL
-          AND ABS(dem_2pv - 0.5) * 2 <= %(threshold)s
+          AND ABS(dem_2pv - 0.5) * 2 <= ?
     ) AS n_competitive
-FROM fdp.ensemble_scores
-WHERE plan_id = %(plan_id)s
+FROM read_parquet(?)
+WHERE plan_id = ?
 GROUP BY plan_id, draw, year, election_type, office
-
-ON CONFLICT (plan_id, draw, year, election_type, office, threshold) DO UPDATE SET
-    n_competitive = EXCLUDED.n_competitive
+ORDER BY draw, year, office
 """
 
 _VERIFY_SQL = """
 SELECT
-    COUNT(*)                                                    AS n_rows,
-    COUNT(DISTINCT draw)                                        AS n_draws,
-    COUNT(DISTINCT year || '_' || office)                       AS n_races,
-    MIN(dem_seats)                                              AS min_dem,
-    MAX(dem_seats)                                              AS max_dem,
-    ROUND(AVG(dem_seats)::numeric, 2)                           AS avg_dem,
-    ROUND(AVG(ABS(efficiency_gap))::numeric, 4)                 AS avg_abs_eg
-FROM fdp.ensemble_draw_stats
-WHERE plan_id = %s AND draw > 1
-"""
-
-_VERIFY_COMP_SQL = """
-SELECT threshold, ROUND(AVG(n_competitive)::numeric, 2) AS avg_competitive
-FROM fdp.ensemble_competitive_counts
-WHERE plan_id = %s AND draw > 1
-GROUP BY threshold
-ORDER BY threshold
-"""
-
-_ENACTED_SQL = """
-SELECT d.year, d.office, d.dem_seats, d.rep_seats,
-       ROUND(d.efficiency_gap * 100, 2) AS eg_pct
-FROM fdp.ensemble_draw_stats d
-WHERE d.plan_id = %s AND d.draw = 1
-ORDER BY d.year, d.office
-"""
-
-_ENACTED_COMP_SQL = """
-SELECT year, office, threshold, n_competitive
-FROM fdp.ensemble_competitive_counts
-WHERE plan_id = %s AND draw = 1
-ORDER BY year, office, threshold
+    COUNT(*)                                    AS n_rows,
+    COUNT(DISTINCT draw)                        AS n_draws,
+    COUNT(DISTINCT year || '_' || office)       AS n_races,
+    MIN(dem_seats)                              AS min_dem,
+    MAX(dem_seats)                              AS max_dem,
+    ROUND(AVG(dem_seats), 2)                   AS avg_dem,
+    ROUND(AVG(ABS(efficiency_gap)), 4)         AS avg_abs_eg
+FROM draw_stats_df
+WHERE draw > 1
 """
 
 
@@ -190,9 +151,14 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--run-name", required=True,
-                    help="plan_id to compute stats for (e.g. congress_2026_v2)")
+                    help="Run name to compute stats for (e.g. congress_2026_v2)")
+    ap.add_argument("--data-dir", default=None,
+                    help=f"Root data directory (default: {DEFAULT_DATA_DIR})")
+    ap.add_argument("--scores-file", default=None, dest="scores_file",
+                    help="Path to the scores Parquet. "
+                         "Defaults to {data_dir}/ensemble/{run_name}_scores.parquet.")
     ap.add_argument("--config", default=None,
-                    help="Path to YAML benchmark config — thresholds are read from "
+                    help="Path to YAML benchmark config — thresholds read from "
                          "competitiveness.thresholds. Takes precedence over --thresholds.")
     ap.add_argument("--thresholds", nargs="+", type=float, default=None,
                     help="Competitiveness win-margin thresholds as fractions "
@@ -201,11 +167,16 @@ def main() -> None:
                     help="Show row counts and resolved thresholds but do not write.")
     args = ap.parse_args()
 
-    if not DB_URL:
-        print("ERROR: DATABASE_URL not set.")
-        sys.exit(1)
+    plan_id  = args.run_name
+    data_dir = Path(args.data_dir) if args.data_dir else DEFAULT_DATA_DIR
 
-    plan_id = args.run_name
+    scores_file = (
+        Path(args.scores_file).resolve()
+        if args.scores_file
+        else data_dir / "ensemble" / f"{plan_id}_scores.parquet"
+    )
+    stats_out = data_dir / "ensemble" / f"{plan_id}_draw_stats.parquet"
+    comp_out  = data_dir / "ensemble" / f"{plan_id}_competitive_counts.parquet"
 
     # ── Resolve thresholds ───────────────────────────────────────────────────
     if args.config:
@@ -221,100 +192,117 @@ def main() -> None:
         print("  Competitive counts will NOT be computed.")
 
     # ── Check source data ────────────────────────────────────────────────────
-    with psycopg.connect(DB_URL) as conn:
-        row = conn.execute(_COUNT_SQL, (plan_id,)).fetchone()
-        n_source = row[0] if row else 0
-
-    if n_source == 0:
-        print(f"ERROR: no rows in fdp.ensemble_scores for plan_id='{plan_id}'")
+    if not scores_file.exists():
+        print(f"ERROR: scores Parquet not found: {scores_file}")
         print("  Run score_ensemble_plans.py first.")
         sys.exit(1)
 
+    conn = duckdb.connect()
+    row = conn.execute(
+        "SELECT COUNT(*) FROM read_parquet(?)", [str(scores_file)]
+    ).fetchone()
+    n_source = row[0] if row else 0
+
+    if n_source == 0:
+        print(f"ERROR: no rows in {scores_file.name}")
+        sys.exit(1)
+
     print(f"\nBuilding draw stats for: {plan_id}")
-    print(f"  Source rows in ensemble_scores: {n_source:,}")
+    print(f"  Source rows: {n_source:,}  ({scores_file.name})")
     if thresholds:
         print(f"  Competitive thresholds: {[f'{t:.1%}' for t in thresholds]}")
 
     if args.dry_run:
-        print("\n[dry-run] Would execute INSERT...SELECT on PostgreSQL.")
-        print(f"  Partisan rows: ~{n_source // 14:,}")
-        if thresholds:
-            print(f"  Competitive rows per threshold: ~{n_source // 14:,}")
+        print("\n[dry-run] Would compute partisan + competitive stats via DuckDB.")
+        n_draws = conn.execute(
+            "SELECT COUNT(DISTINCT draw) FROM read_parquet(?)", [str(scores_file)]
+        ).fetchone()[0]
+        n_races = conn.execute(
+            "SELECT COUNT(DISTINCT year || '_' || office) FROM read_parquet(?)",
+            [str(scores_file)]
+        ).fetchone()[0]
+        print(f"  Draws: {n_draws:,}   Races: {n_races}")
         return
 
+    scores_path_str = str(scores_file)
+
     # ── Partisan rollup ──────────────────────────────────────────────────────
-    print("\nComputing partisan stats (seats, EG, mean-median)…")
+    print("\nComputing partisan stats (seats, EG, mean-median) via DuckDB…")
     t0 = time.time()
-    with psycopg.connect(DB_URL) as conn:
-        conn.execute("SET SESSION default_transaction_read_only = off")
-        conn.execute("BEGIN READ WRITE")
-        conn.execute(_DRAW_STATS_SQL, (plan_id,))
-        conn.execute("COMMIT")
-    print(f"  Done in {time.time() - t0:.1f}s")
+    draw_stats_df = conn.execute(
+        _DRAW_STATS_SQL, [scores_path_str, plan_id]
+    ).df()
+    print(f"  {len(draw_stats_df):,} rows computed in {time.time() - t0:.1f}s")
+
+    stats_out.parent.mkdir(parents=True, exist_ok=True)
+    draw_stats_df.to_parquet(stats_out, index=False)
+    size_mb = stats_out.stat().st_size / 1_000_000
+    print(f"  → {stats_out.name}  ({size_mb:.1f} MB)")
 
     # ── Competitive counts — one pass per threshold ──────────────────────────
+    comp_frames: list[pd.DataFrame] = []
     if thresholds:
         print("\nComputing competitive counts…")
         for t in thresholds:
             t0 = time.time()
-            with psycopg.connect(DB_URL) as conn:
-                conn.execute("SET SESSION default_transaction_read_only = off")
-                conn.execute("BEGIN READ WRITE")
-                conn.execute(_COMPETITIVE_SQL, {"plan_id": plan_id, "threshold": t})
-                conn.execute("COMMIT")
-            print(f"  threshold={t:.3f}: done in {time.time() - t0:.1f}s")
+            df_t = conn.execute(
+                _COMPETITIVE_SQL, [t, t, scores_path_str, plan_id]
+            ).df()
+            comp_frames.append(df_t)
+            print(f"  threshold={t:.3f}: {len(df_t):,} rows in {time.time() - t0:.1f}s")
+
+        comp_df = pd.concat(comp_frames, ignore_index=True)
+        comp_df.to_parquet(comp_out, index=False)
+        size_mb = comp_out.stat().st_size / 1_000_000
+        print(f"  → {comp_out.name}  ({size_mb:.1f} MB)")
 
     # ── Verify ───────────────────────────────────────────────────────────────
     print("\nVerification:")
-    with psycopg.connect(DB_URL) as conn:
-        row = conn.execute(_VERIFY_SQL, (plan_id,)).fetchone()
-        if row:
-            print(f"  Partisan rows    : {row[0]:,}")
-            print(f"  Draws            : {row[1]:,}")
-            print(f"  Races            : {row[2]}")
-            print(f"  Dem seats range  : {row[3]}–{row[4]}  (avg {row[5]})")
-            print(f"  Avg |EG|         : {row[6]}")
+    conn.register("draw_stats_df", draw_stats_df)
+    row = conn.execute(_VERIFY_SQL).fetchone()
+    if row:
+        print(f"  Partisan rows    : {row[0]:,}")
+        print(f"  Draws            : {row[1]:,}")
+        print(f"  Races            : {row[2]}")
+        print(f"  Dem seats range  : {row[3]}–{row[4]}  (avg {row[5]})")
+        print(f"  Avg |EG|         : {row[6]}")
 
-        if thresholds:
-            comp_rows = conn.execute(_VERIFY_COMP_SQL, (plan_id,)).fetchall()
-            for cr in comp_rows:
-                print(f"  Avg competitive  : {cr[1]} districts at {float(cr[0]):.1%}")
+    if comp_frames:
+        comp_df = pd.concat(comp_frames)
+        for t in thresholds:
+            avg = comp_df[comp_df.threshold == t]["n_competitive"].mean()
+            print(f"  Avg competitive  : {avg:.2f} districts at {t:.1%}")
 
     # ── Enacted plan summary ─────────────────────────────────────────────────
     print("\nEnacted plan (draw=1):")
-    with psycopg.connect(DB_URL) as conn:
-        p_rows = conn.execute(_ENACTED_SQL,      (plan_id,)).fetchall()
-        c_rows = conn.execute(_ENACTED_COMP_SQL, (plan_id,)).fetchall() if thresholds else []
-
-    # Index competitive counts by (year, office, threshold) for display
-    comp_lookup: dict[tuple, int] = {}
-    thr_list: list[float] = []
-    for cr in c_rows:
-        key = (cr[0], cr[1], float(cr[2]))
-        comp_lookup[key] = cr[3]
-        t_val = float(cr[2])
-        if t_val not in thr_list:
-            thr_list.append(t_val)
-    thr_list.sort()
-
-    thr_hdr = "  ".join(f"C{int(t*100):02d}" for t in thr_list)
+    enacted = draw_stats_df[draw_stats_df.draw == 1]
+    thr_hdr = "  ".join(f"C{int(t*100):02d}" for t in thresholds)
     print(f"  {'Year':<6} {'Office':<12} {'Seats':>8} {'EG%':>7}  {thr_hdr}")
-    print("  " + "-" * (38 + 6 * len(thr_list)))
-    for r in p_rows:
-        year, office, dem, rep, eg = r
-        comp_vals = "  ".join(
-            f"{comp_lookup.get((year, office, t), '-'):>4}"
-            for t in thr_list
-        )
-        print(f"  {year:<6} {office:<12} D{dem}/R{rep}  {eg:>6}%  {comp_vals}")
+    print("  " + "-" * (38 + 6 * len(thresholds)))
 
-    print(f"\n✓ Done. Query distributions:")
-    print(f"  SELECT * FROM fdp.v_partisan_distribution WHERE plan_id = '{plan_id}';")
-    print(f"  SELECT * FROM fdp.v_enacted_vs_benchmark  WHERE plan_id = '{plan_id}';")
-    print(f"  SELECT threshold, n_competitive")
-    print(f"    FROM fdp.ensemble_competitive_counts")
-    print(f"   WHERE plan_id = '{plan_id}' AND draw = 1")
-    print(f"   ORDER BY threshold;")
+    enacted_comp = {}
+    if comp_frames:
+        comp_df_full = pd.concat(comp_frames)
+        enacted_comp_df = comp_df_full[comp_df_full.draw == 1]
+        for _, cr in enacted_comp_df.iterrows():
+            enacted_comp[(int(cr.year), cr.office, float(cr.threshold))] = int(cr.n_competitive)
+
+    for _, r in enacted.iterrows():
+        eg_pct = round(float(r.efficiency_gap or 0) * 100, 2)
+        comp_vals = "  ".join(
+            f"{enacted_comp.get((int(r.year), r.office, t), '-'):>4}"
+            for t in thresholds
+        )
+        print(f"  {int(r.year):<6} {r.office:<12} D{int(r.dem_seats)}/R{int(r.rep_seats)}"
+              f"  {eg_pct:>6}%  {comp_vals}")
+
+    print(f"\n✓ Done.")
+    print(f"  Partisan stats : {stats_out}")
+    if thresholds:
+        print(f"  Competitive    : {comp_out}")
+    print(f"\nNext:")
+    print(f"  uv run --project fdp python fdp/scripts/visualize_benchmark.py \\")
+    print(f"      --run-name {plan_id}")
 
 
 if __name__ == "__main__":

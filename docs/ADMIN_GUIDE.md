@@ -1,6 +1,24 @@
 # Fair Districts GA — Admin & Operations Guide
 
-**Audience:** Technical admin running ensemble jobs, updating election data, managing the database, and maintaining the pipeline.
+**Audience:** Technical admin running ensemble jobs, updating election data, and maintaining the pipeline.
+
+## Architecture
+
+The scoring pipeline is **Parquet-only** — no live database server is required:
+
+```
+Modal volume          Local Parquet files               Charts / static JSON
+──────────────   →   ─────────────────────────────   →   ──────────────────
+*_plans.parquet       election_results_vtd.parquet         *_partisan.png
+                      cvap_vtd.parquet                     *_river_*.png
+                      ensemble/{run}_scores.parquet         *_demographics.png
+                      ensemble/{run}_draw_stats.parquet
+                      ensemble/{run}_demographics.parquet
+                      ensemble/{run}_competitive_counts.parquet
+```
+
+All aggregation runs in **DuckDB in-process** — no Supabase, no PostgreSQL server.
+Supabase has been fully eliminated from the scoring pipeline.
 
 ---
 
@@ -11,12 +29,11 @@
 3. [Running Ensemble Jobs](#3-running-ensemble-jobs)
 4. [After a Run Completes — Scoring Pipeline](#4-after-a-run-completes--scoring-pipeline)
 5. [Updating Election Data](#5-updating-election-data)
-6. [Database Migrations](#6-database-migrations)
-7. [Monitoring & Status Checks](#7-monitoring--status-checks)
-8. [Handling Failed Runs](#8-handling-failed-runs)
-9. [Generating Charts](#9-generating-charts)
-10. [Secrets & Credentials](#10-secrets--credentials)
-11. [Data Maintenance](#11-data-maintenance)
+6. [Monitoring & Status Checks](#6-monitoring--status-checks)
+7. [Handling Failed Runs](#7-handling-failed-runs)
+8. [Generating Charts](#8-generating-charts)
+9. [Secrets & Credentials](#9-secrets--credentials)
+10. [Data Maintenance](#10-data-maintenance)
 
 ---
 
@@ -27,7 +44,6 @@
 | `uv` | Python package manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | `modal` | Serverless compute for ensemble runs | `pip install modal && modal setup` |
 | WSL 2 (Ubuntu) | Required — all scripts run in WSL | Windows feature |
-| `psql` (optional) | Direct Supabase access for debugging | `sudo apt install postgresql-client` |
 
 All commands below are run from **WSL** in the `~/codebox/fgdp` directory tree.
 
@@ -46,21 +62,30 @@ cd ~/codebox/fgdp/fdga-chain
 uv sync
 ```
 
-### Set DATABASE_URL
+**`DATABASE_URL` is no longer needed** for the scoring pipeline. DuckDB reads
+directly from local Parquet files. The only remaining use for `DATABASE_URL` is
+the one-time Supabase export (see below).
 
-The database URL must be set in the shell (or in `fdp/.env`) for all fdp scripts:
+### One-time: Export reference data from Supabase
+
+Run this **once** to export election results and CVAP from Supabase to local
+Parquet files. After this, the scoring pipeline has zero database dependency.
 
 ```bash
-export DATABASE_URL="postgresql://postgres.<project>:<password>@aws-1-us-east-2.pooler.supabase.com:5432/postgres"
+cd ~/codebox/fgdp
+DATABASE_URL="postgresql://..." uv run --project fdp \
+    python fdp/scripts/export_supabase_to_parquet.py
+
+# Also free Supabase storage (truncates large tables):
+DATABASE_URL="postgresql://..." uv run --project fdp \
+    python fdp/scripts/export_supabase_to_parquet.py --free-supabase
 ```
 
-The connection string is the **session pooler** URL from the Supabase dashboard
-(Project Settings → Database → Session pooler, port 5432).
+This creates:
+- `fdp/data/repos/main/election_results_vtd.parquet` — VTD-level election data
+- `fdp/data/repos/main/cvap_vtd.parquet` — Citizen Voting Age Population by VTD
 
-Store it in `fdp/.env` so you don't have to export it each time:
-```env
-DATABASE_URL=postgresql://postgres.<project>:<password>@...
-```
+These files are gitignored (large). Store them on the local machine or Google Drive.
 
 ### Verify Modal secrets are current
 
@@ -69,22 +94,18 @@ cd ~/codebox/fgdp/fdga-chain
 modal secret list
 ```
 
-Required secrets:
+Required Modal secret:
 
 | Secret name | Key | Purpose |
 |---|---|---|
-| `fdga-chain-db` | `DATABASE_URL` | Supabase connection from Modal containers |
-| `fdga-chain-secrets` | `MAPBOX_TOKEN` | Map tile serving |
+| `fdga-chain-secrets` | `MAPBOX_TOKEN` | Map tile serving (if needed) |
 
-If `DATABASE_URL` changes (e.g. password rotation), update the Modal secret:
-```bash
-modal secret create fdga-chain-db DATABASE_URL="postgresql://..." --force
-modal deploy modal_app.py    # MUST redeploy after secret change
-```
+> ℹ️ The `fdga-chain-db` (Supabase) Modal secret is no longer needed — Modal
+> containers write plans directly to the Modal volume, not to Supabase.
 
-> ⚠️ **Always redeploy after updating a Modal secret.** The deployed app
-> caches secret references by ID; `--force` creates a new secret ID that
-> the old deployment doesn't know about.
+> ⚠️ **Always redeploy after updating a Modal secret.** `--force` on
+> `modal secret create` changes the internal secret ID; the running app still
+> references the old ID and will crash-loop until you redeploy.
 
 ---
 
@@ -168,59 +189,80 @@ uv run python scripts/run_ensemble.py \
 
 ## 4. After a Run Completes — Scoring Pipeline
 
-Once a run writes its plans parquet to the Modal volume, run these steps in order:
+Once a run writes its plans parquet to the Modal volume, run these steps in order.
+**No `DATABASE_URL` needed** — all steps read/write local Parquet files via DuckDB.
+
+### Prerequisite: reference data must exist
+
+Before scoring any run, confirm these files exist (created by the one-time export):
+```
+fdp/data/repos/main/election_results_vtd.parquet
+fdp/data/repos/main/cvap_vtd.parquet
+```
+
+If missing, run `export_supabase_to_parquet.py` (see §2).
 
 ### Step 1 — Download plans from Modal
 
 ```bash
-cd ~/codebox/fgdp/fdga-chain
+cd ~/codebox/fgdp
 
 modal volume get fdga-chain-data \
     /ensemble/congress_2026_v2_plans.parquet \
-    ../congress_2026_v2_plans.parquet
+    fdp/data/repos/main/ensemble/congress_2026_v2_plans.parquet
 ```
 
 ### Step 2 — Score partisan metrics
 
 Computes dem/rep votes, dem_2pv, winner per draw × district × election.
-Writes to `fdp.ensemble_scores` in Supabase.
+Reads `election_results_vtd.parquet`; writes `congress_2026_v2_scores.parquet`.
 
 ```bash
 cd ~/codebox/fgdp
 
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/score_ensemble_plans.py \
+uv run --project fdp python fdp/scripts/score_ensemble_plans.py \
+    --run-name congress_2026_v2
+# Plans file auto-discovered at fdp/data/repos/main/ensemble/congress_2026_v2_plans.parquet
+```
+
+Or with an explicit plans file path:
+```bash
+uv run --project fdp python fdp/scripts/score_ensemble_plans.py \
     --run-name congress_2026_v2 \
-    --plans-file congress_2026_v2_plans.parquet \
-    --config fdp/configs/benchmarks/ga_congress_2026_v2.yml
+    --plans-file /path/to/congress_2026_v2_plans.parquet
 ```
 
 ### Step 3 — Score demographic metrics
 
 Computes CVAP-based majority-minority flags per draw × district.
-Writes to `fdp.ensemble_demographics` in Supabase.
+Reads `cvap_vtd.parquet`; writes `congress_2026_v2_demographics.parquet`.
 
 ```bash
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/score_ensemble_demographics.py \
+uv run --project fdp python fdp/scripts/score_ensemble_demographics.py \
     --run-name congress_2026_v2 \
-    --plans-file congress_2026_v2_plans.parquet
+    --plans-file fdp/data/repos/main/ensemble/congress_2026_v2_plans.parquet
 ```
 
 ### Step 4 — Build per-draw rollup stats
 
 Aggregates seat counts, efficiency gap, mean-median, and competitive district
-counts per draw. All computation happens server-side in PostgreSQL.
+counts per draw. All computation runs in DuckDB in-process — no database server.
+
+Writes:
+- `congress_2026_v2_draw_stats.parquet`
+- `congress_2026_v2_competitive_counts.parquet`
 
 ```bash
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/build_draw_stats.py \
+uv run --project fdp python fdp/scripts/build_draw_stats.py \
     --run-name congress_2026_v2 \
     --config fdp/configs/benchmarks/ga_congress_2026_v2.yml
 ```
 
-The `--config` flag reads `competitiveness.thresholds` from the YAML so no
+The `--config` flag reads `competitiveness.thresholds` from the YAML — no
 threshold values are hardcoded. To use explicit thresholds instead:
 
 ```bash
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/build_draw_stats.py \
+uv run --project fdp python fdp/scripts/build_draw_stats.py \
     --run-name congress_2026_v2 \
     --thresholds 0.05 0.07
 ```
@@ -228,9 +270,8 @@ DATABASE_URL="..." uv run --project fdp python fdp/scripts/build_draw_stats.py \
 ### Step 5 — Generate charts
 
 ```bash
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/visualize_benchmark.py \
-    --run-name congress_2026_v2 \
-    --river-elections 2022_general_governor 2024_general_president 2021_runoff_senate
+uv run --project fdp python fdp/scripts/visualize_benchmark.py \
+    --run-name congress_2026_v2
 ```
 
 Charts are saved to `fdp/data/repos/main/ensemble/charts/`.
@@ -238,30 +279,25 @@ Charts are saved to `fdp/data/repos/main/ensemble/charts/`.
 ### Full pipeline (all chambers)
 
 ```bash
-DB="postgresql://..."
-RUNSCRIPTS="uv run --project fdp python"
+cd ~/codebox/fgdp
+SCRIPTS="uv run --project fdp python"
 
 for RUNNAME in congress_2026_v2 senate_2026_v1 house_2026_v1; do
-    # Determine config
     CHAMBER=$(echo $RUNNAME | cut -d_ -f1)
     CONFIG="fdp/configs/benchmarks/ga_${CHAMBER}_2026_v1.yml"
     [ "$RUNNAME" = "congress_2026_v2" ] && CONFIG="fdp/configs/benchmarks/ga_congress_2026_v2.yml"
 
-    # Download plans
-    modal volume get fdga-chain-data /ensemble/${RUNNAME}_plans.parquet ./${RUNNAME}_plans.parquet
+    # Download plans from Modal
+    modal volume get fdga-chain-data /ensemble/${RUNNAME}_plans.parquet \
+        fdp/data/repos/main/ensemble/${RUNNAME}_plans.parquet
 
-    # Score
-    DATABASE_URL="$DB" $RUNSCRIPTS fdp/scripts/score_ensemble_plans.py \
-        --run-name $RUNNAME --plans-file ./${RUNNAME}_plans.parquet --config $CONFIG
-
-    DATABASE_URL="$DB" $RUNSCRIPTS fdp/scripts/score_ensemble_demographics.py \
-        --run-name $RUNNAME --plans-file ./${RUNNAME}_plans.parquet
-
-    DATABASE_URL="$DB" $RUNSCRIPTS fdp/scripts/build_draw_stats.py \
-        --run-name $RUNNAME --config $CONFIG
-
-    DATABASE_URL="$DB" $RUNSCRIPTS fdp/scripts/visualize_benchmark.py \
-        --run-name $RUNNAME
+    # Score (no DATABASE_URL needed)
+    $SCRIPTS fdp/scripts/score_ensemble_plans.py     --run-name $RUNNAME
+    $SCRIPTS fdp/scripts/score_ensemble_demographics.py \
+        --run-name $RUNNAME \
+        --plans-file fdp/data/repos/main/ensemble/${RUNNAME}_plans.parquet
+    $SCRIPTS fdp/scripts/build_draw_stats.py         --run-name $RUNNAME --config $CONFIG
+    $SCRIPTS fdp/scripts/visualize_benchmark.py      --run-name $RUNNAME
 done
 ```
 
@@ -285,14 +321,14 @@ shapefiles disaggregated to 2020 Census blocks.
 4. **Run** the aggregation pipeline:
    ```bash
    cd ~/codebox/fgdp
-   DATABASE_URL="..." uv run --project fdp python fdp/scripts/build_vtd_inputs.py \
+   uv run --project fdp python fdp/scripts/build_vtd_inputs.py \
        --only elections2026
    ```
 
-5. **Verify** totals against GA Secretary of State certified results:
+5. **Re-export** the election results Parquet (since new elections were added):
    ```bash
-   # check_scores.py runs quick sanity queries
-   DATABASE_URL="..." uv run --project fdp python fdp/scripts/check_scores.py
+   # Only needed if Supabase still holds the canonical copy; otherwise skip.
+   # If using Parquet files only, update election_results_vtd.parquet directly.
    ```
 
 6. **Add the election** to the relevant YAML benchmark configs
@@ -305,65 +341,15 @@ disaggregated to 2020 Census blocks by RDH.
 
 ```bash
 # Re-run CVAP aggregation only
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/build_vtd_inputs.py \
-    --only cvap
+uv run --project fdp python fdp/scripts/build_vtd_inputs.py --only cvap
+# Then re-export to update cvap_vtd.parquet:
+#   python fdp/scripts/export_supabase_to_parquet.py  (if Supabase still available)
+# Or update cvap_vtd.parquet directly from the VTD aggregation output.
 ```
 
 ---
 
-## 6. Database Migrations
-
-All schema changes live in numbered SQL files in `fdp/sql/`.
-
-### Apply a migration
-
-```bash
-cd ~/codebox/fgdp
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/apply_migration.py \
-    fdp/sql/008_normalize_competitive_counts.sql
-```
-
-### Apply all migrations in order (first-time setup)
-
-```bash
-for f in fdp/sql/00*.sql; do
-    echo "Applying $f..."
-    DATABASE_URL="..." uv run --project fdp python fdp/scripts/apply_migration.py "$f"
-done
-```
-
-### Migration history
-
-| File | What it creates |
-|---|---|
-| `001_manifest.duckdb` | DuckDB manifest registry |
-| `002_cdm.sql` | Core CDM tables (`election_results`, `district_demographics`) |
-| `003_query_cache.sql` | LLM query cache |
-| `004_ensemble_scores.sql` | `fdp.ensemble_scores` — per-draw partisan scores |
-| `005_ensemble_runs.sql` | `fdp.ensemble_runs` catalog + `v_ensemble_runs` view |
-| `006_draw_stats.sql` | `fdp.ensemble_draw_stats`, `fdp.ensemble_demographics`, views |
-| `007_add_competitive_005.sql` | *(superseded by 008 — do not apply separately)* |
-| `008_normalize_competitive_counts.sql` | Replaces hardcoded competitive columns with normalized `fdp.ensemble_competitive_counts` table |
-
----
-
-## 7. Monitoring & Status Checks
-
-### Check run catalog (from local machine)
-
-```bash
-cd ~/codebox/fgdp/fdga-chain
-DATABASE_URL="..." modal run modal_app.py::list_runs
-```
-
-### Check run status via SQL
-
-```sql
-SELECT run_name, status, chamber, n_draws, runtime_minutes, started_at
-FROM fdp.v_ensemble_runs
-ORDER BY started_at DESC
-LIMIT 20;
-```
+## 6. Monitoring & Status Checks
 
 ### Check Modal volume contents
 
@@ -371,32 +357,36 @@ LIMIT 20;
 modal volume ls fdga-chain-data /ensemble/
 ```
 
-### Check scoring completeness
+### Check scoring completeness (local Parquet files)
 
-```sql
--- How many draws scored per run?
-SELECT plan_id, COUNT(DISTINCT draw) AS n_draws, COUNT(DISTINCT year||office) AS n_races
-FROM fdp.ensemble_scores
-GROUP BY plan_id;
+```python
+# Quick DuckDB inspection — run from Python or paste into a script
+import duckdb, pathlib
 
--- Quick distribution check
-SELECT * FROM fdp.v_partisan_distribution
-WHERE plan_id = 'congress_2026_v2'
-ORDER BY year, office, dem_seats;
-
--- Enacted vs benchmark
-SELECT * FROM fdp.v_enacted_vs_benchmark
-WHERE plan_id = 'congress_2026_v2'
-ORDER BY year, office;
+data = pathlib.Path("fdp/data/repos/main/ensemble")
+for f in sorted(data.glob("*_draw_stats.parquet")):
+    run = f.stem.replace("_draw_stats", "")
+    conn = duckdb.connect()
+    r = conn.execute(
+        "SELECT COUNT(DISTINCT draw) AS draws, COUNT(DISTINCT year||office) AS races "
+        "FROM read_parquet(?)", [str(f)]
+    ).fetchone()
+    print(f"{run}: {r[0]} draws × {r[1]} races")
 ```
 
-### Check competitive counts are populated
+### Quick distribution check
 
-```sql
-SELECT plan_id, threshold, COUNT(*) AS rows
-FROM fdp.ensemble_competitive_counts
-GROUP BY plan_id, threshold
-ORDER BY plan_id, threshold;
+```python
+import duckdb
+conn = duckdb.connect()
+conn.execute("""
+    SELECT year, office, dem_seats, COUNT(*) AS n_draws,
+        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY year, office), 1) AS pct
+    FROM read_parquet('fdp/data/repos/main/ensemble/congress_2026_v2_draw_stats.parquet')
+    WHERE draw > 1
+    GROUP BY year, office, dem_seats
+    ORDER BY year, office, dem_seats
+""").df()
 ```
 
 ### Live Modal logs
@@ -435,13 +425,15 @@ uv run python scripts/run_ensemble.py \
 
 ### Clearing a run's data before a clean retry
 
-```sql
--- Remove all data for a run (use with caution)
-DELETE FROM fdp.ensemble_competitive_counts WHERE plan_id = 'house_2026_v1';
-DELETE FROM fdp.ensemble_draw_stats       WHERE plan_id = 'house_2026_v1';
-DELETE FROM fdp.ensemble_demographics     WHERE plan_id = 'house_2026_v1';
-DELETE FROM fdp.ensemble_scores           WHERE plan_id = 'house_2026_v1';
-DELETE FROM fdp.ensemble_runs             WHERE run_name = 'house_2026_v1';
+Simply delete the run's Parquet files and re-run scoring:
+
+```bash
+cd ~/codebox/fgdp
+DATA=fdp/data/repos/main/ensemble
+rm -f $DATA/house_2026_v1_scores.parquet
+rm -f $DATA/house_2026_v1_demographics.parquet
+rm -f $DATA/house_2026_v1_draw_stats.parquet
+rm -f $DATA/house_2026_v1_competitive_counts.parquet
 ```
 
 ### Partial retry (scoring only, plans already downloaded)
@@ -449,36 +441,41 @@ DELETE FROM fdp.ensemble_runs             WHERE run_name = 'house_2026_v1';
 If the chain completed and the parquet is in the Modal volume but scoring failed:
 
 ```bash
-# Download plans
-modal volume get fdga-chain-data /ensemble/house_2026_v1_plans.parquet ./house_2026_v1_plans.parquet
+# Download plans from Modal (if not already local)
+modal volume get fdga-chain-data /ensemble/house_2026_v1_plans.parquet \
+    fdp/data/repos/main/ensemble/house_2026_v1_plans.parquet
 
-# Run scoring steps only (skip chain generation)
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/score_ensemble_plans.py \
+# Run scoring steps only (skip chain generation) — no DATABASE_URL needed
+uv run --project fdp python fdp/scripts/score_ensemble_plans.py \
+    --run-name house_2026_v1
+uv run --project fdp python fdp/scripts/score_ensemble_demographics.py \
     --run-name house_2026_v1 \
-    --plans-file ./house_2026_v1_plans.parquet \
-    --config fdp/configs/benchmarks/ga_house_2026_v1.yml
+    --plans-file fdp/data/repos/main/ensemble/house_2026_v1_plans.parquet
+uv run --project fdp python fdp/scripts/build_draw_stats.py \
+    --run-name house_2026_v1 --config fdp/configs/benchmarks/ga_house_2026_v1.yml
 ```
 
 ---
 
-## 9. Generating Charts
+## 8. Generating Charts
 
-Charts are generated from data already in Supabase (draw stats must be built first).
+Charts read from local Parquet files — draw stats must be built first (§4 Step 4).
+No `DATABASE_URL` needed.
 
 ```bash
 cd ~/codebox/fgdp
 
 # All charts for a run (partisan + competitiveness per threshold + demographics + river)
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/visualize_benchmark.py \
+uv run --project fdp python fdp/scripts/visualize_benchmark.py \
     --run-name congress_2026_v2
 
 # Custom output directory
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/visualize_benchmark.py \
+uv run --project fdp python fdp/scripts/visualize_benchmark.py \
     --run-name congress_2026_v2 \
     --out-dir /tmp/charts
 
 # Specify which elections to generate river charts for
-DATABASE_URL="..." uv run --project fdp python fdp/scripts/visualize_benchmark.py \
+uv run --project fdp python fdp/scripts/visualize_benchmark.py \
     --run-name congress_2026_v2 \
     --river-elections 2022_general_governor 2024_general_president 2021_runoff_senate
 ```
@@ -491,33 +488,23 @@ Charts output to `fdp/data/repos/main/ensemble/charts/`:
 
 ---
 
-## 10. Secrets & Credentials
+## 9. Secrets & Credentials
 
 ### Current secrets
 
 | Where | Name | What |
 |---|---|---|
-| `fdp/.env` | `DATABASE_URL` | Supabase session pooler URL |
-| Modal | `fdga-chain-db` | `DATABASE_URL` for Modal containers |
-| Modal | `fdga-chain-secrets` | `MAPBOX_TOKEN` |
-| `fdga-chain/.env` | Various | Local dev only (not used in production) |
+| Modal | `fdga-chain-secrets` | `MAPBOX_TOKEN` (if map serving is needed) |
+| `fdga-chain/.env` | Various | Local dev only |
 
-### Rotating the Supabase password
-
-1. Rotate in Supabase dashboard (Project Settings → Database → Reset password)
-2. Update `fdp/.env`
-3. Update Modal secret and redeploy:
-   ```bash
-   modal secret create fdga-chain-db DATABASE_URL="postgresql://...new..." --force
-   cd ~/codebox/fgdp/fdga-chain && modal deploy modal_app.py
-   ```
+**Supabase / `DATABASE_URL` is no longer used.** The scoring pipeline runs
+fully local via DuckDB; Modal containers write plans to the Modal volume only.
 
 ### First-time Modal setup
 
 ```bash
 pip install modal && modal setup   # opens browser for auth
 
-modal secret create fdga-chain-db DATABASE_URL="postgresql://..."
 modal secret create fdga-chain-secrets MAPBOX_TOKEN="pk.eyJ1..."
 
 cd ~/codebox/fgdp/fdga-chain
@@ -527,7 +514,7 @@ modal deploy modal_app.py
 
 ---
 
-## 11. Data Maintenance
+## 10. Data Maintenance
 
 ### Rebuilding the VTD dual graphs
 
@@ -547,15 +534,18 @@ modal deploy modal_app.py
 
 ### Validating election data against SOS certified results
 
-After loading new elections, spot-check totals:
+After loading new elections, spot-check totals using DuckDB:
 
-```sql
--- Total votes by candidate for a given election
-SELECT office, candidate, SUM(votes) AS total_votes
-FROM fdp.election_results
-WHERE year = 2024 AND election_type = 'general'
-GROUP BY office, candidate
-ORDER BY office, total_votes DESC;
+```python
+import duckdb
+conn = duckdb.connect()
+conn.execute("""
+    SELECT office, party, SUM(votes) AS total_votes
+    FROM read_parquet('fdp/data/repos/main/election_results_vtd.parquet')
+    WHERE year = 2024 AND election_type = 'general'
+    GROUP BY office, party
+    ORDER BY office, total_votes DESC
+""").df()
 ```
 
 Compare against `sos.ga.gov/elections/election-results`.
@@ -566,19 +556,8 @@ Compare against `sos.ga.gov/elections/election-results`.
 |---|---|---|
 | `fdensemble/input_data/` | Raw block shapefiles from RDH | ~5 GB |
 | Modal volume `fdga-chain-data` | Graphs + plans parquets | ~50 MB |
-| Supabase `fdp` schema | All scored data | ~2 GB |
+| `fdp/data/repos/main/` | Reference + scored Parquet files | ~500 MB |
+| ~~Supabase~~ | ~~All scored data~~ | Eliminated |
 
-`fdensemble/input_data/` is gitignored and does not need to be backed up —
-source files can be re-downloaded from RDH.
-
-### Checking Supabase table sizes
-
-```sql
-SELECT
-    table_name,
-    pg_size_pretty(pg_total_relation_size('fdp.' || table_name)) AS size,
-    (SELECT COUNT(*) FROM fdp.ensemble_scores WHERE plan_id IS NOT NULL) AS rows
-FROM information_schema.tables
-WHERE table_schema = 'fdp'
-ORDER BY pg_total_relation_size('fdp.' || table_name) DESC;
-```
+`fdensemble/input_data/` is gitignored — source files can be re-downloaded from RDH.
+`fdp/data/repos/main/` is gitignored — keep a local copy or on Google Drive.

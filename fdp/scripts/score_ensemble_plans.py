@@ -1,45 +1,52 @@
 #!/usr/bin/env python3
 """
-Score an ensemble plan file against elections in Supabase.
+Score an ensemble plan file against local election Parquet data.
 
 Algorithm (vectorised numpy — no Python loops over draws):
   1. Load plan assignments parquet → pivot to (n_vtds × n_draws) matrix
-  2. Pull election_results from Supabase → pivot to (n_vtds × N_race_parties)
+  2. Load election_results_vtd.parquet → pivot to (n_vtds × N_race_parties) matrix
   3. For each district: boolean mask × matrix-multiply → (n_draws × N_race_parties)
   4. Reshape to long-format DataFrame, compute 2pv and winner
-  5. Upsert to fdp.ensemble_scores
+  5. Write to {run_name}_scores.parquet
+
+Requires: export_supabase_to_parquet.py must have been run once to produce
+          election_results_vtd.parquet in the data directory.
 
 Usage (from fgdp/ root):
     # Score a Modal run (download parquet first):
-    modal volume get fdga-chain-data /ensemble/my_run_plans.parquet .
+    modal volume get fdga-chain-data /ensemble/congress_2026_v2_plans.parquet .
     uv run --project fdp python fdp/scripts/score_ensemble_plans.py \\
-        --run-name my_run \\
-        --plans-file my_run_plans.parquet
+        --run-name congress_2026_v2 \\
+        --plans-file congress_2026_v2_plans.parquet
 
-    # Legacy: score the original ALARM 5001-plan ensemble (hardcoded path):
-    uv run --project fdp python fdp/scripts/score_ensemble_plans.py
-    uv run --project fdp python fdp/scripts/score_ensemble_plans.py --dry-run
-    uv run --project fdp python fdp/scripts/score_ensemble_plans.py --races governor senate president
+    # Dry run (score but don't write output):
+    uv run --project fdp python fdp/scripts/score_ensemble_plans.py \\
+        --run-name congress_2026_v2 \\
+        --plans-file congress_2026_v2_plans.parquet \\
+        --dry-run
+
+    # Filter to specific races:
+    uv run --project fdp python fdp/scripts/score_ensemble_plans.py \\
+        --run-name congress_2026_v2 \\
+        --plans-file congress_2026_v2_plans.parquet \\
+        --races governor senate president
 """
 from __future__ import annotations
 
 import argparse
-import io
-import os
 import time
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import psycopg
 
 # ── Config ─────────────────────────────────────────────────────────────────
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main"
+
 # Legacy defaults (used when --run-name / --plans-file are not provided)
-_DEFAULT_PARQUET = (
-    Path(__file__).resolve().parent.parent
-    / "data/repos/main/ensemble/ga_congress_2020_alarm_5001_plans.parquet"
-)
+_DEFAULT_PARQUET = DEFAULT_DATA_DIR / "ensemble/ga_congress_2020_alarm_5001_plans.parquet"
 _DEFAULT_PLAN_ID = "ga_congress_2020_alarm_5001"
 LOADED_BY = "score_ensemble_plans.py"
 
@@ -47,13 +54,6 @@ LOADED_BY = "score_ensemble_plans.py"
 PLANS_PARQUET: Path = _DEFAULT_PARQUET
 PLAN_ID:       str  = _DEFAULT_PLAN_ID
 N_DISTRICTS:   int  = 14   # overridden after loading the parquet
-
-DB_URL = os.environ.get("DATABASE_URL")
-if not DB_URL:
-    raise RuntimeError(
-        "DATABASE_URL environment variable is not set.\n"
-        "  export DATABASE_URL='postgresql://postgres.xxx:password@...pooler.supabase.com:5432/postgres'"
-    )
 
 
 # ── Stage 1 — Load plan matrix ─────────────────────────────────────────────
@@ -79,33 +79,42 @@ def load_plan_matrix(race_filter: list[str] | None) -> tuple[np.ndarray, list[st
     return plan_np, geoids
 
 
-# ── Stage 2 — Load election results ────────────────────────────────────────
+# ── Stage 2 — Load election results from Parquet ───────────────────────────
 
-def load_elections(geoids: list[str], race_filter: list[str] | None) -> tuple[np.ndarray, list[tuple]]:
+def load_elections(
+    geoids: list[str],
+    race_filter: list[str] | None,
+    elections_file: Path,
+) -> tuple[np.ndarray, list[tuple]]:
     """
-    Pull dem + rep votes from Supabase and return:
+    Load election results from local Parquet and return:
       - elec_np:  (n_vtds, 2*N_races) float64 matrix
       - races:    list of (year, election_type, office) tuples, one per pair of cols
     Column order: race0_dem, race0_rep, race1_dem, race1_rep, …
+
+    elections_file: path to election_results_vtd.parquet produced by
+                    export_supabase_to_parquet.py.
     """
+    if not elections_file.exists():
+        raise FileNotFoundError(
+            f"Election results Parquet not found: {elections_file}\n"
+            "  Run export_supabase_to_parquet.py first:\n"
+            "    DATABASE_URL='...' uv run --project fdp "
+            "python fdp/scripts/export_supabase_to_parquet.py"
+        )
+
     # Always restrict to priority races unless caller explicitly overrides
     PRIORITY_OFFICES = ("president", "governor", "senate", "us-house", "state-rep")
     effective_filter = race_filter if race_filter else list(PRIORITY_OFFICES)
-    placeholders = ", ".join(f"'{r}'" for r in effective_filter)
-    office_filter = f"AND office IN ({placeholders})"
 
-    print("\nPulling election results from Supabase …")
-    with psycopg.connect(DB_URL) as conn:
-        rows = conn.execute(f"""
-            SELECT geoid, year, election_type, office, party, votes
-            FROM fdp.election_results
-            WHERE geo_level = 'vtd'
-              AND party IN ('dem', 'rep')
-              {office_filter}
-            ORDER BY geoid, year, election_type, office, party
-        """).fetchall()
+    print(f"\nLoading election results from {elections_file.name} …")
+    df = pd.read_parquet(elections_file)
 
-    df = pd.DataFrame(rows, columns=["geoid","year","election_type","office","party","votes"])
+    # Filter to priority offices and dem/rep only
+    df = df[
+        df["party"].isin(["dem", "rep"]) &
+        df["office"].isin(effective_filter)
+    ]
 
     # Identify unique races
     races = (df[["year","election_type","office"]]
@@ -154,7 +163,6 @@ def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) ->
     t0 = time.time()
 
     # scores[district_idx, draw_idx, race_col] = total votes in that district/draw
-    # Shape: (14, 5001, 2*n_races)
     all_district_votes = np.empty((N_DISTRICTS, n_draws, n_races * 2), dtype=np.int64)
 
     for d_idx, district in enumerate(range(1, N_DISTRICTS + 1)):
@@ -163,20 +171,19 @@ def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) ->
         # Matrix multiply: (n_draws, n_vtds) @ (n_vtds, 2*n_races) = (n_draws, 2*n_races)
         all_district_votes[d_idx] = mask.T.astype(np.int64) @ elec_np
         if (d_idx + 1) % 5 == 0:
-            print(f"  District {district:2d}/14 done …")
+            print(f"  District {district:2d}/{N_DISTRICTS} done …")
 
     print(f"  Matrix math done in {time.time()-t0:.1f}s")
 
     # ── Build long-format DataFrame ─────────────────────────────────────────
     records = []
-    draws_arr     = np.arange(1, n_draws + 1)            # (5001,)
-    districts_arr = np.arange(1, N_DISTRICTS + 1)        # (14,)
+    draws_arr     = np.arange(1, n_draws + 1)
+    districts_arr = np.arange(1, N_DISTRICTS + 1)
 
     for race_idx, (year, etype, office) in enumerate(races):
         dem_col_idx = race_idx * 2
         rep_col_idx = race_idx * 2 + 1
 
-        # dem_mat[d_idx, draw_idx], rep_mat same — shape (14, 5001)
         dem_mat   = all_district_votes[:, :, dem_col_idx]
         rep_mat   = all_district_votes[:, :, rep_col_idx]
         total_mat = dem_mat + rep_mat
@@ -184,7 +191,6 @@ def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) ->
         with np.errstate(invalid="ignore", divide="ignore"):
             d2pv_mat = np.where(total_mat > 0, dem_mat / total_mat, np.nan)
 
-        # Flatten: (14 × 5001,) arrays
         dist_flat  = np.repeat(districts_arr, n_draws)
         draw_flat  = np.tile(draws_arr, N_DISTRICTS)
         dem_flat   = dem_mat.ravel()
@@ -213,71 +219,24 @@ def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) ->
             "loaded_by":     LOADED_BY,
         })
         records.append(race_df)
+        enacted_row = race_df[race_df.draw == 1]
+        enacted_dem = (enacted_row["winner"] == "dem").sum()
         print(f"  Race {race_idx+1:2d}/{n_races}: {year} {etype} {office}  "
-              f"— enacted dem seats: "
-              f"{(race_df[race_df.draw==1]['winner']=='dem').sum()}/14")
+              f"— enacted dem seats: {enacted_dem}/{N_DISTRICTS}")
 
     scores = pd.concat(records, ignore_index=True)
     print(f"\nScored {len(scores):,} rows total in {time.time()-t0:.1f}s")
     return scores
 
 
-# ── Stage 4 — Upsert to Supabase ──────────────────────────────────────────
+# ── Stage 4 — Save to Parquet ─────────────────────────────────────────────
 
-def upsert_scores(scores: pd.DataFrame, batch_size: int = 100_000) -> None:
-    PK = ["plan_id","draw","district","year","election_type","office"]
-    update_cols = [c for c in scores.columns if c not in PK and
-                   c not in {"created_at","updated_at","update_count","loaded_at"}]
-    col_names  = ", ".join(f'"{c}"' for c in scores.columns)
-    pk_str     = ", ".join(f'"{c}"' for c in PK)
-    update_str = ", ".join(f'"{c}" = EXCLUDED."{c}"' for c in update_cols)
-
-    total      = len(scores)
-    n_batches  = (total + batch_size - 1) // batch_size
-    total_rows = 0
-    t0         = time.time()
-    print(f"\nUpserting {total:,} rows in {n_batches} batches …")
-
-    with psycopg.connect(DB_URL, autocommit=True) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SET SESSION default_transaction_read_only = off")
-
-        for i in range(n_batches):
-            batch = scores.iloc[i * batch_size : (i + 1) * batch_size]
-            buf   = io.StringIO()
-            batch.to_csv(buf, index=False, na_rep="\\N")
-            buf.seek(0); buf.readline()
-
-            with conn.cursor() as cur:
-                cur.execute("BEGIN READ WRITE")
-                cur.execute(
-                    "CREATE TEMP TABLE IF NOT EXISTS _tmp_scores "
-                    "(LIKE fdp.ensemble_scores INCLUDING DEFAULTS)"
-                )
-                cur.execute("TRUNCATE _tmp_scores")
-                with cur.copy(
-                    f"COPY _tmp_scores ({col_names}) FROM STDIN (FORMAT CSV, NULL '\\N')"
-                ) as copy:
-                    copy.write(buf.read())
-                cur.execute(
-                    f"INSERT INTO fdp.ensemble_scores ({col_names}) "
-                    f"SELECT {col_names} FROM _tmp_scores "
-                    f"ON CONFLICT ({pk_str}) DO UPDATE SET {update_str}"
-                )
-                n = cur.rowcount
-                cur.execute("COMMIT")
-
-            total_rows += n
-            elapsed = time.time() - t0
-            rate    = total_rows / elapsed if elapsed > 0 else 0
-            eta     = (total - total_rows) / rate if rate > 0 else 0
-            print(f"  Batch {i+1:>3}/{n_batches}  "
-                  f"{total_rows:>9,}/{total:,}  "
-                  f"({100*total_rows/total:5.1f}%)  "
-                  f"{rate:,.0f} rows/s  ETA {eta/60:.1f} min")
-
-    elapsed = time.time() - t0
-    print(f"\n✓ {total_rows:,} rows in {elapsed/60:.1f} min")
+def save_scores(scores: pd.DataFrame, out_path: Path) -> None:
+    """Write scored ensemble to Parquet (replaces Supabase upsert)."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    scores.to_parquet(out_path, index=False)
+    size_mb = out_path.stat().st_size / 1_000_000
+    print(f"\n✓ {len(scores):,} rows → {out_path.name}  ({size_mb:.1f} MB)")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -288,26 +247,48 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run-name", default=None,
-                    help="Run name (becomes plan_id in ensemble_scores). "
+                    help="Run name (becomes plan_id in output). "
                          "Defaults to the legacy ALARM plan ID.")
     ap.add_argument("--plans-file", default=None, dest="plans_file",
                     help="Path to the plans parquet file. "
-                         "Defaults to the legacy ALARM parquet path.")
+                         "Defaults to {data_dir}/ensemble/{run_name}_plans.parquet.")
+    ap.add_argument("--data-dir", default=None,
+                    help=f"Root data directory (default: {DEFAULT_DATA_DIR})")
+    ap.add_argument("--elections-file", default=None, dest="elections_file",
+                    help="Path to election_results_vtd.parquet. "
+                         "Defaults to {data_dir}/election_results_vtd.parquet.")
+    ap.add_argument("--out-file", default=None, dest="out_file",
+                    help="Path to write scores Parquet. "
+                         "Defaults to {data_dir}/ensemble/{run_name}_scores.parquet.")
     ap.add_argument("--config", default=None,
-                    help="(Ignored for now — reserved for future election filtering from YAML.)")
+                    help="(Ignored — reserved for future election filtering from YAML.)")
     ap.add_argument("--dry-run", action="store_true",
-                    help="Compute scores but do not write to Supabase")
+                    help="Compute scores but do not write output")
     ap.add_argument("--races", nargs="*", default=None,
                     help="Score only these offices (e.g. governor senate president)")
-    ap.add_argument("--batch-size", type=int, default=100_000,
-                    help="Rows per upsert batch (default: 100,000)")
     args = ap.parse_args()
+
+    # Resolve data directory
+    data_dir = Path(args.data_dir) if args.data_dir else DEFAULT_DATA_DIR
 
     # Override globals from CLI
     if args.run_name:
         PLAN_ID = args.run_name
     if args.plans_file:
         PLANS_PARQUET = Path(args.plans_file).resolve()
+    elif args.run_name:
+        PLANS_PARQUET = data_dir / "ensemble" / f"{PLAN_ID}_plans.parquet"
+
+    elections_file = (
+        Path(args.elections_file).resolve()
+        if args.elections_file
+        else data_dir / "election_results_vtd.parquet"
+    )
+    out_file = (
+        Path(args.out_file).resolve()
+        if args.out_file
+        else data_dir / "ensemble" / f"{PLAN_ID}_scores.parquet"
+    )
 
     if not PLANS_PARQUET.exists():
         print(f"ERROR: plans file not found: {PLANS_PARQUET}")
@@ -316,31 +297,18 @@ def main() -> None:
         import sys; sys.exit(1)
 
     plan_np, geoids = load_plan_matrix(args.races)
-    elec_np, races  = load_elections(geoids, args.races)
+    elec_np, races  = load_elections(geoids, args.races, elections_file)
     scores          = score_plans(plan_np, elec_np, races)
 
     if args.dry_run:
-        print("\n[dry-run] Skipping upsert.")
+        print("\n[dry-run] Skipping write.")
         print(scores.head(10).to_string())
         return
 
-    upsert_scores(scores, batch_size=args.batch_size)
-
-    # Quick validation
-    print("\nValidation — enacted plan seat counts:")
-    with psycopg.connect(DB_URL) as conn:
-        rows = conn.execute("""
-            SELECT year, office, enacted_dem_seats, enacted_rep_seats,
-                   ROUND(median_dem_seats,1) AS median_sim, enacted_pctile, princeton_grade
-            FROM fdp.v_ensemble_vs_enacted
-            ORDER BY year, office
-        """).fetchall()
-        print(f"  {'Year':<6} {'Office':<30} {'Enacted':>8} {'Median':>8} "
-              f"{'Pctile':>8} {'Grade'}")
-        print("  " + "-"*70)
-        for r in rows:
-            print(f"  {r[0]:<6} {r[2]:<30} "
-                  f"D{r[2]:>2}/R{r[3]:>2}  {r[4]:>7}  {r[5]:>7}%  {r[6]}")
+    save_scores(scores, out_file)
+    print(f"\nNext step:")
+    print(f"  uv run --project fdp python fdp/scripts/build_draw_stats.py \\")
+    print(f"      --run-name {PLAN_ID} --config fdp/configs/benchmarks/<your_config>.yml")
 
 
 if __name__ == "__main__":
