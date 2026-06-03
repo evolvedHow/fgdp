@@ -33,6 +33,7 @@ import sys
 import time
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pandas as pd
 
@@ -43,21 +44,58 @@ MAJORITY_THRESHOLD = 0.50   # > 50% CVAP = majority district
 
 
 # ---------------------------------------------------------------------------
-# Stage 1 — Load plan matrix
+# Stage 1 — Load plan matrix (DuckDB-based for memory efficiency)
 # ---------------------------------------------------------------------------
 
 def load_plan_matrix(plans_file: Path) -> tuple[np.ndarray, list[str], int]:
     """
-    Load plans parquet → (n_vtds × n_draws) int16 matrix.
+    Load plans parquet → (n_vtds × n_draws) int16 matrix via DuckDB.
+
+    Uses DuckDB instead of pandas pivot to avoid Python object overhead on
+    the geoid string column. For house-scale runs (64M+ rows, 24k draws,
+    180 districts) pandas peak memory during pivot exceeds 5GB; DuckDB
+    keeps strings dictionary-encoded and uses ~2GB total.
+
     Returns (plan_np, geoids, n_districts).
     """
     print(f"Loading plan matrix from {plans_file.name}…")
-    df = pd.read_parquet(plans_file, columns=["geoid", "draw", "district"])
-    pivot = df.pivot(index="geoid", columns="draw", values="district")
-    plan_np = pivot.values.astype(np.int16)
-    geoids = list(pivot.index)
-    n_districts = int(plan_np.max())
-    n_vtds, n_draws = plan_np.shape
+    conn = duckdb.connect()
+
+    # Metadata in one pass
+    meta = conn.execute("""
+        SELECT COUNT(DISTINCT geoid) AS n_vtds,
+               COUNT(DISTINCT draw)  AS n_draws,
+               MAX(district)         AS n_districts
+        FROM read_parquet(?)
+    """, [str(plans_file)]).fetchone()
+    n_vtds, n_draws, n_districts = int(meta[0]), int(meta[1]), int(meta[2])
+
+    # Ordered geoids and draws
+    geoids = [r[0] for r in conn.execute(
+        "SELECT DISTINCT geoid FROM read_parquet(?) ORDER BY geoid",
+        [str(plans_file)]
+    ).fetchall()]
+    draws = [r[0] for r in conn.execute(
+        "SELECT DISTINCT draw FROM read_parquet(?) ORDER BY draw",
+        [str(plans_file)]
+    ).fetchall()]
+
+    geoid_idx = {g: i for i, g in enumerate(geoids)}
+    draw_idx  = {d: i for i, d in enumerate(draws)}
+
+    # Fetch as numpy arrays (avoids Python object per row)
+    result = conn.execute(
+        "SELECT geoid, draw, district FROM read_parquet(?) ORDER BY draw, geoid",
+        [str(plans_file)]
+    ).fetchnumpy()
+
+    row_idx  = np.array([geoid_idx[g] for g in result["geoid"]], dtype=np.int32)
+    col_idx  = np.array([draw_idx[d]  for d in result["draw"]],  dtype=np.int32)
+    vals     = result["district"].astype(np.int16)
+
+    plan_np = np.zeros((n_vtds, n_draws), dtype=np.int16)
+    plan_np[row_idx, col_idx] = vals
+
     print(f"  {n_vtds:,} VTDs × {n_draws:,} draws  ({n_districts} districts)")
     return plan_np, geoids, n_districts
 
