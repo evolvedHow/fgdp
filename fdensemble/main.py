@@ -1,6 +1,13 @@
-import argparse, io, json, os
+import argparse, io, json, mimetypes, os
 from datetime import datetime
 from pathlib import Path
+
+# python:3.12-slim ships without the OS mime database; register manually so
+# FastAPI StaticFiles serves JS/CSS with correct Content-Type headers.
+mimetypes.add_type('application/javascript', '.js')
+mimetypes.add_type('text/css',               '.css')
+mimetypes.add_type('image/svg+xml',          '.svg')
+mimetypes.add_type('application/json',       '.json')
 
 import numpy as np
 import pandas as pd
