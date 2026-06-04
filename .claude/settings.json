@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(curl -s http://localhost:11434/api/tags *)",
+      "Bash(curl -s http://localhost:*/api/models)",
+      "Bash(curl -s http://localhost:*/api/models *)",
+      "Bash(curl -s http://localhost:*/api/v1/health)",
+      "Bash(curl -s http://localhost:*/api/health)",
+      "Bash(curl -s -o /dev/null -w * http://localhost:*)",
+      "Bash(wsl -e bash -c \"curl -s http://localhost:*/api/v1/health\")",
+      "Bash(wsl -e bash -c \"curl -s http://localhost:*/api/health\")",
+      "Bash(npx tsc --noEmit)"
+    ]
+  }
+}

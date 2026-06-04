@@ -45,12 +45,6 @@
     </div>
   {/if}
 
-  <!-- Compare (future) -->
-  <button disabled title="Side-by-side comparison coming soon"
-          style="font-size:.78rem;padding:.3rem .8rem;border-radius:5px;border:1px solid rgba(255,255,255,.3);
-                 background:transparent;color:rgba(255,255,255,.4);cursor:not-allowed;white-space:nowrap;">
-    Compare ↔
-  </button>
 </header>
 
 <!-- Credits bar -->

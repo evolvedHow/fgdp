@@ -23,3 +23,4 @@ fdp/data/repos/
 # Agent/tool infrastructure
 .agents/
 skills-lock.json
+.aider*

@@ -23,15 +23,16 @@
     // $state.snapshot() converts reactive prop → plain JS so Chart.js can
     // safely call Object.defineProperty on data arrays internally.
     const r = $state.snapshot(river);
-    const labels = r.p50.map((_: number, i: number) => `District ${i + 1}`);
-    const dem = '#3D77BB';
+    const labels = r.p50.map((_: number, i: number) => `D${i + 1}`);
+    // Neutral slate — avoids any perceived partisan color bias in the ensemble band
+    const neutral = '#475569';
 
     const datasets: any[] = [
       {
         label: '5th–95th %ile',
         data: r.p95,
         borderColor: 'transparent',
-        backgroundColor: dem + '25',
+        backgroundColor: 'rgba(71,85,105,0.22)',
         fill: '+1',
         pointRadius: 0,
         tension: 0.3,
@@ -40,15 +41,15 @@
         label: '_lower',
         data: r.p5,
         borderColor: 'transparent',
-        backgroundColor: dem + '25',
+        backgroundColor: 'rgba(71,85,105,0.22)',
         fill: false,
         pointRadius: 0,
         tension: 0.3,
       },
       {
-        label: 'Median',
+        label: 'Neutral median',
         data: r.p50,
-        borderColor: dem,
+        borderColor: neutral,
         borderWidth: 2,
         backgroundColor: 'transparent',
         fill: false,
@@ -69,7 +70,7 @@
       datasets.push({
         label: 'Enacted',
         data: enactedData,
-        borderColor: 'rgba(0,0,0,0.18)',
+        borderColor: 'rgba(51,65,85,0.30)',
         borderWidth: 1,
         backgroundColor: 'transparent',
         fill: false,
@@ -85,11 +86,16 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        layout: { padding: { bottom: 30 } },  // room for party anchor labels
         plugins: {
           legend: {
+            position: 'top',
+            align: 'center',
             labels: {
               filter: (item: any) => !item.text.startsWith('_'),
-              font: { size: 11 },
+              font: { size: 10 },
+              boxWidth: 14,
+              padding: 10,
             },
           },
           tooltip: {
@@ -151,31 +157,31 @@
             ctx.restore();
           },
         },
-        // Party anchor labels: R on left, D on right
+        // Party anchor labels drawn inside the layout padding below x-axis ticks
         {
           id: 'party-anchors',
           afterDraw(ch: any) {
-            const { ctx, chartArea: { left, right, bottom } } = ch;
-            const y = bottom + 22;
+            const { ctx, canvas: cvs, chartArea: { left, right, bottom } } = ch;
+            // Draw in the padding zone below the chart area (guaranteed space via layout.padding.bottom)
+            const yPos = cvs.height - 10;
             ctx.save();
-            // Republican badge (left)
-            const rLabel = '🔴 R';
-            ctx.font = 'bold 11px sans-serif';
+            ctx.font = 'bold 10px sans-serif';
+            // Left: Republican
             ctx.textAlign = 'left';
             ctx.fillStyle = '#c0392b';
-            ctx.fillText(rLabel, left, y);
+            ctx.fillText('R ←', left, yPos);
             ctx.font = '9px sans-serif';
-            ctx.fillStyle = '#999';
-            ctx.fillText('← More Republican', left + 24, y);
-            // Democratic badge (right)
-            ctx.font = 'bold 11px sans-serif';
+            ctx.fillStyle = '#888';
+            ctx.fillText(' More Republican', left + 18, yPos);
+            // Right: Democratic
+            ctx.font = 'bold 10px sans-serif';
             ctx.textAlign = 'right';
             ctx.fillStyle = '#2471a3';
-            ctx.fillText('🔵 D', right, y);
+            ctx.fillText('→ D', right, yPos);
             ctx.font = '9px sans-serif';
-            ctx.fillStyle = '#999';
+            ctx.fillStyle = '#888';
             ctx.textAlign = 'right';
-            ctx.fillText('More Democratic →', right - 26, y);
+            ctx.fillText('More Democratic ', right - 20, yPos);
             ctx.restore();
           },
         },
@@ -191,14 +197,11 @@
               const py = y.getPixelForValue(v);
               const margin = Math.abs(v - 0.5);          // 0 = toss-up, 0.5 = landslide
               const r = 3.5 + margin * 26;               // 3.5px min, ~16.5px at +50pp margin
-              const isDem = v >= 0.5;
-              const fill  = isDem ? 'rgba(52,110,179,0.55)' : 'rgba(192,57,43,0.55)';
-              const stroke= isDem ? '#2471a3' : '#c0392b';
               ctx.beginPath();
               ctx.arc(px, py, r, 0, Math.PI * 2);
-              ctx.fillStyle = fill;
+              ctx.fillStyle = 'rgba(71,85,105,0.50)';
               ctx.fill();
-              ctx.strokeStyle = stroke;
+              ctx.strokeStyle = '#334155';
               ctx.lineWidth = 1.5;
               ctx.stroke();
             });
@@ -223,17 +226,15 @@
     District Partisan Lean — Enacted vs. Neutral Ensemble
   </div>
   <div style="font-size:.7rem;color:var(--gray);margin-bottom:.6rem;">
-    Each district ranked left→right from most Republican to most Democratic.
-    <span style="color:#2471a3;font-weight:600;">Blue bubbles</span> = Democratic-leaning districts;
-    <span style="color:#c0392b;font-weight:600;">red bubbles</span> = Republican-leaning.
-    Bubble size = margin of victory.
+    Districts ranked left→right by partisan lean (most Republican → most Democratic).
+    Enacted plan shown as neutral bubbles; bubble size = margin of victory.
+    Grey band = neutral ensemble range.
   </div>
-  <!-- extra bottom padding to accommodate party anchor labels drawn by Chart.js plugin -->
-  <div style="height:300px;position:relative;padding-bottom:28px;">
+  <div style="height:310px;position:relative;">
     <canvas bind:this={canvas}></canvas>
   </div>
   <div style="font-size:.65rem;color:var(--gray);margin-top:.3rem;">
     Shaded band = 5th–95th percentile of {river.n_sample.toLocaleString()} neutral-drawn plans.
-    Median = blue line. Dashed = 50% threshold.
+    Median = grey line. Dashed = 50% threshold.
   </div>
 </div>

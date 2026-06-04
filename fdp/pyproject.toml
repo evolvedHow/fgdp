@@ -19,6 +19,7 @@ dependencies = [
     "rich>=13.0.0",
     "psycopg[binary]>=3.1.0",
     "duckdb>=1.1.0",
+    "litellm>=1.40.0",
     "matplotlib>=3.10.9",
     "seaborn>=0.13.2",
 ]
