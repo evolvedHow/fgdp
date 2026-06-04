@@ -68,7 +68,8 @@ export interface RiverData {
   p5: number[];
   p50: number[];
   p95: number[];
-  enacted?: number[] | null;  // present for GerryChain scorecard runs
+  enacted?: number[] | null;
+  enacted_district_ids?: number[] | null;  // actual district numbers in rank order
 }
 
 export interface Analysis {

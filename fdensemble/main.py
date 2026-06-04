@@ -898,12 +898,13 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0) -> di
         elec_river = elections[election_idx].get('river')
         if elec_river:
             river = {
-                'n_sample':    elec_river.get('n_draws', 0),
-                'n_districts': elec_river.get('n_districts', run_info.get('n_districts', N_DISTRICTS)),
-                'p5':          elec_river.get('p5', []),
-                'p50':         elec_river.get('p50', []),
-                'p95':         elec_river.get('p95', []),
-                'enacted':     elec_river.get('enacted'),  # may be None for ALARM scorecards
+                'n_sample':              elec_river.get('n_draws', 0),
+                'n_districts':           elec_river.get('n_districts', run_info.get('n_districts', N_DISTRICTS)),
+                'p5':                    elec_river.get('p5', []),
+                'p50':                   elec_river.get('p50', []),
+                'p95':                   elec_river.get('p95', []),
+                'enacted':               elec_river.get('enacted'),
+                'enacted_district_ids':  elec_river.get('enacted_district_ids'),
             }
 
     # Build meta dict (fdensemble RunMeta shape + extra fields for UI)

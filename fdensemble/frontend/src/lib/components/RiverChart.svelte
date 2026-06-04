@@ -33,7 +33,8 @@
     // $state.snapshot() converts reactive prop → plain JS so Chart.js can
     // safely call Object.defineProperty on data arrays internally.
     const r = $state.snapshot(river);
-    const labels = r.p50.map((_: number, i: number) => `D${i + 1}`);
+    const distIds: number[] | null = r.enacted_district_ids ?? null;
+    const labels = r.p50.map((_: number, i: number) => `#${i + 1}`);
     // Pure neutral grey — no blue tint
     const neutral = '#606060';
 
@@ -112,15 +113,24 @@
             mode: 'index',
             intersect: false,
             callbacks: {
+              title: (items: any[]) => {
+                const i = items[0]?.dataIndex ?? 0;
+                const distId = distIds?.[i];
+                const distLabel = distId != null ? `GA-${String(distId).padStart(2, '0')}` : null;
+                const rankLabel = `Partisan rank #${i + 1} of ${r.n_districts}`;
+                return distLabel ? `${distLabel}  ·  ${rankLabel}` : rankLabel;
+              },
               label: (ctx: any) => {
-                if (ctx.dataset.label === 'Enacted' && enactedData) {
-                  const v = enactedData[ctx.dataIndex];
-                  const pct = (v * 100).toFixed(1);
-                  return v >= 0.5
-                    ? `Enacted: ${pct}% Dem (+${((v - 0.5) * 200).toFixed(1)}pp)`
-                    : `Enacted: ${pct}% Dem (${((v - 0.5) * 200).toFixed(1)}pp)`;
+                if (ctx.dataset.label?.startsWith('_')) return null;
+                const v: number = ctx.raw;
+                const pct = (v * 100).toFixed(1);
+                const margin = ((v - 0.5) * 200).toFixed(1);
+                const sign   = v >= 0.5 ? '+' : '';
+                if (ctx.dataset.label === 'Enacted') {
+                  const party  = v >= 0.5 ? 'Dem wins' : 'Rep wins';
+                  return `Enacted: ${pct}% Dem  (${party} by ${Math.abs(Number(margin)).toFixed(1)}pp)`;
                 }
-                return `${ctx.dataset.label}: ${(ctx.raw * 100).toFixed(1)}%`;
+                return `${ctx.dataset.label}: ${pct}%`;
               },
             },
           },
@@ -130,7 +140,10 @@
             ticks: {
               font: { size: 9 },
               maxTicksLimit: 8,
-              callback: (_: any, i: number) => `D${i + 1}`,
+              callback: (_: any, i: number) => {
+                const distId = distIds?.[i];
+                return distId != null ? `GA-${String(distId).padStart(2, '0')}` : `#${i + 1}`;
+              },
             },
           },
           y: {
@@ -252,8 +265,9 @@
     </button>
   </div>
   <div style="font-size:.7rem;color:var(--gray);margin-bottom:.6rem;">
-    Districts ranked left→right by partisan lean (most Republican → most Democratic).
-    Enacted plan shown as bubbles:
+    Each position is a <b>partisan-lean rank</b>, not a geographic district number — the leftmost is always the most Republican district in a given plan, the rightmost always the most Democratic.
+    X-axis labels show the actual enacted district (GA-XX). Hover for district and margin detail.
+    Enacted plan bubbles:
     <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(36,113,163,0.55);vertical-align:middle;border:1.5px solid #1a5276;"></span> Democratic-won &nbsp;
     <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(192,57,43,0.55);vertical-align:middle;border:1.5px solid #922b21;"></span> Republican-won.
     Bubble size = margin of victory. Grey band = neutral ensemble range.
