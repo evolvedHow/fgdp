@@ -125,6 +125,18 @@ def _directional_grade(pct_rank: float, higher_is_better: bool) -> str:
     return 'F'
 
 
+def _seats_grade(pct_rank: float) -> str:
+    """
+    Seat-count grade (dem_seats).  Lower = Republican-biased; F only fires below the
+    5th-percentile ensemble boundary so the individual card never contradicts a passing
+    ensemble badge on the composite panel.
+    """
+    if pct_rank >= 50: return 'A'   # at or above neutral median — no partisan skew
+    if pct_rank >= 20: return 'B'   # below median but well inside ensemble
+    if pct_rank >= 5:  return 'C'   # in lower tail of ensemble
+    return 'F'                       # below 5th-pct — statistical outlier
+
+
 def _geo_grade(comp_g: str, splits_g: str) -> str:
     """Princeton geo combination: A+A=A, A+C or C+A=B, F+F=F, else C."""
     if comp_g == 'A' and splits_g == 'A':             return 'A'
@@ -168,20 +180,24 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
         return "within the normal range for neutral maps"
 
     if key == "dem_seats":
-        if abs(diff) < 0.5:
+        # Primary signal is pct_rank, which matches _seats_grade thresholds exactly.
+        # (Using abs(diff) < 0.5 was misleading: a narrow distribution can produce
+        #  a low pct_rank even when the enacted value is numerically near the median.)
+        if pct_rank >= 40:
             return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
-                    f"close to the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
+                    f"at the {pct_rank:.0f}th percentile, within the typical range for neutral maps "
+                    f"(median: {p50:.0f}, range: {p5:.0f}–{p95:.0f}). "
                     f"No significant seat-count advantage detected for either party.")
-        elif diff > 0:
+        elif pct_rank >= 5:
             return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
-                    f"{diff:.1f} above the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
-                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}, "
-                    f"suggesting a structural seat advantage for Democrats.")
+                    f"at the {pct_rank:.0f}th percentile, below the neutral median of {p50:.0f} "
+                    f"(range: {p5:.0f}–{p95:.0f}). "
+                    f"This is {_outlier_phrase(pct_rank)}, suggesting a structural seat advantage for Republicans.")
         else:
             return (f"The enacted map produces {enacted:.0f} Democratic-leaning seats — "
-                    f"{abs(diff):.1f} below the neutral median of {p50:.0f} (range: {p5:.0f}–{p95:.0f}). "
-                    f"At the {pct_rank:.0f}th percentile, this is {_outlier_phrase(pct_rank)}, "
-                    f"suggesting a structural seat advantage for Republicans.")
+                    f"at the {pct_rank:.0f}th percentile, {_outlier_phrase(pct_rank)}. "
+                    f"Neutral alternatives typically produce {p50:.0f} Dem-leaning seats "
+                    f"(range: {p5:.0f}–{p95:.0f}). The map gives Republicans a strong structural advantage.")
 
     elif key == "efficiency_gap":
         if abs(diff) < 0.01:
@@ -234,10 +250,12 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
                     f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
 
     elif key == "partisan_bias":
-        n = COMPETITIVE_MARGIN  # proxy for context
-        if abs(enacted) < 0.02:
+        # Use the same leeway threshold as _normative_pass for consistency.
+        n_leeway = max(1.0, 0.07 * N_DISTRICTS) / N_DISTRICTS
+        if abs(enacted) <= n_leeway:
             return (f"At a tied 50/50 election, both parties would win seats at nearly "
-                    f"equal rates (bias: {enacted:.3f}). The map is symmetrical.")
+                    f"equal rates (bias: {enacted:.3f}, within the ±{n_leeway:.2f} symmetry threshold). "
+                    f"The map passes the cube-law normative test.")
         elif enacted > 0:
             return (f"At a tied 50/50 election, Republicans would win more seats than "
                     f"Democrats (bias: {enacted:.3f}, at the {pct_rank:.0f}th percentile — "
@@ -346,7 +364,7 @@ _METRIC_META = {
         'Project\'s normative (cube-law) symmetry test — it is not about who '
         'should win, but whether the map\'s structure gives either party a built-in '
         'advantage independent of how people vote.',
-        False),
+        None),   # symmetric: values near zero are best; both tails are bad
     'efficiency_gap': (
         'Wasted Votes Balance', 'Are both parties\' votes equally effective at winning seats?',
         'partisan',
@@ -358,7 +376,7 @@ _METRIC_META = {
         'other\'s — a sign that district lines are concentrating or dispersing that '
         'party\'s voters artificially. Developed by Stephanopoulos & McGhee; '
         'cited in federal gerrymandering litigation.',
-        False),
+        None),   # symmetric: values near zero are best; both tails are bad
     'mean_median': (
         'Vote Distribution Symmetry', 'Does each party need the same number of votes to win a district?',
         'partisan',
@@ -370,7 +388,7 @@ _METRIC_META = {
         'statewide. A value near zero means both parties convert votes to seats '
         'at roughly the same rate. A large deviation in either direction signals '
         'asymmetric voter distribution — often a hallmark of deliberate mapmaking.',
-        False),
+        None),   # symmetric: values near zero are best; both tails are bad
     'comp_seats': (
         'Electoral Competitiveness', 'How many districts give voters a genuine choice?',
         'competitive',
@@ -629,10 +647,12 @@ def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
         pct  = _pct_rank(dist, e_val)
         hist = _histogram_data(dist, e_val)
 
-        if higher_is_better is None:
-            grade = _simple_grade(pct)
+        if key == 'dem_seats':
+            grade = _seats_grade(pct)    # directional: fewer Dem seats = worse; F only below 5th pct
         elif key == 'comp_seats':
             grade = _comp_grade(pct)
+        elif higher_is_better is None:
+            grade = _simple_grade(pct)   # symmetric: both tails are bad; F only outside 5–95
         else:
             grade = _directional_grade(pct, higher_is_better)
 
@@ -721,12 +741,16 @@ def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
 
 
 def _simple_grade(pct_rank: float) -> str:
-    """Center-band grade for minority/seat-count metrics."""
-    dist = abs(pct_rank - 50.0) / 50.0
-    if dist <= 0.25:  return 'A'
-    if dist <= 0.375: return 'B'
-    if dist <= 0.5:   return 'C'
-    return 'F'
+    """
+    Center-band grade for symmetric metrics (minority counts, partisan bias, egap,
+    mean-median).  Values near the neutral median are best; both tails are bad.
+    F fires only outside the 5–95 ensemble boundary, consistent with _ensemble_pass.
+    """
+    dist = abs(pct_rank - 50.0)
+    if dist <= 10: return 'A'   # pct 40–60: comfortably in the middle
+    if dist <= 30: return 'B'   # pct 20–80: normal range
+    if dist <= 45: return 'C'   # pct 5–95:  in ensemble but toward tails
+    return 'F'                   # outside 5–95: statistical outlier
 
 
 def _river_data(sampled: pd.DataFrame, mapping: dict, n_sample: int = 500) -> dict | None:

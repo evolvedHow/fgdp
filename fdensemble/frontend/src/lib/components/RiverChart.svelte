@@ -24,15 +24,15 @@
     // safely call Object.defineProperty on data arrays internally.
     const r = $state.snapshot(river);
     const labels = r.p50.map((_: number, i: number) => `D${i + 1}`);
-    // Neutral slate — avoids any perceived partisan color bias in the ensemble band
-    const neutral = '#475569';
+    // Pure neutral grey — no blue tint
+    const neutral = '#606060';
 
     const datasets: any[] = [
       {
         label: '5th–95th %ile',
         data: r.p95,
         borderColor: 'transparent',
-        backgroundColor: 'rgba(71,85,105,0.22)',
+        backgroundColor: 'rgba(110,110,110,0.20)',
         fill: '+1',
         pointRadius: 0,
         tension: 0.3,
@@ -41,7 +41,7 @@
         label: '_lower',
         data: r.p5,
         borderColor: 'transparent',
-        backgroundColor: 'rgba(71,85,105,0.22)',
+        backgroundColor: 'rgba(110,110,110,0.20)',
         fill: false,
         pointRadius: 0,
         tension: 0.3,
@@ -86,7 +86,7 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
-        layout: { padding: { bottom: 30 } },  // room for party anchor labels
+        layout: { padding: { bottom: 40 } },  // room for party anchor labels
         plugins: {
           legend: {
             position: 'top',
@@ -162,8 +162,9 @@
           id: 'party-anchors',
           afterDraw(ch: any) {
             const { ctx, canvas: cvs, chartArea: { left, right, bottom } } = ch;
-            // Draw in the padding zone below the chart area (guaranteed space via layout.padding.bottom)
-            const yPos = cvs.height - 10;
+            // cvs.height is physical pixels; ctx is pre-scaled by devicePixelRatio so coords are CSS px
+            const dpr = window.devicePixelRatio || 1;
+            const yPos = cvs.height / dpr - 10;
             ctx.save();
             ctx.font = 'bold 10px sans-serif';
             // Left: Republican
@@ -195,13 +196,18 @@
             enactedData.forEach((v: number, i: number) => {
               const px = x.getPixelForValue(i);
               const py = y.getPixelForValue(v);
-              const margin = Math.abs(v - 0.5);          // 0 = toss-up, 0.5 = landslide
-              const r = 3.5 + margin * 26;               // 3.5px min, ~16.5px at +50pp margin
+              const margin = Math.abs(v - 0.5);
+              const isDem = v >= 0.5;
+              // Only draw filled bubbles for safe seats (>12pp margin); skip close races
+              if (margin < 0.12) return;
+              const r = 4 + (margin - 0.12) * 22;        // starts at 4px at 12pp, ~15px at 50pp
+              const fill   = isDem ? 'rgba(36,113,163,0.50)' : 'rgba(192,57,43,0.50)';
+              const stroke = isDem ? '#1a5276' : '#922b21';
               ctx.beginPath();
               ctx.arc(px, py, r, 0, Math.PI * 2);
-              ctx.fillStyle = 'rgba(71,85,105,0.50)';
+              ctx.fillStyle = fill;
               ctx.fill();
-              ctx.strokeStyle = '#334155';
+              ctx.strokeStyle = stroke;
               ctx.lineWidth = 1.5;
               ctx.stroke();
             });
@@ -227,10 +233,12 @@
   </div>
   <div style="font-size:.7rem;color:var(--gray);margin-bottom:.6rem;">
     Districts ranked left→right by partisan lean (most Republican → most Democratic).
-    Enacted plan shown as neutral bubbles; bubble size = margin of victory.
-    Grey band = neutral ensemble range.
+    Enacted plan shown as bubbles:
+    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(36,113,163,0.55);vertical-align:middle;border:1.5px solid #1a5276;"></span> Democratic-won &nbsp;
+    <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:rgba(192,57,43,0.55);vertical-align:middle;border:1.5px solid #922b21;"></span> Republican-won.
+    Bubble size = margin of victory. Grey band = neutral ensemble range.
   </div>
-  <div style="height:310px;position:relative;">
+  <div style="height:380px;position:relative;">
     <canvas bind:this={canvas}></canvas>
   </div>
   <div style="font-size:.65rem;color:var(--gray);margin-top:.3rem;">
