@@ -85,7 +85,7 @@
   onMount(loadRuns);
 </script>
 
-<Header {runs} {summary} {selectedRunId} onRunChange={switchRun} />
+<div class="no-print"><Header {runs} {summary} {selectedRunId} onRunChange={switchRun} /></div>
 
 <main style="max-width:1280px;margin:1rem auto;padding:0 .9rem;">
   {#if loading}
@@ -97,6 +97,12 @@
     </div>
 
   {:else if analysis}
+    <!-- Print-only report title -->
+    <div class="print-only" style="font-size:1.1rem;font-weight:700;margin-bottom:.6rem;color:#111;">
+      Fair Districts GA — Redistricting Ensemble Analysis
+      {#if summary}· {summary.state_full} {summary.plan_type.toUpperCase()} {summary.plan_year}{/if}
+    </div>
+
     <!-- Run info strip -->
     <div style="background:var(--card);border-radius:8px;padding:.6rem 1rem;box-shadow:var(--shadow);
                 border:1.5px solid var(--border);margin-bottom:.9rem;
@@ -110,21 +116,32 @@
       {#if summary?.run.description}
         <span style="flex:1;min-width:200px;">{summary.run.description}</span>
       {/if}
-      {#if availableElections.length > 1}
-        <span style="margin-left:auto;display:flex;align-items:center;gap:.4rem;">
-          <b>Election:</b>
-          <select
-            value={selectedElectionIdx}
-            onchange={(e) => switchElection(parseInt((e.target as HTMLSelectElement).value))}
-            style="font-size:.78rem;padding:.2rem .4rem;border:1px solid var(--border);
-                   border-radius:4px;background:var(--card);color:inherit;cursor:pointer;"
-          >
-            {#each availableElections as elec, i}
-              <option value={i}>{elec.label}</option>
-            {/each}
-          </select>
-        </span>
-      {/if}
+      <!-- Right-side actions: election selector + export button -->
+      <span style="margin-left:auto;display:flex;align-items:center;gap:.7rem;">
+        {#if availableElections.length > 1}
+          <span class="no-print" style="display:flex;align-items:center;gap:.4rem;">
+            <b>Election:</b>
+            <select
+              value={selectedElectionIdx}
+              onchange={(e) => switchElection(parseInt((e.target as HTMLSelectElement).value))}
+              style="font-size:.78rem;padding:.2rem .4rem;border:1px solid var(--border);
+                     border-radius:4px;background:var(--card);color:inherit;cursor:pointer;"
+            >
+              {#each availableElections as elec, i}
+                <option value={i}>{elec.label}</option>
+              {/each}
+            </select>
+          </span>
+        {/if}
+        <button class="export-pdf-btn no-print" onclick={() => window.print()} title="Export as PDF">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6,9 6,2 18,2 18,9"/>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          Export PDF
+        </button>
+      </span>
     </div>
 
     <!-- Composite grade cards -->

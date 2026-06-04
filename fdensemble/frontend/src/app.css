@@ -18,3 +18,54 @@ body {
   background: var(--light);
   color: #222;
 }
+
+/* ── Capture / print action buttons ── */
+.capture-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.85);
+  color: var(--gray);
+  font-size: 10.5px;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.capture-btn:hover:not(:disabled) { opacity: 1; }
+.capture-btn:disabled { opacity: 0.2; cursor: default; }
+
+.export-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.export-pdf-btn:hover { opacity: 0.85; }
+
+/* Print-only elements */
+.print-only { display: none; }
+
+/* ── Print / PDF export ── */
+@media print {
+  .no-print, .capture-btn, .export-pdf-btn { display: none !important; }
+  .print-only { display: block !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #fff !important; }
+  main { max-width: 100% !important; padding: 0 .5rem !important; }
+  .metric-card { page-break-inside: avoid; break-inside: avoid; }
+}

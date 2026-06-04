@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { RiverData } from '../types.js';
+  import { captureElement } from '../capture.js';
 
   interface Props {
     river: RiverData;
@@ -11,6 +12,15 @@
   // Plain let — NOT $state(). Chart.js uses Object.defineProperty on canvas.
   let canvas: HTMLCanvasElement;
   let chart: any;
+  let cardEl: HTMLElement;
+  let capturing = $state(false);
+
+  async function doCapture() {
+    if (capturing || !cardEl) return;
+    capturing = true;
+    try { await captureElement(cardEl, 'river-chart'); }
+    finally { capturing = false; }
+  }
 
   async function buildChart() {
     const { Chart, LineController, LineElement, PointElement, Filler,
@@ -227,9 +237,19 @@
   });
 </script>
 
-<div style="background:var(--card);border-radius:10px;padding:1rem 1.2rem;box-shadow:var(--shadow);border:1.5px solid var(--border);">
-  <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);margin-bottom:.4rem;">
-    District Partisan Lean — Enacted vs. Neutral Ensemble
+<div style="background:var(--card);border-radius:10px;padding:1rem 1.2rem;box-shadow:var(--shadow);border:1.5px solid var(--border);" bind:this={cardEl}>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.4rem;">
+    <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);">
+      District Partisan Lean — Enacted vs. Neutral Ensemble
+    </div>
+    <button class="capture-btn" onclick={doCapture} disabled={capturing} title="Save chart as PNG">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7,10 12,15 17,10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      {capturing ? 'Saving…' : 'PNG'}
+    </button>
   </div>
   <div style="font-size:.7rem;color:var(--gray);margin-bottom:.6rem;">
     Districts ranked left→right by partisan lean (most Republican → most Democratic).

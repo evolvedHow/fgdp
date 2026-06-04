@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick } from 'svelte';
   import type { MetricGrade } from '../types.js';
+  import { captureElement } from '../capture.js';
 
   interface Props { metric: MetricGrade; }
   let { metric }: Props = $props();
@@ -9,6 +10,15 @@
   // elements internally (resize observer), which Svelte 5's reactive proxy blocks.
   let canvas: HTMLCanvasElement;
   let chart: any;
+  let cardEl: HTMLElement;
+  let capturing = $state(false);
+
+  async function doCapture() {
+    if (capturing || !cardEl) return;
+    capturing = true;
+    try { await captureElement(cardEl, `metric-${metric.label.toLowerCase().replace(/\s+/g, '-')}`); }
+    finally { capturing = false; }
+  }
 
   const gradeColor: Record<string, string> = {
     A: '#27ae60', B: '#2980b9', C: '#d68910', D: '#e67e22', F: '#c0392b',
@@ -104,14 +114,25 @@
   });
 </script>
 
-<div class="metric-card" class:is-outlier={metric.grade === 'F'}>
+<div class="metric-card" class:is-outlier={metric.grade === 'F'} bind:this={cardEl}>
 
   <!-- Headline -->
   <div class="headline" style="border-bottom:1px solid var(--border);padding:.55rem 1rem;
-       background:{metric.grade === 'F' ? '#fff5f5' : metric.grade === 'A' ? '#f5fdf8' : 'var(--light)'};">
-    <span style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
-                 color:var(--gray);margin-right:.5rem;">{metric.label}</span>
-    <span style="font-size:.82rem;font-weight:700;color:var(--blue);">{metric.headline ?? metric.label}</span>
+       background:{metric.grade === 'F' ? '#fff5f5' : metric.grade === 'A' ? '#f5fdf8' : 'var(--light)'};
+       display:flex;align-items:center;justify-content:space-between;gap:.5rem;">
+    <div>
+      <span style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+                   color:var(--gray);margin-right:.5rem;">{metric.label}</span>
+      <span style="font-size:.82rem;font-weight:700;color:var(--blue);">{metric.headline ?? metric.label}</span>
+    </div>
+    <button class="capture-btn" onclick={doCapture} disabled={capturing} title="Save as PNG">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7,10 12,15 17,10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      {capturing ? 'Saving…' : 'PNG'}
+    </button>
   </div>
 
   <!-- Body: grade info + histogram + description -->

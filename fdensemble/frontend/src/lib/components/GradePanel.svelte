@@ -1,8 +1,19 @@
 <script lang="ts">
   import type { Grades, CompositeGrade } from '../types.js';
+  import { captureElement } from '../capture.js';
 
   interface Props { grades: Grades; }
   let { grades }: Props = $props();
+
+  let panelEl: HTMLElement;
+  let capturing = $state(false);
+
+  async function doCapture() {
+    if (capturing || !panelEl) return;
+    capturing = true;
+    try { await captureElement(panelEl, 'grades-summary'); }
+    finally { capturing = false; }
+  }
 
   const overall    = $derived(grades._overall    as CompositeGrade | undefined);
   const partisan   = $derived(grades._partisan_fairness as CompositeGrade | undefined);
@@ -27,6 +38,17 @@
   }
 </script>
 
+<div style="position:relative;" bind:this={panelEl}>
+<button class="capture-btn" onclick={doCapture} disabled={capturing}
+        style="position:absolute;top:.3rem;right:.3rem;z-index:2;"
+        title="Save grades as PNG">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+    <polyline points="7,10 12,15 17,10"/>
+    <line x1="12" y1="15" x2="12" y2="3"/>
+  </svg>
+  {capturing ? 'Saving…' : 'PNG'}
+</button>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.8rem;margin-bottom:1rem;">
   <!-- Overall -->
   {#if overall}
@@ -92,4 +114,5 @@
     <div style="font-size:.7rem;color:var(--gray);margin-top:.2rem;line-height:1.4;">{compSeats.description}</div>
   </div>
   {/if}
+</div>
 </div>
