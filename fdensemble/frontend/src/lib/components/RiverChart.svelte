@@ -123,14 +123,14 @@
               label: (ctx: any) => {
                 if (ctx.dataset.label?.startsWith('_')) return null;
                 const v: number = ctx.raw;
-                const pct = (v * 100).toFixed(1);
-                const margin = ((v - 0.5) * 200).toFixed(1);
-                const sign   = v >= 0.5 ? '+' : '';
                 if (ctx.dataset.label === 'Enacted') {
-                  const party  = v >= 0.5 ? 'Dem wins' : 'Rep wins';
-                  return `Enacted: ${pct}% Dem  (${party} by ${Math.abs(Number(margin)).toFixed(1)}pp)`;
+                  const demPct    = Math.round(v * 100);
+                  const repPct    = 100 - demPct;
+                  const winner    = v >= 0.5 ? 'Dem' : 'Rep';
+                  const winMargin = Math.round(Math.abs(v - 0.5) * 200);
+                  return `Enacted:  Dem ${demPct}%  ·  Rep ${repPct}%  (${winner} +${winMargin}pp)`;
                 }
-                return `${ctx.dataset.label}: ${pct}%`;
+                return `${ctx.dataset.label}: ${(v * 100).toFixed(1)}%`;
               },
             },
           },
