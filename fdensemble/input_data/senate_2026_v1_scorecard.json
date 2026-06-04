@@ -8,7 +8,7 @@
     "n_draws": 9001,
     "n_plans": 9001,
     "algorithm": "ReCom",
-    "date": "2026-06-03",
+    "date": "2026-06-04",
     "description": "GerryChain ReCom MCMC ensemble \u2014 senate redistricting, 9,001 draws across 6 elections.",
     "tags": [
       "gerrychain",
@@ -66,8 +66,8 @@
           "headline": "Does the seat count reflect how people actually voted?",
           "category": "partisan",
           "description": "In a fair map, the share of seats each party wins should reflect its share of statewide votes. This metric counts districts projected to lean Democratic based on each plan's vote patterns \u2014 not as a partisan goal, but as a measuring stick for proportionality. The histogram shows how many Democratic-leaning seats thousands of neutrally drawn alternative maps produce. If the enacted map falls far from this range, lines were likely drawn to systematically over- or under-represent one party.",
-          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 1.0 below the neutral median of 24 (range: 22\u201326). At the 46th percentile, this is within the normal range for neutral maps, suggesting a structural seat advantage for Republicans.",
-          "grade": "A",
+          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 at the 46th percentile, within the typical range for neutral maps (median: 24, range: 22\u201326). No significant seat-count advantage detected for either party.",
+          "grade": "B",
           "enacted": 23.0,
           "pct_rank": 45.7,
           "histogram": {
@@ -720,8 +720,8 @@
           "headline": "Does the seat count reflect how people actually voted?",
           "category": "partisan",
           "description": "In a fair map, the share of seats each party wins should reflect its share of statewide votes. This metric counts districts projected to lean Democratic based on each plan's vote patterns \u2014 not as a partisan goal, but as a measuring stick for proportionality. The histogram shows how many Democratic-leaning seats thousands of neutrally drawn alternative maps produce. If the enacted map falls far from this range, lines were likely drawn to systematically over- or under-represent one party.",
-          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 2.0 below the neutral median of 25 (range: 23\u201327). At the 13th percentile, this is within the normal range for neutral maps, suggesting a structural seat advantage for Republicans.",
-          "grade": "F",
+          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 at the 13th percentile, below the neutral median of 25 (range: 23\u201327). This is within the normal range for neutral maps, suggesting a structural seat advantage for Republicans.",
+          "grade": "C",
           "enacted": 23.0,
           "pct_rank": 13.2,
           "histogram": {
@@ -1374,8 +1374,8 @@
           "headline": "Does the seat count reflect how people actually voted?",
           "category": "partisan",
           "description": "In a fair map, the share of seats each party wins should reflect its share of statewide votes. This metric counts districts projected to lean Democratic based on each plan's vote patterns \u2014 not as a partisan goal, but as a measuring stick for proportionality. The histogram shows how many Democratic-leaning seats thousands of neutrally drawn alternative maps produce. If the enacted map falls far from this range, lines were likely drawn to systematically over- or under-represent one party.",
-          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 2.0 below the neutral median of 25 (range: 23\u201327). At the 9th percentile, this is toward the edge of the normal range, suggesting a structural seat advantage for Republicans.",
-          "grade": "F",
+          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 at the 9th percentile, below the neutral median of 25 (range: 23\u201327). This is toward the edge of the normal range, suggesting a structural seat advantage for Republicans.",
+          "grade": "C",
           "enacted": 23.0,
           "pct_rank": 8.7,
           "histogram": {
@@ -2028,8 +2028,8 @@
           "headline": "Does the seat count reflect how people actually voted?",
           "category": "partisan",
           "description": "In a fair map, the share of seats each party wins should reflect its share of statewide votes. This metric counts districts projected to lean Democratic based on each plan's vote patterns \u2014 not as a partisan goal, but as a measuring stick for proportionality. The histogram shows how many Democratic-leaning seats thousands of neutrally drawn alternative maps produce. If the enacted map falls far from this range, lines were likely drawn to systematically over- or under-represent one party.",
-          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 2.0 above the neutral median of 21 (range: 19\u201323). At the 96th percentile, this is outside the normal range for neutral maps, suggesting a structural seat advantage for Democrats.",
-          "grade": "F",
+          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 at the 96th percentile, within the typical range for neutral maps (median: 21, range: 19\u201323). No significant seat-count advantage detected for either party.",
+          "grade": "A",
           "enacted": 23.0,
           "pct_rank": 96.2,
           "histogram": {
@@ -2131,7 +2131,7 @@
           "category": "partisan",
           "description": "Every election produces 'wasted' votes \u2014 votes cast in losing districts (all wasted) and surplus votes beyond what was needed to win (also wasted). A fair map wastes votes at roughly equal rates for both parties. The Efficiency Gap measures the difference: a positive value means one party's votes are being wasted at a higher rate than the other's \u2014 a sign that district lines are concentrating or dispersing that party's voters artificially. Developed by Stephanopoulos & McGhee; cited in federal gerrymandering litigation.",
           "takeaway": "The enacted map's efficiency gap (0.041) is below the neutral median (0.060), at the 17th percentile \u2014 within the normal range for neutral maps. Republican votes are wasted at a higher rate, giving Democrats a structural advantage in translating votes to seats.",
-          "grade": "B",
+          "grade": "C",
           "enacted": 0.0409,
           "pct_rank": 17.3,
           "histogram": {
@@ -2682,8 +2682,8 @@
           "headline": "Does the seat count reflect how people actually voted?",
           "category": "partisan",
           "description": "In a fair map, the share of seats each party wins should reflect its share of statewide votes. This metric counts districts projected to lean Democratic based on each plan's vote patterns \u2014 not as a partisan goal, but as a measuring stick for proportionality. The histogram shows how many Democratic-leaning seats thousands of neutrally drawn alternative maps produce. If the enacted map falls far from this range, lines were likely drawn to systematically over- or under-represent one party.",
-          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 3.0 below the neutral median of 26 (range: 23\u201327). At the 9th percentile, this is toward the edge of the normal range, suggesting a structural seat advantage for Republicans.",
-          "grade": "F",
+          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 at the 9th percentile, below the neutral median of 26 (range: 23\u201327). This is toward the edge of the normal range, suggesting a structural seat advantage for Republicans.",
+          "grade": "C",
           "enacted": 23.0,
           "pct_rank": 9.4,
           "histogram": {
@@ -3336,8 +3336,8 @@
           "headline": "Does the seat count reflect how people actually voted?",
           "category": "partisan",
           "description": "In a fair map, the share of seats each party wins should reflect its share of statewide votes. This metric counts districts projected to lean Democratic based on each plan's vote patterns \u2014 not as a partisan goal, but as a measuring stick for proportionality. The histogram shows how many Democratic-leaning seats thousands of neutrally drawn alternative maps produce. If the enacted map falls far from this range, lines were likely drawn to systematically over- or under-represent one party.",
-          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 2.0 below the neutral median of 25 (range: 23\u201327). At the 16th percentile, this is within the normal range for neutral maps, suggesting a structural seat advantage for Republicans.",
-          "grade": "F",
+          "takeaway": "The enacted map produces 23 Democratic-leaning seats \u2014 at the 16th percentile, below the neutral median of 25 (range: 23\u201327). This is within the normal range for neutral maps, suggesting a structural seat advantage for Republicans.",
+          "grade": "C",
           "enacted": 23.0,
           "pct_rank": 16.4,
           "histogram": {

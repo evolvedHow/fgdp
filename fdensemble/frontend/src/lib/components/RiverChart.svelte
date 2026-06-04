@@ -86,7 +86,7 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
-        layout: { padding: { bottom: 40 } },  // room for party anchor labels
+        layout: { padding: { bottom: 60 } },  // room for party anchor labels
         plugins: {
           legend: {
             position: 'top',
