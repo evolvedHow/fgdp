@@ -153,7 +153,17 @@ def _geo_grade(comp_g: str, splits_g: str) -> str:
 
 
 def _histogram_data(dist: np.ndarray, enacted, n_bins: int = 40) -> dict:
-    counts, edges = np.histogram(dist, bins=n_bins)
+    # Extend range to always include the enacted value — without this, an
+    # enacted plan that falls outside the ensemble range produces no bin match
+    # and the enacted marker disappears from the histogram.
+    if enacted is not None:
+        lo = min(float(dist.min()), float(enacted))
+        hi = max(float(dist.max()), float(enacted))
+        if lo == hi:
+            lo -= 0.5; hi += 0.5
+        counts, edges = np.histogram(dist, bins=n_bins, range=(lo, hi))
+    else:
+        counts, edges = np.histogram(dist, bins=n_bins)
     return {
         'edges':   [round(float(v), 4) for v in edges],
         'counts':  counts.tolist(),
@@ -299,16 +309,21 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
                     f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
 
     elif key == "maj_black":
-        if pct_rank < 10:
+        if pct_rank < 5:
             return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
                     f"fewer than {100-pct_rank:.0f}% of neutral maps "
                     f"(typical range: {p5:.0f}–{p95:.0f}). "
-                    f"This is below what geography alone suggests, "
-                    f"raising potential Voting Rights Act concerns.")
-        elif pct_rank > 90:
+                    f"This falls far below what geography alone would support, "
+                    f"raising serious Voting Rights Act concerns.")
+        elif pct_rank < 50:
             return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
-                    f"more than most neutral alternatives. "
-                    f"Black communities have strong electoral representation opportunity.")
+                    f"below the neutral median of {p50:.0f} (typical: {p5:.0f}–{p95:.0f}). "
+                    f"Representation opportunity is below what neutral mapmaking would produce.")
+        elif pct_rank >= 85:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
+                    f"more than {pct_rank:.0f}% of neutral maps (neutral median: {p50:.0f}). "
+                    f"Black communities have stronger representation opportunity than "
+                    f"neutral mapmaking alone would produce.")
         else:
             return (f"The enacted map has {enacted:.0f} majority-Black district(s), "
                     f"within the typical range ({p5:.0f}–{p95:.0f}) for neutral maps.")
@@ -316,27 +331,40 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
     elif key in ("maj_hisp", "maj_aian", "maj_asian"):
         groups = {"maj_hisp": "Hispanic", "maj_aian": "Indigenous", "maj_asian": "Asian American"}
         group = groups.get(key, "minority")
-        if pct_rank < 10:
+        if pct_rank < 5:
             return (f"The enacted map has {enacted:.0f} majority-{group} district(s) — "
                     f"fewer than {100-pct_rank:.0f}% of neutral maps. "
-                    f"Potential concern for Voting Rights Act compliance.")
-        elif pct_rank > 90:
+                    f"This raises serious Voting Rights Act compliance concerns.")
+        elif pct_rank < 50:
             return (f"The enacted map has {enacted:.0f} majority-{group} district(s) — "
-                    f"more than most neutral alternatives.")
+                    f"below the neutral median of {p50:.0f} (typical: {p5:.0f}–{p95:.0f}). "
+                    f"Representation opportunity is below what neutral mapmaking would support.")
+        elif pct_rank >= 85:
+            return (f"The enacted map has {enacted:.0f} majority-{group} district(s) — "
+                    f"more than {pct_rank:.0f}% of neutral maps (neutral median: {p50:.0f}). "
+                    f"{group} communities have stronger representation opportunity than "
+                    f"neutral mapmaking alone would produce.")
         else:
             return (f"The enacted map has {enacted:.0f} majority-{group} district(s), "
                     f"within the typical range ({p5:.0f}–{p95:.0f}).")
 
     elif key == "min_coal":
-        if pct_rank < 10:
+        if pct_rank < 5:
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
                     f"fewer than {100-pct_rank:.0f}% of neutral maps "
-                    f"(typical: {p5:.0f}–{p95:.0f}). Communities of color have less "
-                    f"collective electoral influence than geography alone would support.")
-        elif pct_rank > 90:
+                    f"(typical: {p5:.0f}–{p95:.0f}). Communities of color have "
+                    f"significantly less collective electoral influence than geography would support, "
+                    f"raising Voting Rights Act concerns.")
+        elif pct_rank < 50:
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
-                    f"more than most neutral alternatives. Communities of color have "
-                    f"strong collective electoral influence.")
+                    f"below the neutral median of {p50:.0f} (typical: {p5:.0f}–{p95:.0f}). "
+                    f"The collective political voice of communities of color is below "
+                    f"what neutral mapmaking would produce.")
+        elif pct_rank >= 85:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
+                    f"more than {pct_rank:.0f}% of neutral maps (neutral median: {p50:.0f}). "
+                    f"Communities of color have stronger collective electoral influence "
+                    f"than neutral mapmaking alone would produce.")
         else:
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s), "
                     f"within the typical range ({p5:.0f}–{p95:.0f}) for neutral maps.")
@@ -452,10 +480,11 @@ _METRIC_META = {
         f'Rights Act, mapmakers must not draw lines that dilute minority communities\' '
         f'ability to elect their preferred candidates. The histogram shows how many '
         f'majority-Black districts thousands of neutrally drawn alternative maps '
-        f'produce, establishing a baseline of what geography alone would support. '
-        f'An enacted map with significantly fewer such districts than neutral '
-        f'alternatives may indicate illegal dilution of Black voting power.',
-        None),
+        f'produce — the neutral baseline of what geography alone supports. '
+        f'More such districts than the neutral baseline means stronger Black '
+        f'representation opportunity (graded A/B). Significantly fewer raises '
+        f'potential Voting Rights Act concerns (graded F below the 5th percentile).',
+        True),
     'maj_hisp': (
         'Hispanic Community Representation', 'Do Hispanic voters have a fair opportunity to elect their preferred candidates?',
         'minority',
@@ -464,8 +493,10 @@ _METRIC_META = {
         f'Rights Act protects Hispanic voters\' ability to elect representatives of '
         f'their choice. As Georgia\'s Hispanic population has grown significantly, '
         f'this metric compares the enacted map\'s minority district count against '
-        f'what neutral, geography-based alternatives would naturally produce.',
-        None),
+        f'what neutral, geography-based alternatives would naturally produce. '
+        f'More districts than the neutral baseline indicates stronger representation '
+        f'opportunity; significantly fewer raises Voting Rights Act concerns.',
+        True),
     'maj_aian': (
         'Indigenous Community Representation', 'Do American Indian and Alaska Native voters have fair representation?',
         'minority',
@@ -474,8 +505,9 @@ _METRIC_META = {
         'have historically faced some of the most significant barriers to political '
         'representation in American history and are specifically protected under '
         'the Voting Rights Act. The comparison against neutral alternatives reveals '
-        'whether the enacted map preserves or diminishes their electoral opportunity.',
-        None),
+        'whether the enacted map preserves or diminishes their electoral opportunity. '
+        'More districts than the neutral baseline is the better outcome.',
+        True),
     'maj_asian': (
         'Asian American Representation', 'Do Asian American voters have fair electoral opportunity?',
         'minority',
@@ -484,8 +516,9 @@ _METRIC_META = {
         'in Georgia, Asian Americans\' representation opportunity is an increasingly '
         'important measure of map fairness. The comparison against neutral '
         'alternatives establishes whether the enacted map reflects what '
-        'natural geography would support.',
-        None),
+        'natural geography would support. More districts than the neutral baseline '
+        'is the better outcome.',
+        True),
     'min_coal': (
         'Minority Coalition Representation', 'Do communities of color collectively have a voice?',
         'minority',
@@ -494,10 +527,11 @@ _METRIC_META = {
         '(or Citizen VAP for GerryChain runs). Even when no single racial group '
         'holds a majority, communities of color can collectively determine electoral '
         'outcomes. This "coalition" measure is increasingly important as Georgia\'s '
-        'demographics diversify. The comparison against neutral alternatives reveals '
-        'whether the enacted map preserves or diminishes the collective political '
-        'voice of Georgia\'s communities of color.',
-        None),
+        'demographics diversify. More coalition districts than the neutral baseline '
+        'means stronger collective political voice for communities of color (graded '
+        'A/B); significantly fewer raises Voting Rights Act concerns (F below the '
+        '5th percentile).',
+        True),
 }
 
 

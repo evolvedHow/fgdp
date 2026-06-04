@@ -85,8 +85,14 @@
           if (h.enacted == null) return;
           const xScale = ch.scales.x;
           const { ctx, chartArea: { top, bottom } } = ch;
-          // find bin index for enacted value
-          const idx = h.edges.findIndex((e, i) => h.enacted! >= e && h.enacted! < h.edges[i + 1]);
+          // Find the bin containing enacted. Clamp to last bin if enacted equals
+          // or exceeds the final edge (can happen when enacted is an outlier
+          // beyond every neutral draw).
+          let idx = h.edges.findIndex((e: number, i: number) => h.enacted! >= e && h.enacted! < h.edges[i + 1]);
+          if (idx < 0) {
+            if (h.enacted! >= h.edges[0]) idx = h.edges.length - 2;   // clamp right
+            else idx = 0;                                               // clamp left
+          }
           if (idx < 0) return;
           const x = xScale.getPixelForValue(idx);
           ctx.save();
