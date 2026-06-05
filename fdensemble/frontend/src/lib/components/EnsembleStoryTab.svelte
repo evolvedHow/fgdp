@@ -1,45 +1,67 @@
 <script lang="ts">
-  import type { Analysis, Histogram, MetricGrade } from '../types.js';
-  import StatCallout from './StatCallout.svelte';
+  import type { RunMeta, Analysis } from '../types.js';
   import BenchmarkMethodology from './BenchmarkMethodology.svelte';
-  import BenchmarkComparisonTable from './BenchmarkComparisonTable.svelte';
 
   interface Props {
+    runs: RunMeta[];
+    selectedRunId: string;
     analysis: Analysis;
-    companionAnalysis?: Analysis | null;
+    onRunChange?: (id: string) => void;
   }
-  let { analysis, companionAnalysis = null }: Props = $props();
+  let { runs, selectedRunId, analysis, onRunChange }: Props = $props();
 
-  const summary = $derived(analysis.summary);
-  const grades  = $derived(analysis.grades);
+  const summary = $derived(analysis?.summary ?? null);
 
-  // Find the modal value in a histogram (bin center with highest count)
-  function modalValue(hist: Histogram): number {
-    const maxIdx = hist.counts.indexOf(Math.max(...hist.counts));
-    return Math.round((hist.edges[maxIdx] + hist.edges[maxIdx + 1]) / 2);
-  }
-
-  const demSeatsGrade = $derived(grades['dem_seats'] as MetricGrade | undefined);
-  const overallGrade  = $derived((grades['_overall'] as any)?.grade ?? '—');
-
-  const modalSeats    = $derived(demSeatsGrade?.histogram ? modalValue(demSeatsGrade.histogram) : null);
-  const enactedSeats  = $derived(demSeatsGrade?.enacted ?? null);
-  const enactedPctRank = $derived(demSeatsGrade?.pct_rank ?? null);
-
-  const gradeColor: Record<string, string> = {
-    A: '#27ae60', B: '#2980b9', C: '#d68910', F: '#c0392b',
+  // Per-algorithm detail rows (facts that don't live in the scorecard JSON yet)
+  const ALGO_DETAIL: Record<string, { full: string; chains: string; popTol: string; constraints: string }> = {
+    alarm: {
+      full:        'Sequential Monte Carlo (SMC)',
+      chains:      '2 independent chains × 10,000 simulations, thinned to 5,000',
+      popTol:      '±0.5%',
+      constraints: 'Equal population, contiguity, BVAP hinge constraints (VRA §2)',
+    },
+    gerrychain: {
+      full:        'Markov chain Monte Carlo — ReCom random walk',
+      chains:      'Single chain; each draw perturbs the previous plan',
+      popTol:      '±0.5%',
+      constraints: 'Equal population, contiguity, compactness (ReCom soft), VRA §2',
+    },
+    scorecard: {
+      full:        'Markov chain Monte Carlo — ReCom random walk',
+      chains:      'Single chain; each draw perturbs the previous plan',
+      popTol:      '±0.5%',
+      constraints: 'Equal population, contiguity, compactness (ReCom soft), VRA §2',
+    },
   };
 
-  // Build labels for comparison table
-  function benchmarkLabel(a: Analysis): string {
-    const src = a.summary?.run?.source ?? '';
-    const algo = src === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom';
-    return `${algo} · ${a.summary?.n_plans?.toLocaleString() ?? ''} plans`;
+  function detail(run: RunMeta) {
+    return ALGO_DETAIL[run.source ?? ''] ?? ALGO_DETAIL.gerrychain;
   }
+
+  function chamberLabel(c: string | undefined) {
+    return ({ congress: 'U.S. Congress', senate: 'GA Senate', house: 'GA House' })[c ?? ''] ?? (c ?? '—');
+  }
+
+  function sourceLabel(s: string | undefined) {
+    return s === 'alarm' ? 'ALARM' : 'GerryChain';
+  }
+
+  function sourceBadgeColor(s: string | undefined) {
+    return s === 'alarm' ? '#8e44ad' : '#2471a3';
+  }
+
+  function electionsList(run: RunMeta) {
+    if (run.elections && run.elections.length > 0) {
+      return run.elections.map(e => e.label).join(', ');
+    }
+    return '2018–2024 Composite';
+  }
+
+  const selectedRun = $derived(runs.find(r => r.id === selectedRunId) ?? null);
 </script>
 
 <div>
-  <!-- Story HTML panel -->
+  <!-- Story panel (LLM-generated narrative; shows placeholder until populated) -->
   {#if summary?.story_html}
     <div style="background:var(--card);border:1.5px solid var(--border);border-radius:10px;
                 padding:1.4rem 1.6rem;margin-bottom:1.2rem;line-height:1.72;font-size:.84rem;
@@ -47,66 +69,120 @@
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
       {@html summary.story_html}
     </div>
-  {:else}
-    <div style="background:var(--light);border:1.5px dashed var(--border);border-radius:10px;
-                padding:1.2rem 1.4rem;margin-bottom:1.2rem;text-align:center;color:var(--gray);
-                font-size:.82rem;">
-      <div style="font-size:1.1rem;margin-bottom:.4rem;">📊</div>
-      <div style="font-weight:600;margin-bottom:.3rem;">Ensemble narrative coming soon</div>
-      <div>After each ensemble run, an LLM-generated narrative summarizing the key findings
-           will appear here in plain English.</div>
-    </div>
   {/if}
 
-  <!-- Key stat callouts -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-              gap:.75rem;margin-bottom:1.2rem;">
-    <StatCallout
-      value={summary?.n_plans?.toLocaleString() ?? '—'}
-      label="Neutral maps generated"
-      sublabel="Each drawn without partisan intent, satisfying all legal constraints"
-    />
-    {#if modalSeats !== null}
-      <StatCallout
-        value={`${modalSeats} Dem seats`}
-        label="Most common outcome in neutral maps"
-        sublabel={`The single most frequent result among ${summary?.n_plans?.toLocaleString() ?? ''} neutral alternatives`}
-      />
-    {/if}
-    {#if enactedSeats !== null && enactedPctRank !== null}
-      <StatCallout
-        value={`${enactedSeats} Dem seats`}
-        label="Enacted map — {Math.round(enactedPctRank)}th percentile"
-        sublabel={`${Math.round(enactedPctRank) <= 50 ? 'Below' : 'Above'} ${Math.abs(50 - Math.round(enactedPctRank))}pp from the neutral median`}
-        accent={enactedPctRank <= 15 ? '#c0392b' : enactedPctRank >= 85 ? '#27ae60' : 'var(--blue)'}
-      />
-    {/if}
-    {#if overallGrade !== '—'}
-      <StatCallout
-        value={overallGrade}
-        label="Overall Princeton grade"
-        sublabel="Based on the Princeton Gerrymandering Project dual-test methodology"
-        accent={gradeColor[overallGrade] ?? 'var(--blue)'}
-      />
-    {/if}
+  <!-- Benchmark registry -->
+  <div style="margin-bottom:1.2rem;">
+    <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                color:var(--gray);margin-bottom:.55rem;">
+      Available Benchmarks
+    </div>
+
+    <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:.76rem;">
+        <thead>
+          <tr style="background:var(--light);border-bottom:1.5px solid var(--border);">
+            <th style="padding:.45rem .8rem;text-align:left;font-size:.64rem;text-transform:uppercase;
+                       letter-spacing:.05em;color:var(--gray);">Benchmark</th>
+            <th style="padding:.45rem .8rem;text-align:left;font-size:.64rem;text-transform:uppercase;
+                       letter-spacing:.05em;color:var(--gray);">Chamber</th>
+            <th style="padding:.45rem .8rem;text-align:left;font-size:.64rem;text-transform:uppercase;
+                       letter-spacing:.05em;color:var(--gray);">Algorithm</th>
+            <th style="padding:.45rem .8rem;text-align:right;font-size:.64rem;text-transform:uppercase;
+                       letter-spacing:.05em;color:var(--gray);">Plans</th>
+            <th style="padding:.45rem .8rem;text-align:left;font-size:.64rem;text-transform:uppercase;
+                       letter-spacing:.05em;color:var(--gray);">Date</th>
+            <th style="padding:.45rem .8rem;text-align:left;font-size:.64rem;text-transform:uppercase;
+                       letter-spacing:.05em;color:var(--gray);">Electoral Basis</th>
+            <th style="padding:.45rem .8rem;text-align:left;font-size:.64rem;text-transform:uppercase;
+                       letter-spacing:.05em;color:var(--gray);">Key Constraints</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each runs as run, i}
+            {@const isSelected = run.id === selectedRunId}
+            {@const d = detail(run)}
+            <tr
+              onclick={() => onRunChange?.(run.id)}
+              style="border-bottom:{i < runs.length - 1 ? '1px solid var(--border)' : 'none'};
+                     background:{isSelected ? '#eaf3fb' : i % 2 === 0 ? 'var(--card)' : 'var(--light)'};
+                     cursor:{onRunChange ? 'pointer' : 'default'};
+                     outline:{isSelected ? '2px solid var(--blue)' : 'none'};outline-offset:-1px;"
+            >
+              <!-- Name + source badge -->
+              <td style="padding:.5rem .8rem;">
+                <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+                  {#if isSelected}
+                    <span style="font-size:.6rem;font-weight:700;background:var(--blue);color:#fff;
+                                 border-radius:3px;padding:.1rem .35rem;white-space:nowrap;">
+                      ● current
+                    </span>
+                  {/if}
+                  <span style="font-size:.64rem;font-weight:700;
+                               background:{sourceBadgeColor(run.source)};color:#fff;
+                               border-radius:3px;padding:.1rem .35rem;white-space:nowrap;">
+                    {sourceLabel(run.source)}
+                  </span>
+                </div>
+                <div style="margin-top:.2rem;font-size:.72rem;color:#333;font-weight:{isSelected ? '700' : '500'};">
+                  {run.name ?? run.id}
+                </div>
+              </td>
+
+              <!-- Chamber -->
+              <td style="padding:.5rem .8rem;font-size:.76rem;white-space:nowrap;">
+                {chamberLabel(run.chamber)}
+              </td>
+
+              <!-- Algorithm -->
+              <td style="padding:.5rem .8rem;">
+                <div style="font-size:.74rem;font-weight:600;">{run.algorithm}</div>
+                <div style="font-size:.67rem;color:var(--gray);margin-top:.1rem;line-height:1.35;">
+                  {d.chains}
+                </div>
+              </td>
+
+              <!-- Plans -->
+              <td style="padding:.5rem .8rem;text-align:right;font-weight:700;font-size:.8rem;
+                         white-space:nowrap;">
+                {run.n_plans?.toLocaleString()}
+              </td>
+
+              <!-- Date -->
+              <td style="padding:.5rem .8rem;font-size:.73rem;color:var(--gray);white-space:nowrap;">
+                {run.date}
+              </td>
+
+              <!-- Electoral basis -->
+              <td style="padding:.5rem .8rem;font-size:.72rem;line-height:1.35;">
+                {electionsList(run)}
+                {#if run.source === 'alarm'}
+                  <div style="font-size:.65rem;color:var(--gray);font-style:italic;">
+                    re-scored from 2016–2020 original
+                  </div>
+                {/if}
+              </td>
+
+              <!-- Constraints -->
+              <td style="padding:.5rem .8rem;font-size:.70rem;color:#444;line-height:1.4;">
+                {d.constraints}
+                <div style="color:var(--gray);margin-top:.1rem;">Pop. tol. {d.popTol}</div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+      {#if onRunChange}
+        <div style="padding:.3rem .8rem;font-size:.64rem;color:var(--gray);border-top:1px solid var(--border);
+                    background:var(--light);">
+          Click a row to switch the active benchmark in Score a Map and Compare Maps.
+        </div>
+      {/if}
+    </div>
   </div>
 
-  <!-- Benchmark comparison table (shown when companion ALARM/GerryChain run exists) -->
-  {#if companionAnalysis}
-    <div style="margin-bottom:1.2rem;">
-      <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-                  color:var(--gray);margin-bottom:.5rem;">
-        Benchmark Comparison — Both Algorithms, Same Electoral Composite
-      </div>
-      <BenchmarkComparisonTable
-        primary={{ label: benchmarkLabel(analysis), grades: analysis.grades, nPlans: summary?.n_plans }}
-        companion={{ label: benchmarkLabel(companionAnalysis), grades: companionAnalysis.grades, nPlans: companionAnalysis.summary?.n_plans }}
-      />
-    </div>
-  {/if}
-
-  <!-- Methodology accordion -->
-  {#if summary?.run}
-    <BenchmarkMethodology run={summary.run} />
+  <!-- Methodology accordion (for the currently selected benchmark) -->
+  {#if selectedRun}
+    <BenchmarkMethodology run={selectedRun} />
   {/if}
 </div>

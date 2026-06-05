@@ -154,7 +154,7 @@
     </div>
 
     {#if tab === 'story'}
-      <EnsembleStoryTab {analysis} {companionAnalysis} />
+      <EnsembleStoryTab {runs} {analysis} selectedRunId={selectedRunId} onRunChange={switchRun} />
 
     {:else if tab === 'score'}
       <ScoreTab
