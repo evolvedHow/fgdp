@@ -478,16 +478,14 @@ _METRIC_META = {
         'Black Community Representation', 'Do Black voters have a fair opportunity to elect representatives of their choice?',
         'minority',
         f'This counts districts where Black citizens make up more than '
-        f'{BVAP_THRESHOLD*100:.0f}% of the Voting Age Population — enough to '
-        f'typically determine electoral outcomes. Under Section 2 of the Voting '
-        f'Rights Act, mapmakers must not draw lines that dilute minority communities\' '
-        f'ability to elect their preferred candidates. The histogram shows how many '
-        f'majority-Black districts thousands of neutrally drawn alternative maps '
-        f'produce — the neutral baseline of what geography alone supports. '
-        f'More such districts than the neutral baseline means stronger Black '
-        f'representation opportunity (graded A/B). Significantly fewer raises '
-        f'potential Voting Rights Act concerns (graded F below the 5th percentile).',
-        True),
+        f'{BVAP_THRESHOLD*100:.0f}% of the Voting Age Population. Under Section 2 of '
+        f'the Voting Rights Act, mapmakers must not dilute minority communities\' '
+        f'electoral influence. The histogram shows how many majority-Black districts '
+        f'thousands of neutrally drawn maps produce. The Princeton ensemble test grades '
+        f'statistical distance from the neutral range in either direction: too few '
+        f'raises VRA dilution concerns; too many is equally anomalous as a statistical '
+        f'outlier. The takeaway text explains the direction and meaning.',
+        None),
     'maj_hisp': (
         'Hispanic Community Representation', 'Do Hispanic voters have a fair opportunity to elect their preferred candidates?',
         'minority',
@@ -529,12 +527,10 @@ _METRIC_META = {
         'others — together make up more than 50% of the Voting Age Population '
         '(or Citizen VAP for GerryChain runs). Even when no single racial group '
         'holds a majority, communities of color can collectively determine electoral '
-        'outcomes. This "coalition" measure is increasingly important as Georgia\'s '
-        'demographics diversify. More coalition districts than the neutral baseline '
-        'means stronger collective political voice for communities of color (graded '
-        'A/B); significantly fewer raises Voting Rights Act concerns (F below the '
-        '5th percentile).',
-        True),
+        'outcomes. The Princeton ensemble test grades statistical distance from neutral '
+        'redistricting outcomes in either direction — the grade reflects how anomalous '
+        'the enacted map is, not a policy judgment about the direction of that distance.',
+        None),
 }
 
 

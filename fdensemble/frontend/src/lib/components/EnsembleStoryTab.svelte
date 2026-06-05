@@ -2,11 +2,13 @@
   import type { Analysis, Histogram, MetricGrade } from '../types.js';
   import StatCallout from './StatCallout.svelte';
   import BenchmarkMethodology from './BenchmarkMethodology.svelte';
+  import BenchmarkComparisonTable from './BenchmarkComparisonTable.svelte';
 
   interface Props {
     analysis: Analysis;
+    companionAnalysis?: Analysis | null;
   }
-  let { analysis }: Props = $props();
+  let { analysis, companionAnalysis = null }: Props = $props();
 
   const summary = $derived(analysis.summary);
   const grades  = $derived(analysis.grades);
@@ -27,6 +29,13 @@
   const gradeColor: Record<string, string> = {
     A: '#27ae60', B: '#2980b9', C: '#d68910', F: '#c0392b',
   };
+
+  // Build labels for comparison table
+  function benchmarkLabel(a: Analysis): string {
+    const src = a.summary?.run?.source ?? '';
+    const algo = src === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom';
+    return `${algo} · ${a.summary?.n_plans?.toLocaleString() ?? ''} plans`;
+  }
 </script>
 
 <div>
@@ -81,6 +90,20 @@
       />
     {/if}
   </div>
+
+  <!-- Benchmark comparison table (shown when companion ALARM/GerryChain run exists) -->
+  {#if companionAnalysis}
+    <div style="margin-bottom:1.2rem;">
+      <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                  color:var(--gray);margin-bottom:.5rem;">
+        Benchmark Comparison — Both Algorithms, Same Electoral Composite
+      </div>
+      <BenchmarkComparisonTable
+        primary={{ label: benchmarkLabel(analysis), grades: analysis.grades, nPlans: summary?.n_plans }}
+        companion={{ label: benchmarkLabel(companionAnalysis), grades: companionAnalysis.grades, nPlans: companionAnalysis.summary?.n_plans }}
+      />
+    </div>
+  {/if}
 
   <!-- Methodology accordion -->
   {#if summary?.run}

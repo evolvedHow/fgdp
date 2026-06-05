@@ -10,12 +10,22 @@
   type Tab = 'story' | 'score' | 'compare';
   let tab: Tab = $state('story');
 
-  let runs: RunMeta[]           = $state([]);
-  let analysis: Analysis | null = $state(null);
-  let selectedRunId: string     = $state('');
-  let selectedElectionIdx       = $state(0);
-  let loading                   = $state(false);
-  let error                     = $state('');
+  let runs: RunMeta[]             = $state([]);
+  let analysis: Analysis | null   = $state(null);
+  let companionAnalysis: Analysis | null = $state(null);
+  let selectedRunId: string       = $state('');
+  let selectedElectionIdx         = $state(0);
+  let loading                     = $state(false);
+  let error                       = $state('');
+
+  // Derive the paired run ID (GerryChain ↔ ALARM)
+  function getCompanionRunId(runId: string): string | null {
+    const isAlarm  = runId.endsWith('_alarm');
+    const paired   = isAlarm ? runId.slice(0, -6) : `${runId}_alarm`;
+    return runs.find(r => r.id === paired)?.id ?? null;
+  }
+
+  const companionRunId = $derived(getCompanionRunId(selectedRunId));
 
   let scoredPlans: ScoredPlan[] = $state([]);
 
@@ -54,6 +64,18 @@
       error = e.message ?? 'Failed to load analysis';
     } finally {
       loading = false;
+    }
+    // Load companion run (ALARM ↔ GerryChain) in background — non-blocking
+    const paired = getCompanionRunId(runId);
+    if (paired) {
+      try {
+        const cRes = await fetch(`/api/analysis?run=${encodeURIComponent(paired)}&election=0`);
+        companionAnalysis = cRes.ok ? await cRes.json() : null;
+      } catch {
+        companionAnalysis = null;
+      }
+    } else {
+      companionAnalysis = null;
     }
   }
 
@@ -132,11 +154,13 @@
     </div>
 
     {#if tab === 'story'}
-      <EnsembleStoryTab {analysis} />
+      <EnsembleStoryTab {analysis} {companionAnalysis} />
 
     {:else if tab === 'score'}
       <ScoreTab
         {analysis}
+        {companionAnalysis}
+        {companionRunId}
         selectedRunId={selectedRunId}
         {selectedElectionIdx}
         onSwitchElection={switchElection}

@@ -5,21 +5,29 @@
   import MetricCard   from './MetricCard.svelte';
   import RiverChart   from './RiverChart.svelte';
   import MapUploader  from './MapUploader.svelte';
+  import BenchmarkComparisonTable from './BenchmarkComparisonTable.svelte';
 
   interface Props {
     analysis: Analysis;
+    companionAnalysis?: Analysis | null;
+    companionRunId?: string | null;
     selectedRunId: string;
     selectedElectionIdx: number;
     onSwitchElection: (idx: number) => void;
     onAddPlan: (plan: ScoredPlan) => void;
   }
-  let { analysis, selectedRunId, selectedElectionIdx, onSwitchElection, onAddPlan }: Props = $props();
+  let {
+    analysis, companionAnalysis = null, companionRunId = null,
+    selectedRunId, selectedElectionIdx, onSwitchElection, onAddPlan,
+  }: Props = $props();
 
   // Map library state
   let maps: MapMeta[]    = $state([]);
   let selectedMapId      = $state('');
-  let scoredPlan: ScoredPlan | null = $state(null);
+  let scoredPlan: ScoredPlan | null         = $state(null);
+  let companionScoredPlan: ScoredPlan | null = $state(null);
   let scoring            = $state(false);
+  let companionScoring   = $state(false);
   let scoreError         = $state('');
   let showUploader       = $state(false);
 
@@ -38,7 +46,7 @@
       .filter(({metric}) => metric && 'histogram' in metric);
   }
 
-  // When a map is selected and run changes, re-score automatically
+  // When a map is selected and run changes, re-score automatically against both benchmarks
   $effect(() => {
     const mapId = selectedMapId;
     const runId = selectedRunId;
@@ -46,6 +54,7 @@
       scoreMap(mapId, runId);
     } else if (!mapId) {
       scoredPlan = null;
+      companionScoredPlan = null;
       scoreError = '';
     }
   });
@@ -71,6 +80,8 @@
     scoring    = true;
     scoreError = '';
     scoredPlan = null;
+    companionScoredPlan = null;
+
     try {
       const res = await fetch('/api/score-map', {
         method:  'POST',
@@ -85,11 +96,30 @@
       plan.run_id = runId;
       plan.source = 'library';
       scoredPlan = plan;
-      onAddPlan(plan);  // make available in Compare tab
+      onAddPlan(plan);
     } catch (e: any) {
       scoreError = e.message ?? 'Scoring failed';
     } finally {
       scoring = false;
+    }
+
+    // Score against companion benchmark in parallel (non-blocking)
+    if (companionRunId) {
+      companionScoring = true;
+      try {
+        const cRes = await fetch('/api/score-map', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ map_id: mapId, run_id: companionRunId }),
+        });
+        if (cRes.ok) {
+          const cPlan: ScoredPlan = await cRes.json();
+          cPlan.run_id = companionRunId;
+          cPlan.source = 'library';
+          companionScoredPlan = cPlan;
+        }
+      } catch { /* companion scoring failure is non-fatal */ }
+      finally { companionScoring = false; }
     }
   }
 
@@ -223,6 +253,15 @@
       </div>
     {/if}
 
+    <!-- Companion scoring status -->
+    {#if companionScoring}
+      <div style="margin-top:.4rem;font-size:.72rem;color:var(--gray);display:flex;align-items:center;gap:.4rem;">
+        <span style="display:inline-block;width:8px;height:8px;border:2px solid var(--gray);
+                     border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;"></span>
+        Also scoring against companion benchmark…
+      </div>
+    {/if}
+
     <!-- Scoring status -->
     {#if scoring}
       <div style="margin-top:.6rem;font-size:.76rem;color:var(--gray);display:flex;align-items:center;gap:.5rem;">
@@ -293,6 +332,35 @@
   {#if river}
     <div style="margin:.8rem 0 .4rem;">
       <RiverChart {river} enactedShares={null} />
+    </div>
+  {/if}
+
+  <!-- Side-by-side benchmark comparison (when a map is scored AND companion exists) -->
+  {#if scoredPlan && (companionScoredPlan || companionRunId)}
+    {@const primarySrc = analysis.summary?.run?.source ?? ''}
+    {@const companionSrc = companionAnalysis?.summary?.run?.source ?? (primarySrc === 'alarm' ? 'gerrychain' : 'alarm')}
+    {@const primaryLabel = `${primarySrc === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom'} · ${analysis.summary?.n_plans?.toLocaleString()} plans`}
+    {@const companionLabel = companionAnalysis
+      ? `${companionSrc === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom'} · ${companionAnalysis.summary?.n_plans?.toLocaleString()} plans`
+      : `${companionSrc === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom'} · loading…`}
+    <div style="margin-top:1.2rem;">
+      <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                  color:var(--gray);margin-bottom:.5rem;">
+        Scored Against Both Benchmarks
+      </div>
+      <BenchmarkComparisonTable
+        primary={{
+          label:  primaryLabel,
+          grades: scoredPlan.grades,
+        }}
+        companion={{
+          label:  companionLabel,
+          grades: companionScoredPlan?.grades ?? null,
+        }}
+        primaryPlan={scoredPlan}
+        companionPlan={companionScoredPlan}
+        scoringMode={true}
+      />
     </div>
   {/if}
 </div>

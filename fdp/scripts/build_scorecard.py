@@ -97,10 +97,11 @@ _METRIC_META: dict[str, tuple] = {
         "to elect their preferred candidates. The histogram shows how many "
         "majority-Black districts thousands of neutrally drawn alternative maps "
         "produce — establishing what geography alone would naturally support. "
-        "Enacted maps with significantly fewer majority-Black districts than "
-        "neutral alternatives may indicate illegal dilution of Black voting power. "
+        "The Princeton ensemble test treats deviation in either direction as a "
+        "statistical anomaly: too few raises VRA dilution concerns; too many means "
+        "the map is also unusual compared to neutral redistricting. "
         "Uses CVAP rather than VAP for precision (excludes non-citizens).",
-        True),
+        None),
     "min_coal": (
         "Minority Coalition Representation",
         "Do communities of color collectively hold electoral influence?",
@@ -110,10 +111,11 @@ _METRIC_META: dict[str, tuple] = {
         "Population. Even when no single racial group holds a majority, communities "
         "of color can collectively influence electoral outcomes. This 'coalition' "
         "measure is increasingly important as Georgia's demographics diversify. "
-        "The comparison against neutral alternatives reveals whether the enacted "
-        "map preserves or diminishes the collective political voice of "
-        "Georgia's communities of color. Uses 2024 ACS 5-year CVAP estimates.",
-        True),
+        "The Princeton ensemble test treats deviation in either direction as anomalous: "
+        "the grade reflects statistical distance from neutral redistricting outcomes, "
+        "not a policy judgment about the direction of that distance. "
+        "Uses 2024 ACS 5-year CVAP estimates.",
+        None),
 }
 
 
