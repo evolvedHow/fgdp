@@ -335,32 +335,72 @@
     </div>
   {/if}
 
-  <!-- Side-by-side benchmark comparison (when a map is scored AND companion exists) -->
-  {#if scoredPlan && (companionScoredPlan || companionRunId)}
-    {@const primarySrc = analysis.summary?.run?.source ?? ''}
-    {@const companionSrc = companionAnalysis?.summary?.run?.source ?? (primarySrc === 'alarm' ? 'gerrychain' : 'alarm')}
-    {@const primaryLabel = `${primarySrc === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom'} · ${analysis.summary?.n_plans?.toLocaleString()} plans`}
-    {@const companionLabel = companionAnalysis
-      ? `${companionSrc === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom'} · ${companionAnalysis.summary?.n_plans?.toLocaleString()} plans`
-      : `${companionSrc === 'alarm' ? 'ALARM SMC' : 'GerryChain ReCom'} · loading…`}
+  <!-- Proposed vs Enacted delta table -->
+  {#if scoredPlan}
+    {@const grades = analysis.grades}
+    {@const nDistricts = analysis.summary?.n_districts ?? 14}
+
+    {@const ROWS = [
+      { key: 'dem_seats',      label: 'Dem-Lean Districts',   isInt: true  },
+      { key: '_rep_seats',     label: 'Rep-Lean Districts',   isInt: true  },
+      { key: 'comp_seats',     label: 'Competitive Districts',isInt: true  },
+      { key: 'efficiency_gap', label: 'Efficiency Gap',       isInt: false },
+      { key: 'mean_median',    label: 'Mean–Median',          isInt: false },
+      { key: 'muni_splits',    label: 'City Splits',          isInt: true  },
+    ]}
+
     <div style="margin-top:1.2rem;">
       <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-                  color:var(--gray);margin-bottom:.5rem;">
-        Scored Against Both Benchmarks
+                  color:var(--gray);margin-bottom:.3rem;">
+        Map B (proposed) vs Map A (enacted) — metric deltas
       </div>
-      <BenchmarkComparisonTable
-        primary={{
-          label:  primaryLabel,
-          grades: scoredPlan.grades,
-        }}
-        companion={{
-          label:  companionLabel,
-          grades: companionScoredPlan?.grades ?? null,
-        }}
-        primaryPlan={scoredPlan}
-        companionPlan={companionScoredPlan}
-        scoringMode={true}
-      />
+      <div style="font-size:.7rem;color:var(--gray);margin-bottom:.55rem;font-style:italic;">
+        Δ = Map B minus Map A. Positive means Map B is higher on that metric.
+      </div>
+      <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;font-size:.76rem;">
+          <thead>
+            <tr style="background:var(--light);border-bottom:1.5px solid var(--border);">
+              <th style="padding:.4rem .8rem;text-align:left;font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);">Metric</th>
+              <th style="padding:.4rem .7rem;text-align:right;font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);">Map A (enacted)</th>
+              <th style="padding:.4rem .7rem;text-align:right;font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);">Map B (proposed)</th>
+              <th style="padding:.4rem .7rem;text-align:right;font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);">Δ (B minus A)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each ROWS as row, ri}
+              {@const enactedRaw = row.key === '_rep_seats'
+                ? (grades['dem_seats'] as any)?.enacted != null ? nDistricts - (grades['dem_seats'] as any).enacted : null
+                : (grades[row.key] as any)?.enacted ?? null}
+              {@const proposedRaw = row.key === '_rep_seats'
+                ? scoredPlan.metrics['dem_seats']?.value != null ? nDistricts - scoredPlan.metrics['dem_seats'].value : null
+                : scoredPlan.metrics[row.key]?.value ?? null}
+              {@const d = (enactedRaw != null && proposedRaw != null) ? proposedRaw - enactedRaw : null}
+              {#if enactedRaw != null || proposedRaw != null}
+                <tr style="border-bottom:1px solid var(--border);background:{ri % 2 === 0 ? 'var(--card)' : 'var(--light)'};">
+                  <td style="padding:.4rem .8rem;font-weight:500;">{row.label}</td>
+                  <td style="padding:.4rem .7rem;text-align:right;font-family:monospace;">
+                    {enactedRaw == null ? '—' : row.isInt ? Math.round(enactedRaw) : enactedRaw.toFixed(3)}
+                  </td>
+                  <td style="padding:.4rem .7rem;text-align:right;font-family:monospace;">
+                    {proposedRaw == null ? '—' : row.isInt ? Math.round(proposedRaw) : proposedRaw.toFixed(3)}
+                  </td>
+                  <td style="padding:.4rem .7rem;text-align:right;font-family:monospace;font-weight:700;">
+                    {#if d == null}
+                      —
+                    {:else}
+                      {d > 0 ? '+' : ''}{row.isInt ? Math.round(d) : d.toFixed(3)}
+                    {/if}
+                  </td>
+                </tr>
+              {/if}
+            {/each}
+          </tbody>
+        </table>
+        <div style="padding:.3rem .8rem;font-size:.63rem;color:var(--gray);border-top:1px solid var(--border);background:var(--light);">
+          Enacted values from the benchmark scorecard. Proposed values from the uploaded map scored against the same VTD composite.
+        </div>
+      </div>
     </div>
   {/if}
 </div>
