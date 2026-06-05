@@ -25,8 +25,12 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
+_SCRIPT_DIR   = Path(__file__).resolve().parent
+_REPO_ROOT    = _SCRIPT_DIR.parent.parent          # fgdp/
 DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main/ensemble"
+
+# VTD → municipality lookup (built from ALARM RDS via scripts/build_alarm_scorecard.py)
+_VTD_MUNI_PATH = _REPO_ROOT / "fdensemble" / "data" / "vtd_muni.parquet"
 
 MAJORITY_THRESHOLD = 0.50
 COMPETITIVE_THRESHOLD_DEFAULT = 0.05
@@ -116,6 +120,18 @@ _METRIC_META: dict[str, tuple] = {
         "not a policy judgment about the direction of that distance. "
         "Uses 2024 ACS 5-year CVAP estimates.",
         None),
+    "muni_splits": (
+        "Split Cities & Municipalities",
+        "How many cities and towns are divided across different districts?",
+        "geographic",
+        "Counts incorporated municipalities (cities, towns) whose territory is split "
+        "across two or more congressional districts. Urban cracking — dividing a city "
+        "among multiple districts — dilutes its collective political voice and reduces "
+        "the ability of city residents to elect a single representative who understands "
+        "local concerns. Fewer splits means more communities are kept intact. The neutral "
+        "ensemble shows how many splits geography-driven redistricting would typically "
+        "produce; the enacted map is compared against this baseline.",
+        False),
 }
 
 
@@ -243,6 +259,44 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
         else:
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s), "
                     f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
+
+    elif key == "muni_splits":
+        if pct_rank >= 95:
+            return (
+                f"The enacted map splits {enacted:.0f} cities and municipalities — "
+                f"more than {pct_rank:.0f}% of neutral maps "
+                f"(typical range: {p5:.0f}–{p95:.0f}). "
+                f"This is an extreme outlier: the enacted map cracks far more urban "
+                f"communities than geography-driven redistricting would produce. "
+                f"Dividing cities dilutes their collective political voice and reduces "
+                f"constituent access to a single local representative."
+            )
+        elif pct_rank >= 75:
+            return (
+                f"The enacted map splits {enacted:.0f} cities and municipalities — "
+                f"more than most neutral alternatives (typical range: {p5:.0f}–{p95:.0f}). "
+                f"More urban communities are divided across multiple districts than "
+                f"geography-driven redistricting would typically produce."
+            )
+        elif pct_rank <= 5:
+            return (
+                f"The enacted map splits just {enacted:.0f} cities and municipalities — "
+                f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                f"(typical range: {p5:.0f}–{p95:.0f}). "
+                f"Urban communities are exceptionally well preserved compared to "
+                f"what neutral redistricting would produce."
+            )
+        elif pct_rank <= 25:
+            return (
+                f"The enacted map splits {enacted:.0f} cities and municipalities — "
+                f"fewer than most neutral alternatives. Urban communities are well "
+                f"preserved relative to geography-driven redistricting."
+            )
+        else:
+            return (
+                f"The enacted map splits {enacted:.0f} cities and municipalities, "
+                f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f})."
+            )
 
     else:
         # Generic fallback
@@ -747,6 +801,64 @@ def _build_enacted_districts(
     return districts if districts else None
 
 
+def _build_muni_splits(
+    run_name: str,
+    data_dir: Path,
+    conn: duckdb.DuckDBPyConnection,
+) -> dict | None:
+    """
+    Compute municipal splits per plan from the GerryChain plans parquet + VTD→muni mapping.
+
+    A municipality is "split" when its VTDs are assigned to 2+ different districts.
+    Returns a metric_entry dict (label, grade, enacted, pct_rank, histogram…) or None
+    if the plans parquet or vtd_muni lookup is unavailable.
+    """
+    if not _VTD_MUNI_PATH.exists():
+        print(f"    [muni_splits] vtd_muni.parquet not found at {_VTD_MUNI_PATH} — skipping")
+        return None
+
+    # Plans parquet may be the composite run or the underlying base run
+    plans_file = data_dir / f"{run_name}_plans.parquet"
+    if not plans_file.exists():
+        base = run_name.removesuffix("_composite")
+        plans_file = data_dir / f"{base}_plans.parquet"
+    if not plans_file.exists():
+        print(f"    [muni_splits] plans parquet not found for {run_name} — skipping")
+        return None
+
+    # DuckDB join: for each (draw, muni), count distinct districts
+    result = conn.execute("""
+        WITH plan_muni AS (
+            SELECT p.draw, v.muni_id, p.district
+            FROM read_parquet(?) p
+            JOIN read_parquet(?) v ON p.geoid = v.geoid
+        ),
+        muni_by_draw AS (
+            SELECT draw, muni_id, COUNT(DISTINCT district) AS n_districts
+            FROM plan_muni
+            GROUP BY draw, muni_id
+        )
+        SELECT draw,
+               SUM(CASE WHEN n_districts > 1 THEN 1 ELSE 0 END) AS muni_splits
+        FROM muni_by_draw
+        GROUP BY draw
+        ORDER BY draw
+    """, [str(plans_file), str(_VTD_MUNI_PATH)]).df()
+
+    if result.empty:
+        return None
+
+    # draw=1 is the enacted plan in GerryChain parquets
+    enacted_row = result[result["draw"] == 1]
+    sampled = result[result["draw"] != 1]["muni_splits"].values
+
+    if len(sampled) < 10 or enacted_row.empty:
+        return None
+
+    enacted_val = float(enacted_row["muni_splits"].iloc[0])
+    return _metric_entry("muni_splits", sampled, enacted_val)
+
+
 def build_scorecard(
     run_name: str,
     data_dir: Path,
@@ -835,13 +947,20 @@ def build_scorecard(
         demographics["year"] = 2024  # CVAP 2024 vintage (from ACS 2020–2024 5yr)
     print(" done")
 
+    # Municipal splits
+    print("  Municipal splits…", end="", flush=True)
+    muni_splits_entry = _build_muni_splits(run_name, data_dir, conn)
+    print(f" {muni_splits_entry['enacted']:.0f} splits (grade {muni_splits_entry['grade']})" if muni_splits_entry else " n/a")
+
     # Composite grades (includes _partisan_fairness, _overall)
     composite = _build_composite_grades(elections, demographics, n_districts)
 
-    # Add demographics metrics to the grades dict so fdensemble renders them
+    # Add demographics metrics + geographic metrics to grades
     grades = {**composite}
     if demographics:
         grades.update(demographics["metrics"])
+    if muni_splits_entry:
+        grades["muni_splits"] = muni_splits_entry
 
     # Build enacted plan districts (for Compare tab)
     print("  Enacted districts…", end="", flush=True)
@@ -902,7 +1021,8 @@ def build_scorecard(
         },
         "elections":    elections,
         "demographics": demographics,
-        "compactness":  {"polsby_popper": None, "county_splits": None, "muni_splits": None},
+        "compactness":  {"polsby_popper": None, "county_splits": None,
+                         "muni_splits": muni_splits_entry},
         "grades":       grades,
         "plans":        plans,
     }

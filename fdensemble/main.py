@@ -464,15 +464,15 @@ _METRIC_META = {
         'splits generally indicates a more geographically coherent, community-respecting map.',
         False),
     'muni_splits': (
-        'Municipal Integrity', 'Are cities and towns being kept whole?',
+        'Split Cities & Municipalities', 'How many cities and towns are divided across different districts?',
         'geographic',
-        'The number of cities and municipalities divided across different districts. '
-        'Like county splits, dividing municipalities weakens the ability of city '
-        'residents to elect a single representative who understands and advocates for '
-        'their shared local concerns — city budgets, zoning decisions, schools, '
-        'local infrastructure. Maps that unnecessarily split municipalities may be '
-        'doing so to achieve a partisan or racial outcome rather than respecting '
-        'existing community boundaries.',
+        'Counts incorporated municipalities (cities, towns) whose territory is split '
+        'across two or more congressional districts. Urban cracking — dividing a city '
+        'among multiple districts — dilutes its collective political voice and reduces '
+        'the ability of city residents to elect a single representative who understands '
+        'local concerns. The histogram shows how many municipal splits neutral, '
+        'geography-driven redistricting plans typically produce. Fewer splits means '
+        'more urban communities are kept intact.',
         False),
     'maj_black': (
         'Black Community Representation', 'Do Black voters have a fair opportunity to elect representatives of their choice?',
@@ -999,9 +999,11 @@ print(f'Map library: {len(_maps_catalog)} map(s) in {MAPS_DIR}')
 # Primary: bundled alongside the app (committed to fdensemble/data/, copied by Dockerfile)
 # Fallback: local dev path relative to the fdp sibling directory
 _VTD_COMPOSITE_PATH = Path('data/vtd_composite.parquet')
+_VTD_MUNI_PATH      = Path('data/vtd_muni.parquet')
 _vtd_df: pd.DataFrame | None = None
 _vtd_tree: STRtree | None = None
 _vtd_points: list | None = None  # parallel list of shapely Points
+_vtd_muni_df: pd.DataFrame | None = None  # GEOID → muni_id for municipal split scoring
 
 
 def _load_vtd_composite():
@@ -1032,6 +1034,26 @@ def _load_vtd_composite():
     print(f'  VTD composite loaded: {len(_vtd_df):,} VTDs')
 
 
+def _load_vtd_muni():
+    global _vtd_muni_df
+    if _vtd_muni_df is not None:
+        return
+    path = _VTD_MUNI_PATH
+    if not path.exists():
+        for candidate in [
+            Path('fdensemble/data/vtd_muni.parquet'),
+            Path('../fdensemble/data/vtd_muni.parquet'),
+        ]:
+            if candidate.exists():
+                path = candidate
+                break
+        else:
+            return   # non-fatal: muni_splits will be skipped
+    _vtd_muni_df = pd.read_parquet(path)
+    _vtd_muni_df['geoid'] = _vtd_muni_df['geoid'].astype(str)
+    print(f'  VTD muni mapping loaded: {len(_vtd_muni_df):,} incorporated VTDs')
+
+
 def _score_geojson(features: list, run_id: str) -> dict:
     """
     Score a list of GeoJSON district polygon features against the composite benchmark.
@@ -1039,6 +1061,7 @@ def _score_geojson(features: list, run_id: str) -> dict:
     Returns a plan dict with aggregate metrics + per-district breakdown.
     """
     _load_vtd_composite()
+    _load_vtd_muni()
 
     # Build shapely polygons for each district feature
     district_polygons = []
@@ -1081,6 +1104,18 @@ def _score_geojson(features: list, run_id: str) -> dict:
     grouped['centroid_lon'] = (grouped['lon_wt'] / grouped['total_vap']).round(5)
 
     district_dem_2pvs = grouped['dem_2pv'].sort_values().values
+
+    # Municipal splits — count incorporated municipalities with VTDs in 2+ districts
+    muni_splits_val: int | None = None
+    if _vtd_muni_df is not None:
+        # vtd_assignments: GEOID → district_num
+        assigned_geoids = pd.Series(list(vtd_assignments.keys()), name='geoid')
+        assigned_districts = pd.Series(list(vtd_assignments.values()), name='district')
+        asgn_df = pd.DataFrame({'geoid': assigned_geoids.values, 'district': assigned_districts.values})
+        muni_join = asgn_df.merge(_vtd_muni_df, on='geoid', how='inner')
+        if not muni_join.empty:
+            splits_per_muni = muni_join.groupby('muni_id')['district'].nunique()
+            muni_splits_val = int((splits_per_muni > 1).sum())
 
     # Partisan metrics
     dem_seats    = int((district_dem_2pvs >= 0.5).sum())
@@ -1132,6 +1167,13 @@ def _score_geojson(features: list, run_id: str) -> dict:
             elif pct >= 64: grd = 'B'
             elif pct >= 5: grd = 'C'
             else: grd = 'F'
+        elif metric_key in ('muni_splits', 'county_splits'):
+            # lower is better: rank = distance from low end
+            rank = 100 - pct
+            if rank >= 95: grd = 'A'
+            elif rank >= 64: grd = 'B'
+            elif rank >= 5: grd = 'C'
+            else: grd = 'F'
         else:
             d = abs(pct - 50.0)
             if d <= 10: grd = 'A'
@@ -1146,6 +1188,8 @@ def _score_geojson(features: list, run_id: str) -> dict:
         'mean_median':    _rank_and_grade('mean_median',    mean_median),
         'comp_seats':     _rank_and_grade('comp_seats',     float(comp_seats)),
     }
+    if muni_splits_val is not None:
+        metrics['muni_splits'] = _rank_and_grade('muni_splits', float(muni_splits_val))
 
     # Partisan fairness composite grade
     e_pass = 5.0 <= metrics['dem_seats']['pct_rank'] <= 95.0

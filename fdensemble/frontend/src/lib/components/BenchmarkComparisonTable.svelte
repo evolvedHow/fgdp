@@ -70,6 +70,7 @@
         { key: 'efficiency_gap',     label: 'Efficiency Gap' },
         { key: 'mean_median',        label: 'Mean–Median' },
         { key: 'comp_seats',         label: 'Competitive Seats',   isCount: true },
+        { key: 'muni_splits',        label: 'Split Cities',        isCount: true },
       ]
     : [
         { key: '_overall',           label: 'Overall',             isComposite: true },
@@ -78,6 +79,7 @@
         { key: 'efficiency_gap',     label: 'Efficiency Gap' },
         { key: 'mean_median',        label: 'Mean–Median' },
         { key: 'comp_seats',         label: 'Competitive Seats',   isCount: true },
+        { key: 'muni_splits',        label: 'Split Cities',        isCount: true },
         { key: 'maj_black',          label: 'Majority-Black Districts', isCount: true },
         { key: 'min_coal',           label: 'Minority Coalition Districts', isCount: true },
       ];
