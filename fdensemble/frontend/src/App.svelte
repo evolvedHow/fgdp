@@ -168,7 +168,7 @@
       />
 
     {:else if tab === 'compare'}
-      <CompareTab {scoredPlans} />
+      <CompareTab {runs} />
     {/if}
 
   {:else}
