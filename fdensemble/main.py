@@ -1,4 +1,4 @@
-import argparse, io, json, mimetypes, os
+import argparse, io, json, mimetypes, os, uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -13,8 +13,10 @@ import numpy as np
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
+from shapely.geometry import Point, shape
+from shapely.strtree import STRtree
 
 load_dotenv()
 
@@ -575,6 +577,7 @@ def _load_meta(meta_file: Path, csv_path: Path, run_id: str, sampled: pd.DataFra
     meta.setdefault('n_plans',     int(sampled['draw'].nunique()))
     meta.setdefault('description', '')
     meta.setdefault('tags',        [])
+    meta.setdefault('plans',       [{'id': 'enacted', 'label': f'{ENACTED_PLAN_LABEL} (enacted)'}])
     meta['id'] = run_id
     return meta
 
@@ -858,7 +861,7 @@ def _build_run(run_id: str, csv_path: Path, meta_file: Path) -> dict:
     }
 
 
-def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0) -> dict:
+def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0, plan_id: str = 'enacted') -> dict:
     """
     Load a canonical scorecard JSON (produced by fdp/scripts/build_scorecard.py)
     and return a run dict in the same shape as _build_run() for ALARM CSVs.
@@ -907,6 +910,12 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0) -> di
                 'enacted_district_ids':  elec_river.get('enacted_district_ids'),
             }
 
+    # Plans list — each plan is a named map that can be compared against this benchmark.
+    # Currently scorecards have one plan (the enacted map, draw=1).
+    # When a scorecard gains a 'plans' array, those are exposed here for the plan selector.
+    default_plans = [{'id': 'enacted', 'label': sc.get('enacted_label', 'Enacted Map')}]
+    plans = sc.get('plans') or default_plans
+
     # Build meta dict (fdensemble RunMeta shape + extra fields for UI)
     meta = {
         'id':          run_info['id'],
@@ -921,6 +930,8 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0) -> di
         # Elections list — passed to frontend for the election selector
         'elections':   run_info.get('elections', []),
         'election_idx': election_idx,
+        # Plans list — passed to frontend for the plan selector
+        'plans':       plans,
     }
 
     return {
@@ -937,30 +948,8 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0) -> di
 def _discover_and_load_runs() -> dict:
     found = {}
 
-    csv_stem = f'{STATE}_{PLAN_TYPE}_{PLAN_YEAR}'
-    csv      = DATA_DIR / f'{csv_stem}_stats.csv'
-    run_id   = f'{csv_stem}_alarm'
-
-    if csv.exists():
-        print(f'  Loading default run: {run_id}')
-        try:
-            found[run_id] = _build_run(run_id, csv, DATA_DIR / f'{csv_stem}_meta.json')
-        except Exception as exc:
-            print(f'  WARNING: failed to load {run_id}: {exc}')
-    else:
-        print(f'  No data file found at {csv} — skipping default run.')
-        print(f'  Set DATA_DIR env var or mount ALARM CSV files to enable analysis.')
-
-    if RUNS_DIR.exists():
-        for run_dir in sorted(d for d in RUNS_DIR.iterdir() if d.is_dir()):
-            csvs = list(run_dir.glob('*_stats.csv'))
-            if csvs:
-                rid = run_dir.name
-                print(f'  Loading run: {rid}')
-                try:
-                    found[rid] = _build_run(rid, csvs[0], run_dir / 'meta.json')
-                except Exception as exc:
-                    print(f'  WARNING: failed to load {rid}: {exc}')
+    # ALARM CSV and legacy per-election runs are superseded by the composite
+    # benchmark scorecards in input_data/.  Only scorecard JSON files are loaded.
 
     # Discover canonical scorecard JSON files in input_data/ and RUNS_DIR/
     input_data_dir = Path('input_data')
@@ -984,6 +973,189 @@ def _discover_and_load_runs() -> dict:
 print('Loading runs...')
 _runs = _discover_and_load_runs()
 print(f'Ready — {len(_runs)} run(s): {list(_runs.keys())}')
+
+# ── VTD composite spatial index (lazy-loaded on first /api/score-plan request) ─
+_VTD_COMPOSITE_PATH = Path('..') / 'fdp' / 'data' / 'repos' / 'main' / 'vtd' / 'vtd_composite.parquet'
+_vtd_df: pd.DataFrame | None = None
+_vtd_tree: STRtree | None = None
+_vtd_points: list | None = None  # parallel list of shapely Points
+
+
+def _load_vtd_composite():
+    global _vtd_df, _vtd_tree, _vtd_points
+    if _vtd_df is not None:
+        return
+    path = _VTD_COMPOSITE_PATH
+    if not path.exists():
+        # Try relative to fdp sibling
+        for candidate in [
+            Path('fdp/data/repos/main/vtd/vtd_composite.parquet'),
+            Path('../fdp/data/repos/main/vtd/vtd_composite.parquet'),
+        ]:
+            if candidate.exists():
+                path = candidate
+                break
+        else:
+            raise FileNotFoundError('vtd_composite.parquet not found')
+
+    _vtd_df = pd.read_parquet(path)
+    _vtd_points = [Point(row.centroid_lon, row.centroid_lat) for row in _vtd_df.itertuples()]
+    _vtd_tree = STRtree(_vtd_points)
+    print(f'  VTD composite loaded: {len(_vtd_df):,} VTDs')
+
+
+def _score_geojson(features: list, run_id: str) -> dict:
+    """
+    Score a list of GeoJSON district polygon features against the composite benchmark.
+
+    Returns a plan dict with aggregate metrics + per-district breakdown.
+    """
+    _load_vtd_composite()
+
+    # Build shapely polygons for each district feature
+    district_polygons = []
+    for i, feat in enumerate(features):
+        try:
+            geom = shape(feat['geometry'])
+            district_polygons.append((i, geom))
+        except Exception:
+            pass  # skip invalid geometries
+
+    if not district_polygons:
+        raise ValueError('No valid district polygons found in GeoJSON')
+
+    n_districts = len(district_polygons)
+    vtd = _vtd_df.copy()
+
+    # Assign each VTD centroid to a district using STRtree candidate query + contains
+    vtd_district = np.full(len(vtd), -1, dtype=int)
+    for dist_idx, poly in district_polygons:
+        cands = _vtd_tree.query(poly, predicate='within')
+        vtd_district[cands] = dist_idx
+
+    vtd['_dist_idx'] = vtd_district
+    assigned = vtd[vtd['_dist_idx'] >= 0].copy()
+    unassigned = (vtd_district == -1).sum()
+    if unassigned > 0:
+        print(f'  {unassigned} VTDs unassigned (may be on district boundaries)')
+
+    # Per-district aggregation
+    grouped = assigned.groupby('_dist_idx').agg(
+        dem_votes=('composite_dem_pct', lambda s: (s * assigned.loc[s.index, 'VAP_MOD']).sum()),
+        rep_votes=('composite_rep_pct', lambda s: (s * assigned.loc[s.index, 'VAP_MOD']).sum()),
+        total_vap=('VAP_MOD', 'sum'),
+        lat_wt=('centroid_lat', lambda s: (s * assigned.loc[s.index, 'VAP_MOD']).sum()),
+        lon_wt=('centroid_lon', lambda s: (s * assigned.loc[s.index, 'VAP_MOD']).sum()),
+    ).reset_index()
+
+    grouped['dem_2pv'] = grouped['dem_votes'] / (grouped['dem_votes'] + grouped['rep_votes'])
+    grouped['centroid_lat'] = (grouped['lat_wt'] / grouped['total_vap']).round(5)
+    grouped['centroid_lon'] = (grouped['lon_wt'] / grouped['total_vap']).round(5)
+
+    district_dem_2pvs = grouped['dem_2pv'].sort_values().values
+
+    # Partisan metrics
+    dem_seats    = int((district_dem_2pvs >= 0.5).sum())
+    mean_val     = float(np.mean(district_dem_2pvs))
+    median_val   = float(np.median(district_dem_2pvs))
+    mean_median  = round(mean_val - median_val, 4)
+
+    # Efficiency gap
+    waste_dem = sum(
+        max(0, v - 0.5) * total if v >= 0.5 else v * total
+        for v, total in zip(grouped['dem_2pv'], grouped['total_vap'])
+    )
+    waste_rep = sum(
+        max(0, (1 - v) - 0.5) * total if v < 0.5 else (1 - v) * total
+        for v, total in zip(grouped['dem_2pv'], grouped['total_vap'])
+    )
+    total_votes_all = grouped['total_vap'].sum()
+    efficiency_gap = round((waste_dem - waste_rep) / total_votes_all, 4) if total_votes_all > 0 else 0.0
+
+    # Competitive seats (within 5pp of 50%)
+    comp_seats = int(((district_dem_2pvs >= 0.45) & (district_dem_2pvs <= 0.55)).sum())
+
+    # Look up pct_rank against stored ensemble histograms
+    run_data = _runs.get(run_id)
+    if run_data is None:
+        raise HTTPException(404, f'Run {run_id!r} not found')
+
+    grades = run_data['grades']
+
+    def _rank_and_grade(metric_key: str, val: float) -> dict:
+        g = grades.get(metric_key)
+        if g is None or 'histogram' not in g:
+            return {'value': round(val, 4), 'pct_rank': 50.0, 'grade': 'C'}
+        hist = g['histogram']
+        edges = hist['edges']
+        counts = hist['counts']
+        # Reconstruct approximate distribution from histogram bins
+        centers = [(edges[i] + edges[i + 1]) / 2 for i in range(len(counts))]
+        dist_approx = np.repeat(centers, counts)
+        pct = float((dist_approx <= val).mean() * 100)
+
+        if metric_key == 'dem_seats':
+            if pct >= 50: grd = 'A'
+            elif pct >= 20: grd = 'B'
+            elif pct >= 5: grd = 'C'
+            else: grd = 'F'
+        elif metric_key == 'comp_seats':
+            if pct >= 95: grd = 'A'
+            elif pct >= 64: grd = 'B'
+            elif pct >= 5: grd = 'C'
+            else: grd = 'F'
+        else:
+            d = abs(pct - 50.0)
+            if d <= 10: grd = 'A'
+            elif d <= 30: grd = 'B'
+            elif d <= 45: grd = 'C'
+            else: grd = 'F'
+        return {'value': round(val, 4), 'pct_rank': round(pct, 1), 'grade': grd}
+
+    metrics = {
+        'dem_seats':      _rank_and_grade('dem_seats',      float(dem_seats)),
+        'efficiency_gap': _rank_and_grade('efficiency_gap', efficiency_gap),
+        'mean_median':    _rank_and_grade('mean_median',    mean_median),
+        'comp_seats':     _rank_and_grade('comp_seats',     float(comp_seats)),
+    }
+
+    # Partisan fairness composite grade
+    e_pass = 5.0 <= metrics['dem_seats']['pct_rank'] <= 95.0
+    pf_grade = 'A' if e_pass else 'B'
+    if metrics['comp_seats']['grade'] == 'F': pf_grade = _adj(pf_grade, -1)
+    if metrics['comp_seats']['grade'] == 'A': pf_grade = _adj(pf_grade, +1)
+    overall = pf_grade
+
+    plan_grades = {
+        '_partisan_fairness': {
+            'label': 'Partisan Fairness', 'grade': pf_grade,
+            'ensemble_pass': e_pass, 'normative_pass': True,
+            'description': f'Ensemble: {"✓ PASS" if e_pass else "✗ FAIL"}',
+        },
+        '_overall': {'label': 'Overall', 'grade': overall, 'description': ''},
+    }
+
+    # Build per-district list sorted by partisan lean (ascending)
+    dist_rows = []
+    for _, row in grouped.sort_values('dem_2pv').iterrows():
+        dist_rows.append({
+            'id':           str(int(row['_dist_idx']) + 1),
+            'district_num': int(row['_dist_idx']) + 1,
+            'dem_2pv':      round(float(row['dem_2pv']), 4),
+            'total_vap':    int(row['total_vap']),
+            'centroid_lat': float(row['centroid_lat']),
+            'centroid_lon': float(row['centroid_lon']),
+        })
+
+    return {
+        'id':        str(uuid.uuid4()),
+        'label':     '',   # filled by caller
+        'source':    'upload',
+        'run_id':    run_id,
+        'metrics':   metrics,
+        'grades':    plan_grades,
+        'districts': dist_rows,
+    }
 
 
 def _get_run(run_id: str | None) -> dict:
@@ -1097,21 +1269,27 @@ def get_runs():
 
 
 @app.get('/api/analysis')
-def get_analysis(run: str = Query(default=None), election: int = Query(default=0)):
+def get_analysis(
+    run: str = Query(default=None),
+    election: int = Query(default=0),
+    plan: str = Query(default='enacted'),
+):
     """
     Return the full analysis for a run.
 
-    For scorecard-based runs (GerryChain), the `election` parameter selects which
-    election's metrics to display (0-indexed). ALARM CSV runs ignore this parameter.
+    - `election`: for scorecard-based runs, selects which election's metrics to display (0-indexed).
+    - `plan`: selects which plan to compare against the benchmark. Currently each scorecard has
+      one plan ('enacted'); future scorecards may expose additional named plans.
     """
     run_data = _get_run(run)
 
-    # If this is a scorecard run and a non-zero election is requested,
-    # reload the scorecard with the new election index
-    if election != 0 and run_data['meta'].get('source') in ('gerrychain', 'scorecard'):
-        sc_path = _find_scorecard_path(run_data['meta']['id'])
-        if sc_path:
-            run_data = _build_run_from_scorecard(sc_path, election_idx=election)
+    # If this is a scorecard run and a different election or plan is requested,
+    # reload the scorecard with the appropriate parameters
+    if run_data['meta'].get('source') in ('gerrychain', 'scorecard'):
+        if election != 0 or plan != 'enacted':
+            sc_path = _find_scorecard_path(run_data['meta']['id'])
+            if sc_path:
+                run_data = _build_run_from_scorecard(sc_path, election_idx=election, plan_id=plan)
 
     return _build_analysis(run_data)
 
@@ -1144,6 +1322,42 @@ def chart_river(run: str = Query(default=None)):
     if fig is None:
         raise HTTPException(404, 'River data unavailable')
     return StreamingResponse(_to_png(fig), media_type='image/png')
+
+
+@app.post('/api/score-plan')
+async def score_plan(request: Request):
+    """
+    Score an uploaded redistricting plan against the composite benchmark.
+
+    Accepts JSON body:
+      { "run_id": "fdga_2026_benchmark_congress",
+        "label": "Proposed Map A",
+        "geojson": { "type": "FeatureCollection", "features": [...district polygons...] } }
+
+    Returns a ScoredPlan object with aggregate grades and per-district metrics.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, 'Request body must be valid JSON')
+
+    run_id   = body.get('run_id') or next(iter(_runs))
+    label    = body.get('label', 'Uploaded Plan')
+    geojson  = body.get('geojson', {})
+    features = geojson.get('features', [])
+
+    if not features:
+        raise HTTPException(400, 'geojson.features must be a non-empty array of district polygons')
+
+    try:
+        result = _score_geojson(features, run_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(500, str(e))
+
+    result['label'] = label
+    return result
 
 
 app.mount('/', StaticFiles(directory='frontend/dist', html=True), name='frontend')

@@ -5,18 +5,13 @@ export interface ElectionOption {
   label: string;
 }
 
-export interface RunMeta {
+export interface DistrictResult {
   id: string;
-  name: string;
-  algorithm: string;
-  date: string;
-  n_plans: number;
-  description: string;
-  tags: string[];
-  source?: string;       // 'gerrychain' | 'alarm' | undefined for legacy runs
-  chamber?: string;      // 'congress' | 'senate' | 'house'
-  elections?: ElectionOption[];  // populated for GerryChain scorecard runs
-  election_idx?: number;
+  district_num: number;
+  dem_2pv: number;
+  total_vap: number;
+  centroid_lat: number;
+  centroid_lon: number;
 }
 
 export interface Histogram {
@@ -51,6 +46,31 @@ export interface CompositeGrade {
 
 export type Grades = Record<string, MetricGrade | CompositeGrade>;
 
+export interface ScoredPlan {
+  id: string;
+  label: string;
+  source: 'catalog' | 'upload';
+  run_id: string;
+  metrics: Record<string, { value: number; pct_rank: number; grade: string }>;
+  grades: Grades;
+  districts: DistrictResult[];
+}
+
+export interface RunMeta {
+  id: string;
+  name: string;
+  algorithm: string;
+  date: string;
+  n_plans: number;
+  description: string;
+  tags: string[];
+  source?: string;       // 'gerrychain' | 'alarm' | undefined for legacy runs
+  chamber?: string;      // 'congress' | 'senate' | 'house'
+  elections?: ElectionOption[];  // populated for GerryChain scorecard runs
+  election_idx?: number;
+  plans?: ScoredPlan[];  // plans with full district data
+}
+
 export interface Summary {
   state: string;
   state_full: string;
@@ -69,7 +89,7 @@ export interface RiverData {
   p50: number[];
   p95: number[];
   enacted?: number[] | null;
-  enacted_district_ids?: number[] | null;  // actual district numbers in rank order
+  enacted_district_ids?: number[] | null;
 }
 
 export interface Analysis {

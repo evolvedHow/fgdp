@@ -3,8 +3,16 @@
   import type { MetricGrade } from '../types.js';
   import { captureElement } from '../capture.js';
 
-  interface Props { metric: MetricGrade; }
-  let { metric }: Props = $props();
+  interface PlanMetricOverlay {
+    value: number;
+    pct_rank: number;
+    grade: string;
+  }
+  interface Props {
+    metric: MetricGrade;
+    planMetric?: PlanMetricOverlay | null;
+  }
+  let { metric, planMetric = null }: Props = $props();
 
   // Plain let — NOT $state(). Chart.js calls Object.defineProperty on canvas
   // elements internally (resize observer), which Svelte 5's reactive proxy blocks.
@@ -35,6 +43,15 @@
     return categoryColor[metric.category] ?? '#888';
   }
 
+  function binIndex(edges: number[], val: number): number {
+    let idx = edges.findIndex((e: number, i: number) => val >= e && val < edges[i + 1]);
+    if (idx < 0) {
+      if (val >= edges[0]) idx = edges.length - 2;
+      else idx = 0;
+    }
+    return idx;
+  }
+
   async function buildChart() {
     const { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip } = await import('chart.js');
     Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip);
@@ -43,11 +60,12 @@
 
     // $state.snapshot() converts reactive proxy → plain JS object so Chart.js
     // can safely call Object.defineProperty on the data arrays internally.
-    const snap  = $state.snapshot(metric);
-    const h     = snap.histogram;
-    const edges = Array.from(h.edges);
-    const labels = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
-    const col    = categoryColor[snap.category] ?? '#888';
+    const snap    = $state.snapshot(metric);
+    const planSnap = planMetric ? $state.snapshot(planMetric) : null;
+    const h       = snap.histogram;
+    const edges   = Array.from(h.edges);
+    const labels  = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
+    const col     = categoryColor[snap.category] ?? '#888';
 
     chart = new Chart(canvas, {
       type: 'bar',
@@ -80,39 +98,47 @@
         },
       },
       plugins: [{
-        id: 'enacted-line',
+        id: 'value-lines',
         afterDraw(ch: any) {
-          if (h.enacted == null) return;
           const xScale = ch.scales.x;
           const { ctx, chartArea: { top, bottom } } = ch;
-          // Find the bin containing enacted. Clamp to last bin if enacted equals
-          // or exceeds the final edge (can happen when enacted is an outlier
-          // beyond every neutral draw).
-          let idx = h.edges.findIndex((e: number, i: number) => h.enacted! >= e && h.enacted! < h.edges[i + 1]);
-          if (idx < 0) {
-            if (h.enacted! >= h.edges[0]) idx = h.edges.length - 2;   // clamp right
-            else idx = 0;                                               // clamp left
+
+          // Enacted black dashed line
+          if (h.enacted != null) {
+            const idx = binIndex(Array.from(h.edges), h.enacted);
+            if (idx >= 0) {
+              const x = xScale.getPixelForValue(idx);
+              ctx.save();
+              ctx.strokeStyle = '#111';
+              ctx.lineWidth   = 2;
+              ctx.setLineDash([4, 3]);
+              ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+              ctx.restore();
+            }
           }
-          if (idx < 0) return;
-          const x = xScale.getPixelForValue(idx);
-          ctx.save();
-          ctx.strokeStyle = '#111';
-          ctx.lineWidth   = 2;
-          ctx.setLineDash([4, 3]);
-          ctx.beginPath();
-          ctx.moveTo(x, top);
-          ctx.lineTo(x, bottom);
-          ctx.stroke();
-          ctx.restore();
+
+          // Plan overlay — orange solid line (only when different from enacted)
+          if (planSnap && (h.enacted == null || Math.abs(planSnap.value - h.enacted) > 1e-6)) {
+            const idx = binIndex(Array.from(h.edges), planSnap.value);
+            if (idx >= 0) {
+              const x = xScale.getPixelForValue(idx);
+              ctx.save();
+              ctx.strokeStyle = '#e67e22';
+              ctx.lineWidth   = 2.5;
+              ctx.setLineDash([]);
+              ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+              ctx.restore();
+            }
+          }
         },
       }],
     });
   }
 
-  // Track metric changes so chart rebuilds when election switches.
-  // tick() ensures the canvas DOM element is mounted before Chart.js runs.
+  // Track metric + planMetric changes so chart rebuilds when election or plan switches.
   $effect(() => {
-    const m = metric; // declare dependency so effect re-runs on metric change
+    const m = metric;
+    const pm = planMetric; // declare dependency
     tick().then(() => {
       if (canvas && m) buildChart();
     });
@@ -146,27 +172,57 @@
 
     <!-- Left: grade + numbers -->
     <div style="padding:.7rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem;">
-      <div style="display:flex;align-items:center;gap:.4rem;">
-        <span style="display:inline-flex;align-items:center;justify-content:center;
-                     width:1.7rem;height:1.7rem;border-radius:50%;
-                     background:{gradeColor[metric.grade] ?? '#888'};
-                     color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
-        <span style="font-size:.7rem;color:var(--gray);">{metric.pct_rank}th percentile</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
-        <div>
-          <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Enacted</div>
-          <div style="font-weight:700;font-size:.85rem;">{metric.enacted.toFixed(2)}</div>
+      {#if planMetric}
+        <!-- Plan overlay mode -->
+        <div style="display:flex;align-items:center;gap:.4rem;">
+          <span style="display:inline-flex;align-items:center;justify-content:center;
+                       width:1.7rem;height:1.7rem;border-radius:50%;
+                       background:{gradeColor[planMetric.grade] ?? '#888'};
+                       color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{planMetric.grade}</span>
+          <span style="font-size:.7rem;color:var(--gray);">{planMetric.pct_rank}th percentile</span>
         </div>
-        <div>
-          <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral median</div>
-          <div style="font-size:.85rem;">{metric.histogram.p50.toFixed(2)}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
+          <div>
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:#e67e22;">This Plan</div>
+            <div style="font-weight:700;font-size:.85rem;color:#e67e22;">{planMetric.value.toFixed(2)}</div>
+          </div>
+          <div>
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Enacted</div>
+            <div style="font-size:.85rem;">{metric.enacted.toFixed(2)}</div>
+          </div>
+          <div>
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral median</div>
+            <div style="font-size:.85rem;">{metric.histogram.p50.toFixed(2)}</div>
+          </div>
+          <div>
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">5th–95th range</div>
+            <div style="font-size:.78rem;font-weight:600;">{metric.histogram.p5.toFixed(2)} – {metric.histogram.p95.toFixed(2)}</div>
+          </div>
         </div>
-        <div style="grid-column:span 2;">
-          <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral 5th–95th range</div>
-          <div style="font-size:.78rem;font-weight:600;">{metric.histogram.p5.toFixed(2)} – {metric.histogram.p95.toFixed(2)}</div>
+      {:else}
+        <!-- Default: enacted grades -->
+        <div style="display:flex;align-items:center;gap:.4rem;">
+          <span style="display:inline-flex;align-items:center;justify-content:center;
+                       width:1.7rem;height:1.7rem;border-radius:50%;
+                       background:{gradeColor[metric.grade] ?? '#888'};
+                       color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
+          <span style="font-size:.7rem;color:var(--gray);">{metric.pct_rank}th percentile</span>
         </div>
-      </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
+          <div>
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Enacted</div>
+            <div style="font-weight:700;font-size:.85rem;">{metric.enacted.toFixed(2)}</div>
+          </div>
+          <div>
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral median</div>
+            <div style="font-size:.85rem;">{metric.histogram.p50.toFixed(2)}</div>
+          </div>
+          <div style="grid-column:span 2;">
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral 5th–95th range</div>
+            <div style="font-size:.78rem;font-weight:600;">{metric.histogram.p5.toFixed(2)} – {metric.histogram.p95.toFixed(2)}</div>
+          </div>
+        </div>
+      {/if}
     </div>
 
     <!-- Middle: histogram -->
@@ -175,7 +231,12 @@
         <canvas bind:this={canvas}></canvas>
       </div>
       <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">
-        ‒‒ enacted &nbsp;|&nbsp; distribution of {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
+        {#if planMetric}
+          <span style="color:#e67e22;font-weight:700;">—</span> this plan &nbsp;
+          <span style="color:#111;">‒‒</span> enacted &nbsp;|&nbsp; {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
+        {:else}
+          ‒‒ enacted &nbsp;|&nbsp; distribution of {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
+        {/if}
       </div>
     </div>
 

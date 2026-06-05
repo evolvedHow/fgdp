@@ -2,8 +2,14 @@
   import type { Grades, CompositeGrade } from '../types.js';
   import { captureElement } from '../capture.js';
 
-  interface Props { grades: Grades; }
-  let { grades }: Props = $props();
+  interface Props {
+    grades: Grades;
+    planGrades?: Grades | null;
+  }
+  let { grades, planGrades = null }: Props = $props();
+
+  // When planGrades is provided, display those instead of benchmark grades
+  const displayGrades: Grades = $derived(planGrades ?? grades);
 
   let panelEl: HTMLElement;
   let capturing = $state(false);
@@ -15,10 +21,10 @@
     finally { capturing = false; }
   }
 
-  const overall    = $derived(grades._overall    as CompositeGrade | undefined);
-  const partisan   = $derived(grades._partisan_fairness as CompositeGrade | undefined);
-  const geographic = $derived(grades._geographic as CompositeGrade | undefined);
-  const compSeats  = $derived((grades as any).comp_seats);
+  const overall    = $derived(displayGrades._overall    as CompositeGrade | undefined);
+  const partisan   = $derived(displayGrades._partisan_fairness as CompositeGrade | undefined);
+  const geographic = $derived(displayGrades._geographic as CompositeGrade | undefined);
+  const compSeats  = $derived((displayGrades as any).comp_seats);
 
   const gradeColor: Record<string, string> = {
     A: '#27ae60', B: '#2980b9', C: '#d68910', D: '#e67e22', F: '#c0392b',

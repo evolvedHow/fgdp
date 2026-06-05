@@ -27,10 +27,10 @@
     {/if}
   </div>
 
-  <!-- Run selector -->
+  <!-- Benchmark selector -->
   {#if runs.length > 0}
-    <div style="display:flex;align-items:center;gap:.5rem;flex-shrink:0">
-      <label for="run-select" style="font-size:.75rem;opacity:.8;white-space:nowrap;">Benchmark run:</label>
+    <div style="display:flex;align-items:center;gap:.4rem;flex-shrink:0;">
+      <label for="run-select" style="font-size:.75rem;opacity:.8;white-space:nowrap;">Benchmark:</label>
       <select id="run-select"
               value={selectedRunId}
               onchange={(e) => onRunChange((e.target as HTMLSelectElement).value)}
@@ -44,7 +44,6 @@
       </select>
     </div>
   {/if}
-
 </header>
 
 <!-- Credits bar -->

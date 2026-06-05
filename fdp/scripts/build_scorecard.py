@@ -255,6 +255,7 @@ _OFFICE_LABELS = {
     "senate": "U.S. Senate",
     "us-house": "U.S. House",
     "state-rep": "State House",
+    "composite": "2018–2024 Composite",
 }
 
 
@@ -444,9 +445,9 @@ def _build_river(
     if not scores_file.exists():
         return None
 
-    # Enacted plan sorted by dem_2pv ascending
+    # Enacted plan sorted by dem_2pv ascending — include district id for labeling
     enacted_df = conn.execute("""
-        SELECT dem_2pv
+        SELECT district, dem_2pv
         FROM read_parquet(?)
         WHERE year=? AND election_type=? AND office=? AND draw=1
         ORDER BY dem_2pv ASC
@@ -479,12 +480,13 @@ def _build_river(
     n_draws = int(ribbon_df["n_draws"].iloc[0])
 
     return {
-        "n_districts": n_districts,
-        "n_draws":     n_draws,
-        "p5":     [round(float(v), 4) for v in ribbon_df["p5"]],
-        "p50":    [round(float(v), 4) for v in ribbon_df["p50"]],
-        "p95":    [round(float(v), 4) for v in ribbon_df["p95"]],
-        "enacted":[round(float(v), 4) for v in enacted_df["dem_2pv"]],
+        "n_districts":        n_districts,
+        "n_draws":            n_draws,
+        "p5":                 [round(float(v), 4) for v in ribbon_df["p5"]],
+        "p50":                [round(float(v), 4) for v in ribbon_df["p50"]],
+        "p95":                [round(float(v), 4) for v in ribbon_df["p95"]],
+        "enacted":            [round(float(v), 4) for v in enacted_df["dem_2pv"]],
+        "enacted_district_ids": [int(v) for v in enacted_df["district"]],
     }
 
 
@@ -592,12 +594,23 @@ def _build_composite_grades(
     if partisan_g:
         e_pass = first_e_pass if first_e_pass is not None else True
         n_elec = len([e for e in elections if e.get("metrics", {}).get("dem_seats")])
-        result["_partisan_fairness"] = {
-            "label":          "Partisan Fairness",
-            "grade":          partisan_g,
-            "ensemble_pass":  e_pass,
-            "normative_pass": True,
-            "description": (
+        is_composite = n_elec == 1 and elections[0].get("office") == "composite"
+        if is_composite:
+            benchmark_desc = (
+                "Assessed using the Princeton Gerrymandering Project's ensemble test "
+                "against a composite partisan benchmark averaging 5 elections: "
+                "2018 Governor, 2020 President, 2021 Warnock Senate Runoff, "
+                "2022 Governor + Senate (averaged), and 2024 President. "
+                "Third-party candidates are excluded (2-party vote shares only). "
+                "The ENSEMBLE test checks whether the enacted map falls within the "
+                "normal range (5th–95th percentile) of outcomes for thousands of "
+                "randomly drawn alternative maps drawn without partisan intent. "
+                f"Ensemble: {'✓ PASS — the enacted map is within the normal range' if e_pass else '✗ FAIL — the enacted map produces unusually partisan outcomes compared to neutral alternatives'}. "
+                "Note: The normative (cube-law symmetry) test requires a partisan bias "
+                "metric not available in GerryChain runs — it is conservatively set to Pass."
+            )
+        else:
+            benchmark_desc = (
                 "Assessed using the Princeton Gerrymandering Project's ensemble test "
                 "across all elections in this benchmark. "
                 "The ENSEMBLE test checks whether the enacted map falls within the "
@@ -608,7 +621,13 @@ def _build_composite_grades(
                 f"Ensemble: {'✓ PASS — the enacted map is within the normal range' if e_pass else '✗ FAIL — the enacted map produces unusually partisan outcomes compared to neutral alternatives'}. "
                 "Note: The normative (cube-law symmetry) test requires a partisan bias "
                 "metric not available in GerryChain runs — it is conservatively set to Pass."
-            ),
+            )
+        result["_partisan_fairness"] = {
+            "label":          "Partisan Fairness",
+            "grade":          partisan_g,
+            "ensemble_pass":  e_pass,
+            "normative_pass": True,
+            "description":    benchmark_desc,
         }
 
         overall = partisan_g
@@ -640,11 +659,98 @@ def _build_composite_grades(
 
 # ── Main scorecard builder ─────────────────────────────────────────────────────
 
+def _build_enacted_districts(
+    base_run_name: str,
+    data_dir: Path,
+    n_districts: int,
+    chamber: str,
+    river_enacted: list[float] | None,
+    river_district_ids: list[int] | None,
+    conn: duckdb.DuckDBPyConnection,
+) -> list[dict] | None:
+    """
+    Compute per-district metrics for the enacted plan (draw=1).
+    Returns a list of district dicts with id, dem_2pv, total_vap, centroid_lat/lon.
+    """
+    # Plans parquet: VTD → district assignment for each draw
+    # Convention: if base_run_name ends with '_composite', strip it for the plans file.
+    plans_run = base_run_name.removesuffix("_composite")
+    plans_file = data_dir / f"{plans_run}_plans.parquet"
+    if not plans_file.exists():
+        return None
+
+    # VTD composite: centroid + VAP per VTD
+    vtd_composite_file = data_dir.parent / "vtd" / "vtd_composite.parquet"
+    if not vtd_composite_file.exists():
+        return None
+
+    # Load enacted plan's VTD → district mapping
+    enacted_plan = conn.execute("""
+        SELECT geoid AS vtd_geoid, district
+        FROM read_parquet(?)
+        WHERE draw = 1
+    """, [str(plans_file)]).df()
+
+    # Load VTD composite data (centroid + VAP)
+    vtd_comp = conn.execute("""
+        SELECT GEOID20, VAP_MOD, centroid_lat, centroid_lon
+        FROM read_parquet(?)
+    """, [str(vtd_composite_file)]).df()
+
+    # Check if centroid columns exist
+    if "centroid_lat" not in vtd_comp.columns:
+        return None
+
+    # Join: VTD → district + centroid + VAP
+    joined = enacted_plan.merge(vtd_comp, left_on="vtd_geoid", right_on="GEOID20", how="inner")
+
+    # Compute VAP-weighted centroid per district
+    joined["lat_weighted"] = joined["centroid_lat"] * joined["VAP_MOD"]
+    joined["lon_weighted"] = joined["centroid_lon"] * joined["VAP_MOD"]
+
+    district_stats = joined.groupby("district").agg(
+        total_vap=("VAP_MOD", "sum"),
+        lat_sum=("lat_weighted", "sum"),
+        lon_sum=("lon_weighted", "sum"),
+    ).reset_index()
+
+    district_stats["centroid_lat"] = (district_stats["lat_sum"] / district_stats["total_vap"]).round(5)
+    district_stats["centroid_lon"] = (district_stats["lon_sum"] / district_stats["total_vap"]).round(5)
+
+    # Build district id → dem_2pv mapping from river data (sorted by dem_2pv ascending)
+    # river_enacted is already sorted ascending; river_district_ids is the integer district ID in that rank order
+    dem_2pv_map: dict[int, float] = {}
+    if river_enacted and river_district_ids and len(river_enacted) == n_districts:
+        for dist_id, dem_2pv in zip(river_district_ids, river_enacted):
+            dem_2pv_map[int(dist_id)] = round(float(dem_2pv), 4)
+
+    districts = []
+    for _, row in district_stats.sort_values("district").iterrows():
+        dist_int = int(row["district"])
+        # Label: for congress use GA-XX format; for others use integer
+        if chamber == "congress":
+            dist_label = f"GA-{dist_int:02d}"
+        else:
+            dist_label = str(dist_int)
+
+        districts.append({
+            "id":           dist_label,
+            "district_num": dist_int,
+            "dem_2pv":      dem_2pv_map.get(dist_int, round(float(0.5), 4)),
+            "total_vap":    int(row["total_vap"]),
+            "centroid_lat": float(row["centroid_lat"]),
+            "centroid_lon": float(row["centroid_lon"]),
+        })
+
+    return districts if districts else None
+
+
 def build_scorecard(
     run_name: str,
     data_dir: Path,
     chamber: str | None = None,
     competitive_threshold: float = COMPETITIVE_THRESHOLD_DEFAULT,
+    base_run_name: str | None = None,
 ) -> dict:
     """
     Build the canonical scorecard JSON for a GerryChain scored run.
@@ -652,8 +758,9 @@ def build_scorecard(
     Returns the scorecard dict (also written to disk by main()).
     """
     conn = duckdb.connect()
+    _base = base_run_name or run_name
 
-    ds_file = data_dir / f"{run_name}_draw_stats.parquet"
+    ds_file = data_dir / f"{_base}_draw_stats.parquet"
     if not ds_file.exists():
         raise FileNotFoundError(
             f"draw_stats not found: {ds_file}\n"
@@ -671,6 +778,11 @@ def build_scorecard(
         ORDER BY year, office
     """, [str(ds_file)]).df()
 
+    # Override data-file prefix for all subsequent lookups
+    # (river, competitive counts use the same base prefix)
+    _orig_run_name = run_name  # output name
+    run_name = _base           # data file prefix
+
     n_districts = int(meta_df["n_d"].max())
     n_draws_total = int(conn.execute(
         "SELECT COUNT(DISTINCT draw) FROM read_parquet(?)", [str(ds_file)]
@@ -687,7 +799,8 @@ def build_scorecard(
         year          = int(row["year"])
         election_type = str(row["election_type"])
         office        = str(row["office"])
-        label         = f"{year} {_OFFICE_LABELS.get(office, office.title())}"
+        office_label  = _OFFICE_LABELS.get(office, office.title())
+        label         = office_label if office == "composite" else f"{year} {office_label}"
 
         print(f"  Election: {label}…", end="", flush=True)
 
@@ -708,12 +821,15 @@ def build_scorecard(
         })
         print(" done")
 
-    # Demographics
+    # Demographics — composite runs use base run's demographics file
     print("  Demographics…", end="", flush=True)
-    demographics = _build_demographics(run_name, data_dir, conn)
+    demo_run = run_name
+    if not (data_dir / f"{run_name}_demographics.parquet").exists():
+        base = run_name.removesuffix("_composite")
+        if (data_dir / f"{base}_demographics.parquet").exists():
+            demo_run = base
+    demographics = _build_demographics(demo_run, data_dir, conn)
     if demographics:
-        # Get CVAP year from the file if available
-        demo_file = data_dir / f"{run_name}_demographics.parquet"
         demographics["year"] = 2024  # CVAP 2024 vintage (from ACS 2020–2024 5yr)
     print(" done")
 
@@ -725,11 +841,46 @@ def build_scorecard(
     if demographics:
         grades.update(demographics["metrics"])
 
+    # Build enacted plan districts (for Compare tab)
+    print("  Enacted districts…", end="", flush=True)
+    # Get enacted river data for dem_2pv lookup (sorted by dem_2pv asc)
+    river_enacted = None
+    river_dist_ids = None
+    if elections and elections[0].get("river"):
+        rv = elections[0]["river"]
+        river_enacted  = rv.get("enacted")
+        river_dist_ids = rv.get("enacted_district_ids")
+
+    enacted_districts = _build_enacted_districts(
+        _base, data_dir, n_districts, chamber or "unknown",
+        river_enacted, river_dist_ids, conn,
+    )
+    print(f" {len(enacted_districts) if enacted_districts else 0} districts")
+
+    plans = [{
+        "id":       "enacted",
+        "label":    f"Enacted {chamber.title() if chamber else ''} Map",
+        "source":   "catalog",
+        "grades":   {k: v for k, v in grades.items() if k.startswith("_")},
+        "metrics":  {
+            key: {
+                "value":    elections[0]["metrics"][key]["enacted"],
+                "pct_rank": elections[0]["metrics"][key]["pct_rank"],
+                "grade":    elections[0]["metrics"][key]["grade"],
+            }
+            for key in ["dem_seats", "efficiency_gap", "mean_median", "comp_seats"]
+            if elections and key in elections[0].get("metrics", {})
+               and elections[0]["metrics"][key] is not None
+        },
+        "districts": enacted_districts or [],
+    }]
+
     scorecard = {
         "run": {
-            "id":          run_name,
-            "name":        run_name.replace("_", " ").title(),
+            "id":          _orig_run_name,
+            "name":        _orig_run_name.replace("_", " ").title(),
             "source":      "gerrychain",
+            "source_run":  _base,           # underlying parquet prefix
             "chamber":     chamber,
             "n_districts": n_districts,
             "n_draws":     n_draws_total,
@@ -751,6 +902,7 @@ def build_scorecard(
         "demographics": demographics,
         "compactness":  {"polsby_popper": None, "county_splits": None, "muni_splits": None},
         "grades":       grades,
+        "plans":        plans,
     }
 
     return scorecard
@@ -764,7 +916,10 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--run-name", required=True,
-                    help="Run name (e.g. congress_2026_v2)")
+                    help="Output run name / scorecard id (e.g. fdga_2026_benchmark_congress)")
+    ap.add_argument("--base-run-name", default=None,
+                    help="Parquet file prefix if different from --run-name "
+                         "(e.g. congress_2026_v2_composite)")
     ap.add_argument("--data-dir", default=None,
                     help=f"Directory containing *_draw_stats.parquet etc. (default: {DEFAULT_DATA_DIR})")
     ap.add_argument("--out", default=None,
@@ -780,7 +935,8 @@ def main() -> None:
 
     print(f"Building scorecard: {args.run_name}")
     scorecard = build_scorecard(
-        args.run_name, data_dir, args.chamber, args.competitive_threshold
+        args.run_name, data_dir, args.chamber, args.competitive_threshold,
+        base_run_name=args.base_run_name
     )
 
     out_file.parent.mkdir(parents=True, exist_ok=True)
