@@ -6,8 +6,9 @@
   interface Props {
     runId: string;
     onPlanScored: (plan: ScoredPlan) => void;
+    compact?: boolean;
   }
-  let { runId, onPlanScored }: Props = $props();
+  let { runId, onPlanScored, compact = false }: Props = $props();
 
   let fileInput: HTMLInputElement;
   let state: 'idle' | 'parsing' | 'confirm' | 'scoring' | 'error' = $state('idle');
@@ -91,22 +92,20 @@
 {#if state === 'idle' || state === 'error'}
   <button
     onclick={openPicker}
-    style="width:100%;padding:.55rem .8rem;border:1.5px dashed var(--border);
-           border-radius:6px;background:transparent;cursor:pointer;
-           font-size:.78rem;color:var(--blue);font-weight:600;
-           display:flex;align-items:center;justify-content:center;gap:.4rem;
-           transition:border-color .15s,background .15s;"
+    style={compact
+      ? 'padding:.2rem .6rem;border:1px solid var(--border);border-radius:4px;background:transparent;cursor:pointer;font-size:.78rem;color:var(--blue);font-weight:600;display:inline-flex;align-items:center;gap:.3rem;'
+      : 'width:100%;padding:.55rem .8rem;border:1.5px dashed var(--border);border-radius:6px;background:transparent;cursor:pointer;font-size:.78rem;color:var(--blue);font-weight:600;display:flex;align-items:center;justify-content:center;gap:.4rem;transition:border-color .15s,background .15s;'}
     onmouseover={(e) => (e.currentTarget as HTMLElement).style.background = 'var(--light)'}
     onfocus={(e) => (e.currentTarget as HTMLElement).style.background = 'var(--light)'}
     onmouseout={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
     onblur={(e) => (e.currentTarget as HTMLElement).style.background = 'transparent'}
   >
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="17 8 12 3 7 8"/>
       <line x1="12" y1="3" x2="12" y2="15"/>
     </svg>
-    Upload Shapefile (.zip)
+    {compact ? 'Upload map' : 'Upload Shapefile (.zip)'}
   </button>
   {#if state === 'error' && errorMsg}
     <div style="margin-top:.4rem;font-size:.72rem;color:var(--red);padding:.4rem .6rem;

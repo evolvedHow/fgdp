@@ -14,6 +14,11 @@ export interface DistrictResult {
   centroid_lon: number;
 }
 
+export interface VtdDetail {
+  dem_2pv: number;
+  total_vap: number;
+}
+
 export interface Histogram {
   edges: number[];
   counts: number[];
@@ -54,6 +59,8 @@ export interface ScoredPlan {
   metrics: Record<string, { value: number; pct_rank: number; grade: string }>;
   grades: Grades;
   districts: DistrictResult[];
+  vtd_assignments?: Record<string, number>;
+  vtd_details?: Record<string, VtdDetail>;
 }
 
 export interface RunMeta {
@@ -79,6 +86,7 @@ export interface Summary {
   n_districts: number;
   n_plans: number;
   enacted_label: string;
+  story_html?: string | null;
   run: RunMeta;
 }
 

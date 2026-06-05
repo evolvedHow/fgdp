@@ -830,6 +830,7 @@ def _build_analysis(run: dict) -> dict:
             'n_districts':   N_DISTRICTS,
             'n_plans':       meta['n_plans'],
             'enacted_label': ENACTED_PLAN_LABEL,
+            'story_html':    meta.get('story_html', None),
             'run':           {k: v for k, v in meta.items() if k != 'columns'},
         },
         'grades':  run['grades'],
@@ -932,6 +933,8 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0, plan_
         'election_idx': election_idx,
         # Plans list — passed to frontend for the plan selector
         'plans':       plans,
+        # LLM-generated narrative (populated by batch build process, optional)
+        'story_html':  sc.get('story_html', None),
     }
 
     return {
@@ -1147,14 +1150,31 @@ def _score_geojson(features: list, run_id: str) -> dict:
             'centroid_lon': float(row['centroid_lon']),
         })
 
+    # Build VTD-level assignment dicts for district drill-down in Compare tab
+    vtd_a = vtd[vtd['_dist_idx'] >= 0]
+    vtd_assignments = {
+        str(g): int(d) + 1
+        for g, d in zip(vtd_a['GEOID20'], vtd_a['_dist_idx'])
+    }
+    vtd_details = {
+        str(g): {'dem_2pv': round(float(d), 4), 'total_vap': int(v)}
+        for g, d, v in zip(
+            vtd_a['GEOID20'],
+            vtd_a['composite_dem_2pv'],
+            vtd_a['VAP_MOD'],
+        )
+    }
+
     return {
-        'id':        str(uuid.uuid4()),
-        'label':     '',   # filled by caller
-        'source':    'upload',
-        'run_id':    run_id,
-        'metrics':   metrics,
-        'grades':    plan_grades,
-        'districts': dist_rows,
+        'id':              str(uuid.uuid4()),
+        'label':           '',   # filled by caller
+        'source':          'upload',
+        'run_id':          run_id,
+        'metrics':         metrics,
+        'grades':          plan_grades,
+        'districts':       dist_rows,
+        'vtd_assignments': vtd_assignments,
+        'vtd_details':     vtd_details,
     }
 
 

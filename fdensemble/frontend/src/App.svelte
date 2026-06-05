@@ -1,23 +1,22 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { RunMeta, Analysis, ScoredPlan } from './lib/types.js';
-  import Header        from './lib/components/Header.svelte';
-  import BenchmarkTab  from './lib/components/BenchmarkTab.svelte';
-  import EvaluateTab   from './lib/components/EvaluateTab.svelte';
-  import CompareTab    from './lib/components/CompareTab.svelte';
+  import Header            from './lib/components/Header.svelte';
+  import EnsembleStoryTab  from './lib/components/EnsembleStoryTab.svelte';
+  import ScoreTab          from './lib/components/ScoreTab.svelte';
+  import CompareTab        from './lib/components/CompareTab.svelte';
   import { getAllScoredPlans, saveScoredPlan, deleteScoredPlan } from './lib/db.js';
 
-  type Tab = 'benchmark' | 'evaluate' | 'compare';
-  let tab: Tab = $state('benchmark');
+  type Tab = 'story' | 'score' | 'compare';
+  let tab: Tab = $state('story');
 
-  let runs: RunMeta[]         = $state([]);
+  let runs: RunMeta[]           = $state([]);
   let analysis: Analysis | null = $state(null);
-  let selectedRunId: string   = $state('');
-  let selectedElectionIdx     = $state(0);
-  let loading                 = $state(false);
-  let error                   = $state('');
+  let selectedRunId: string     = $state('');
+  let selectedElectionIdx       = $state(0);
+  let loading                   = $state(false);
+  let error                     = $state('');
 
-  // All scored plans for the current run (enacted catalog plan + user uploads)
   let scoredPlans: ScoredPlan[] = $state([]);
 
   async function loadRuns() {
@@ -34,12 +33,10 @@
 
   async function loadScoredPlans(runId: string) {
     const run = runs.find(r => r.id === runId);
-    // Enacted plan from run metadata (with run_id injected)
     const enactedRaw = run?.plans?.[0];
     const enacted: ScoredPlan[] = enactedRaw
       ? [{ ...enactedRaw, run_id: runId, source: 'catalog' as const }]
       : [];
-    // Uploaded plans persisted in IndexedDB
     const allUploaded = await getAllScoredPlans();
     const uploads = allUploaded.filter(p => p.run_id === runId);
     scoredPlans = [...enacted, ...uploads];
@@ -76,10 +73,8 @@
 
   async function addScoredPlan(plan: ScoredPlan) {
     await saveScoredPlan(plan);
-    // Insert after the enacted plan (index 0)
     scoredPlans = [scoredPlans[0], plan, ...scoredPlans.slice(1)];
-    // Switch to evaluate tab to show the new plan
-    tab = 'evaluate';
+    tab = 'score';
   }
 
   async function removeScoredPlan(id: string) {
@@ -90,9 +85,9 @@
   const summary = $derived(analysis?.summary ?? null);
 
   const TAB_LABELS: Record<Tab, string> = {
-    benchmark: '1 · Benchmark',
-    evaluate:  '2 · Evaluate',
-    compare:   '3 · Compare',
+    story:   '1 · The Ensemble',
+    score:   '2 · Score a Map',
+    compare: '3 · Compare Maps',
   };
 
   onMount(loadRuns);
@@ -105,7 +100,7 @@
 <!-- Tab bar -->
 <div class="no-print" style="background:var(--card);border-bottom:2px solid var(--border);
      display:flex;gap:0;padding:0 1rem;overflow-x:auto;">
-  {#each (['benchmark', 'evaluate', 'compare'] as Tab[]) as t}
+  {#each (['story', 'score', 'compare'] as Tab[]) as t}
     <button
       onclick={() => tab = t}
       style="padding:.55rem 1.1rem;border:none;background:transparent;cursor:pointer;
@@ -136,20 +131,20 @@
       {#if summary}· {summary.state_full} {summary.plan_type.toUpperCase()} {summary.plan_year}{/if}
     </div>
 
-    {#if tab === 'benchmark'}
-      <BenchmarkTab
-        {analysis}
-        {selectedElectionIdx}
-        onSwitchElection={switchElection}
-      />
-    {:else if tab === 'evaluate'}
-      <EvaluateTab
+    {#if tab === 'story'}
+      <EnsembleStoryTab {analysis} />
+
+    {:else if tab === 'score'}
+      <ScoreTab
         {analysis}
         {scoredPlans}
         selectedRunId={selectedRunId}
+        {selectedElectionIdx}
+        onSwitchElection={switchElection}
         onAddPlan={addScoredPlan}
         onRemovePlan={removeScoredPlan}
       />
+
     {:else if tab === 'compare'}
       <CompareTab {scoredPlans} />
     {/if}
