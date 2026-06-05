@@ -548,6 +548,10 @@ def build_alarm_scorecard(
     }
     composite_grades = _build_composite_grades([election_entry], demographics, 14)
     top_grades = {**composite_grades, **demographics["metrics"]}
+    # Add geographic metrics (polsby_popper, county_splits, muni_splits)
+    for key in ["polsby_popper", "county_splits", "muni_splits"]:
+        if key in metric_grades:
+            top_grades[key] = metric_grades[key]
     print(f"  Overall: {top_grades.get('_overall', {}).get('grade', '?')}  "
           f"Partisan: {top_grades.get('_partisan_fairness', {}).get('grade', '?')}")
 
