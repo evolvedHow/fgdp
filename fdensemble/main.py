@@ -1003,12 +1003,14 @@ print(f'Map library: {len(_maps_catalog)} map(s) in {MAPS_DIR}')
 # ── VTD composite spatial index (lazy-loaded on first /api/score-plan request) ─
 # Primary: bundled alongside the app (committed to fdensemble/data/, copied by Dockerfile)
 # Fallback: local dev path relative to the fdp sibling directory
-_VTD_COMPOSITE_PATH = Path('data/vtd_composite.parquet')
-_VTD_MUNI_PATH      = Path('data/vtd_muni.parquet')
+_VTD_COMPOSITE_PATH  = Path('data/vtd_composite.parquet')
+_VTD_MUNI_PATH       = Path('data/vtd_muni.parquet')
+_VTD_DEMO_PATH       = Path('data/vtd_demographics.parquet')
 _vtd_df: pd.DataFrame | None = None
 _vtd_tree: STRtree | None = None
 _vtd_points: list | None = None  # parallel list of shapely Points
-_vtd_muni_df: pd.DataFrame | None = None  # GEOID → muni_id for municipal split scoring
+_vtd_muni_df:  pd.DataFrame | None = None  # GEOID → muni_id for municipal split scoring
+_vtd_demo_df:  pd.DataFrame | None = None  # GEOID → racial/pop demographics
 
 
 def _load_vtd_composite():
@@ -1059,6 +1061,26 @@ def _load_vtd_muni():
     print(f'  VTD muni mapping loaded: {len(_vtd_muni_df):,} incorporated VTDs')
 
 
+def _load_vtd_demo():
+    global _vtd_demo_df
+    if _vtd_demo_df is not None:
+        return
+    path = _VTD_DEMO_PATH
+    if not path.exists():
+        for candidate in [
+            Path('fdensemble/data/vtd_demographics.parquet'),
+            Path('../fdensemble/data/vtd_demographics.parquet'),
+        ]:
+            if candidate.exists():
+                path = candidate
+                break
+        else:
+            return   # non-fatal
+    _vtd_demo_df = pd.read_parquet(path)
+    _vtd_demo_df['geoid'] = _vtd_demo_df['geoid'].astype(str)
+    print(f'  VTD demographics loaded: {len(_vtd_demo_df):,} VTDs')
+
+
 def _score_geojson(features: list, run_id: str) -> dict:
     """
     Score a list of GeoJSON district polygon features against the composite benchmark.
@@ -1067,6 +1089,7 @@ def _score_geojson(features: list, run_id: str) -> dict:
     """
     _load_vtd_composite()
     _load_vtd_muni()
+    _load_vtd_demo()
 
     # Build shapely polygons for each district feature
     district_polygons = []
@@ -1107,6 +1130,36 @@ def _score_geojson(features: list, run_id: str) -> dict:
     grouped['dem_2pv'] = grouped['dem_votes'] / (grouped['dem_votes'] + grouped['rep_votes'])
     grouped['centroid_lat'] = (grouped['lat_wt'] / grouped['total_vap']).round(5)
     grouped['centroid_lon'] = (grouped['lon_wt'] / grouped['total_vap']).round(5)
+
+    # ── Demographic aggregation per district ──────────────────────────────────
+    demo_by_dist: dict = {}
+    if _vtd_demo_df is not None:
+        demo_cols = ['pop', 'vap', 'pop_black', 'pop_hisp', 'pop_white',
+                     'pop_aian', 'pop_asian', 'vap_black', 'vap_hisp',
+                     'vap_white', 'vap_aian', 'vap_asian']
+        # Join assigned VTDs with demographics
+        assigned['_geoid_str'] = vtd.loc[assigned.index, 'GEOID20'].astype(str)
+        demo_join = assigned.merge(
+            _vtd_demo_df[['geoid'] + demo_cols],
+            left_on='_geoid_str', right_on='geoid', how='left'
+        )
+        demo_agg = demo_join.groupby('_dist_idx')[demo_cols].sum().reset_index()
+        for _, row in demo_agg.iterrows():
+            d_vap = max(float(row['vap']), 1)
+            demo_by_dist[int(row['_dist_idx'])] = {
+                'total_pop':   int(row['pop']),
+                'vap_black':   int(row['vap_black']),
+                'vap_hisp':    int(row['vap_hisp']),
+                'vap_white':   int(row['vap_white']),
+                'vap_aian':    int(row['vap_aian']),
+                'vap_asian':   int(row['vap_asian']),
+                'pct_black':   round(float(row['vap_black']) / d_vap, 4),
+                'pct_hisp':    round(float(row['vap_hisp'])  / d_vap, 4),
+                'pct_white':   round(float(row['vap_white']) / d_vap, 4),
+                'pct_aian':    round(float(row['vap_aian'])  / d_vap, 4),
+                'pct_asian':   round(float(row['vap_asian']) / d_vap, 4),
+                'pct_minority': round(1.0 - float(row['vap_white']) / d_vap, 4),
+            }
 
     district_dem_2pvs = grouped['dem_2pv'].sort_values().values
 
@@ -1215,14 +1268,18 @@ def _score_geojson(features: list, run_id: str) -> dict:
     # Build per-district list sorted by partisan lean (ascending)
     dist_rows = []
     for _, row in grouped.sort_values('dem_2pv').iterrows():
-        dist_rows.append({
-            'id':           str(int(row['_dist_idx']) + 1),
-            'district_num': int(row['_dist_idx']) + 1,
+        d_idx = int(row['_dist_idx'])
+        entry = {
+            'id':           str(d_idx + 1),
+            'district_num': d_idx + 1,
             'dem_2pv':      round(float(row['dem_2pv']), 4),
             'total_vap':    int(row['total_vap']),
             'centroid_lat': float(row['centroid_lat']),
             'centroid_lon': float(row['centroid_lon']),
-        })
+        }
+        if d_idx in demo_by_dist:
+            entry.update(demo_by_dist[d_idx])
+        dist_rows.append(entry)
 
     # Build VTD-level assignment dicts for district drill-down in Compare tab
     vtd_a = vtd[vtd['_dist_idx'] >= 0]
