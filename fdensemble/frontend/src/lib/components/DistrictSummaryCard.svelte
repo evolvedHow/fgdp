@@ -68,8 +68,9 @@
       <span style="background:#e67e22;color:#fff;border-radius:3px;padding:.1rem .4rem;
                    font-size:.66rem;font-weight:700;">SEAT FLIP</span>
     {/if}
-    <span style="margin-left:auto;font-size:.68rem;color:var(--gray);">
-      Map A: {planA.label} → Map B: {planB.label}
+    <span style="margin-left:auto;font-size:.68rem;color:var(--gray);
+                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:340px;">
+      <b>A:</b> {planA.label} → <b>B:</b> {planB.label}
     </span>
   </div>
 

@@ -43,22 +43,43 @@
     group: string;
   }
 
-  const options: MapOption[] = $derived([
-    // Enacted plans from all benchmarks
-    ...runs
-      .filter(r => r.plans && r.plans.length > 0)
+  const CHAMBER_LABEL: Record<string, string> = {
+    congress: 'U.S. Congress',
+    senate:   'GA Senate',
+    house:    'GA House',
+  };
+
+  const options: MapOption[] = $derived.by(() => {
+    // One enacted map per chamber — prefer non-ALARM (has demographics).
+    // These are the current REAL enacted maps, not benchmark-specific.
+    const seen = new Set<string>();
+    const enactedOpts = runs
+      .filter(r => r.plans && r.plans.length > 0 && r.chamber)
+      .sort((a, b) => {
+        // Non-ALARM first so demographics are available
+        if (a.source === 'alarm' && b.source !== 'alarm') return 1;
+        if (b.source === 'alarm' && a.source !== 'alarm') return -1;
+        return 0;
+      })
+      .filter(r => {
+        if (seen.has(r.chamber!)) return false;
+        seen.add(r.chamber!);
+        return true;
+      })
       .map(r => ({
         value: `enacted:${r.id}`,
-        label: `${r.plans![0].label ?? 'Enacted Map'} — ${r.name ?? r.id}`,
-        group: 'Enacted Plans',
-      })),
-    // Library maps
-    ...libraryMaps.map(m => ({
+        label: `${CHAMBER_LABEL[r.chamber!] ?? r.chamber} — Current Enacted Map`,
+        group: 'Current Enacted Maps',
+      }));
+
+    const libraryOpts = libraryMaps.map(m => ({
       value: `library:${m.id}`,
-      label: `${m.label} (${m.n_districts}d · ${m.created})`,
-      group: 'Map Library',
-    })),
-  ]);
+      label: `${m.label}  (${m.n_districts} districts · uploaded ${m.created})`,
+      group: 'Proposed / Alternative Maps',
+    }));
+
+    return [...enactedOpts, ...libraryOpts];
+  });
 
   // ── Plan loading ─────────────────────────────────────────────────────────────
   function defaultRunId(): string {
@@ -154,7 +175,7 @@
     <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:.75rem 1rem;">
       <label style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
                     color:var(--gray);display:block;margin-bottom:.35rem;">
-        Map {side} {side === 'A' ? '(reference)' : '(proposed)'}
+        Map {side} — {side === 'A' ? 'Reference / Current' : 'Proposed / Alternative'}
       </label>
       <select
         value={sel}
@@ -163,7 +184,7 @@
                border-radius:4px;background:var(--card);color:inherit;cursor:pointer;"
       >
         <option value="">— select a map —</option>
-        {#each ['Enacted Plans', 'Map Library'] as group}
+        {#each ['Current Enacted Maps', 'Proposed / Alternative Maps'] as group}
           {@const grpOpts = options.filter(o => o.group === group)}
           {#if grpOpts.length}
             <optgroup label={group}>
@@ -208,8 +229,8 @@
     <div style="font-size:1.4rem;margin-bottom:.6rem;">↕</div>
     Select two maps above to compare them district by district.
     <div style="margin-top:.5rem;font-size:.76rem;">
-      You can compare any combination of enacted plans and uploaded maps —
-      no scoring against a benchmark required.
+      Compare any combination: current enacted map vs. a proposed alternative,
+      two proposed maps against each other, or any mix. No benchmark scoring required.
     </div>
   </div>
 
