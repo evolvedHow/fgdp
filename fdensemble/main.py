@@ -963,7 +963,12 @@ def _discover_and_load_runs() -> dict:
                 continue  # don't overwrite ALARM CSV run with same id
             print(f'  Loading scorecard: {rid}')
             try:
-                found[rid] = _build_run_from_scorecard(sc_path, election_idx=0)
+                run = _build_run_from_scorecard(sc_path, election_idx=0)
+                # Always use the filename-derived id as the canonical key so that
+                # /api/analysis?run=<filename-id> resolves correctly regardless of
+                # what internal run.id the scorecard JSON was built with.
+                run['meta']['id'] = rid
+                found[rid] = run
             except Exception as exc:
                 print(f'  WARNING: failed to load scorecard {rid}: {exc}')
 
