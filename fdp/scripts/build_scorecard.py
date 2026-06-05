@@ -100,7 +100,7 @@ _METRIC_META: dict[str, tuple] = {
         "Enacted maps with significantly fewer majority-Black districts than "
         "neutral alternatives may indicate illegal dilution of Black voting power. "
         "Uses CVAP rather than VAP for precision (excludes non-citizens).",
-        None),
+        True),
     "min_coal": (
         "Minority Coalition Representation",
         "Do communities of color collectively hold electoral influence?",
@@ -113,7 +113,7 @@ _METRIC_META: dict[str, tuple] = {
         "The comparison against neutral alternatives reveals whether the enacted "
         "map preserves or diminishes the collective political voice of "
         "Georgia's communities of color. Uses 2024 ACS 5-year CVAP estimates.",
-        None),
+        True),
 }
 
 

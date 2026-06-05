@@ -763,7 +763,7 @@
       "category": "minority",
       "description": "This counts districts where Black citizens make up more than 50% of the Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that dilute minority communities' ability to elect their preferred candidates. The histogram shows how many majority-Black districts thousands of neutrally drawn alternative maps produce \u2014 establishing what geography alone would naturally support. Enacted maps with significantly fewer majority-Black districts than neutral alternatives may indicate illegal dilution of Black voting power. Uses CVAP rather than VAP for precision (excludes non-citizens).",
       "takeaway": "The enacted map has 4 majority-Black district(s) \u2014 more than most neutral alternatives (neutral range: 1\u20133). Black communities have strong electoral representation opportunity.",
-      "grade": "F",
+      "grade": "A",
       "enacted": 4.0,
       "pct_rank": 100.0,
       "histogram": {
@@ -865,7 +865,7 @@
       "category": "minority",
       "description": "This counts districts where voters of color \u2014 Black, Hispanic, Asian, and others \u2014 together make up more than 50% of the Citizen Voting Age Population. Even when no single racial group holds a majority, communities of color can collectively influence electoral outcomes. This 'coalition' measure is increasingly important as Georgia's demographics diversify. The comparison against neutral alternatives reveals whether the enacted map preserves or diminishes the collective political voice of Georgia's communities of color. Uses 2024 ACS 5-year CVAP estimates.",
       "takeaway": "The enacted map has 5 minority-coalition district(s) \u2014 more than most neutral alternatives. Communities of color have strong collective electoral influence.",
-      "grade": "C",
+      "grade": "B",
       "enacted": 5.0,
       "pct_rank": 94.7,
       "histogram": {
