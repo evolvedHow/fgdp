@@ -259,7 +259,8 @@
   {:else if !selectedMapId}
     <div style="background:var(--light);border:1.5px solid var(--border);border-radius:8px;
                 padding:.55rem 1rem;margin-bottom:.8rem;font-size:.78rem;color:var(--gray);">
-      Showing the <b>neutral ensemble baseline</b> — select a map above to score it against this benchmark.
+      Showing the <b>enacted map</b> — the current {summary?.state_full ?? ''} congressional districts scored against {summary?.n_plans?.toLocaleString() ?? ''} neutral alternatives.
+      Select a map above to compare a different plan.
     </div>
   {/if}
 
