@@ -3,11 +3,10 @@
   import type { RunMeta, Analysis, ScoredPlan } from './lib/types.js';
   import Header            from './lib/components/Header.svelte';
   import EnsembleStoryTab  from './lib/components/EnsembleStoryTab.svelte';
-  import ScoreTab          from './lib/components/ScoreTab.svelte';
-  import CompareTab        from './lib/components/CompareTab.svelte';
+  import AnalysisTab       from './lib/components/AnalysisTab.svelte';
   import { getAllScoredPlans, saveScoredPlan, deleteScoredPlan } from './lib/db.js';
 
-  type Tab = 'story' | 'score' | 'compare';
+  type Tab = 'story' | 'analyze';
   let tab: Tab = $state('story');
 
   let runs: RunMeta[]             = $state([]);
@@ -96,7 +95,7 @@
   async function addScoredPlan(plan: ScoredPlan) {
     await saveScoredPlan(plan);
     scoredPlans = [scoredPlans[0], plan, ...scoredPlans.slice(1)];
-    tab = 'score';
+    tab = 'analyze';
   }
 
   async function removeScoredPlan(id: string) {
@@ -108,8 +107,7 @@
 
   const TAB_LABELS: Record<Tab, string> = {
     story:   '1 · The Ensemble',
-    score:   '2 · Score a Map',
-    compare: '3 · Compare Maps',
+    analyze: '2 · Score & Compare',
   };
 
   onMount(loadRuns);
@@ -122,7 +120,7 @@
 <!-- Tab bar -->
 <div class="no-print" style="background:var(--card);border-bottom:2px solid var(--border);
      display:flex;gap:0;padding:0 1rem;overflow-x:auto;">
-  {#each (['story', 'score', 'compare'] as Tab[]) as t}
+  {#each (['story', 'analyze'] as Tab[]) as t}
     <button
       onclick={() => tab = t}
       style="padding:.55rem 1.1rem;border:none;background:transparent;cursor:pointer;
@@ -156,8 +154,9 @@
     {#if tab === 'story'}
       <EnsembleStoryTab {runs} {analysis} selectedRunId={selectedRunId} onRunChange={switchRun} />
 
-    {:else if tab === 'score'}
-      <ScoreTab
+    {:else if tab === 'analyze'}
+      <AnalysisTab
+        {runs}
         {analysis}
         {companionAnalysis}
         {companionRunId}
@@ -166,9 +165,6 @@
         onSwitchElection={switchElection}
         onAddPlan={addScoredPlan}
       />
-
-    {:else if tab === 'compare'}
-      <CompareTab {runs} />
     {/if}
 
   {:else}
