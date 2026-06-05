@@ -19,6 +19,13 @@ export interface VtdDetail {
   total_vap: number;
 }
 
+export interface MapMeta {
+  id: string;
+  label: string;
+  n_districts: number;
+  created: string;
+}
+
 export interface Histogram {
   edges: number[];
   counts: number[];
@@ -54,8 +61,9 @@ export type Grades = Record<string, MetricGrade | CompositeGrade>;
 export interface ScoredPlan {
   id: string;
   label: string;
-  source: 'catalog' | 'upload';
+  source: 'catalog' | 'upload' | 'library';
   run_id: string;
+  map_id?: string;
   metrics: Record<string, { value: number; pct_rank: number; grade: string }>;
   grades: Grades;
   districts: DistrictResult[];

@@ -137,12 +137,10 @@
     {:else if tab === 'score'}
       <ScoreTab
         {analysis}
-        {scoredPlans}
         selectedRunId={selectedRunId}
         {selectedElectionIdx}
         onSwitchElection={switchElection}
         onAddPlan={addScoredPlan}
-        onRemovePlan={removeScoredPlan}
       />
 
     {:else if tab === 'compare'}

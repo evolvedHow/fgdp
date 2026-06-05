@@ -41,6 +41,7 @@ N_DISTRICTS             = int(os.getenv('N_DISTRICTS', '14'))
 ENACTED_PLAN_LABEL      = os.getenv('ENACTED_PLAN_LABEL', 'cd_2020')
 DATA_DIR                = Path(os.getenv('DATA_DIR', 'dataverse_files/GA_cd_2020'))
 RUNS_DIR                = Path(os.getenv('RUNS_DIR', 'runs'))
+MAPS_DIR                = Path(os.getenv('MAPS_DIR', 'uploaded_maps'))
 COMPETITIVE_MARGIN      = float(os.getenv('COMPETITIVE_MARGIN_MAIN', '0.07'))
 BVAP_THRESHOLD          = float(os.getenv('BVAP_MAJORITY_THRESHOLD', '0.50'))
 MINORITY_THRESHOLD      = float(os.getenv('MAJORITY_THRESHOLD', '0.50'))
@@ -977,6 +978,27 @@ print('Loading runs...')
 _runs = _discover_and_load_runs()
 print(f'Ready — {len(_runs)} run(s): {list(_runs.keys())}')
 
+# ── Map library (server-side persistent shapefile catalog) ────────────────────
+
+def _map_slug(label: str) -> str:
+    slug = ''.join(c if c.isalnum() else '_' for c in label.lower())
+    slug = '_'.join(p for p in slug.split('_') if p)[:32]
+    return (slug or 'map') + '_' + uuid.uuid4().hex[:6]
+
+
+def _load_maps_catalog() -> list:
+    catalog = MAPS_DIR / 'catalog.json'
+    return json.loads(catalog.read_text()) if catalog.exists() else []
+
+
+def _save_maps_catalog(maps: list):
+    MAPS_DIR.mkdir(parents=True, exist_ok=True)
+    (MAPS_DIR / 'catalog.json').write_text(json.dumps(maps, indent=2))
+
+
+_maps_catalog: list = _load_maps_catalog()
+print(f'Map library: {len(_maps_catalog)} map(s) in {MAPS_DIR}')
+
 # ── VTD composite spatial index (lazy-loaded on first /api/score-plan request) ─
 _VTD_COMPOSITE_PATH = Path('..') / 'fdp' / 'data' / 'repos' / 'main' / 'vtd' / 'vtd_composite.parquet'
 _vtd_df: pd.DataFrame | None = None
@@ -1321,6 +1343,99 @@ def _find_scorecard_path(run_id: str) -> Path | None:
         if p.exists():
             return p
     return None
+
+
+@app.get('/api/maps')
+def get_maps():
+    """List all maps in the server-side map library."""
+    return _maps_catalog
+
+
+@app.post('/api/maps')
+async def save_map(request: Request):
+    """
+    Save a GeoJSON map to the server-side library.
+
+    Body: { "label": "My Map Name", "geojson": { "type": "FeatureCollection", "features": [...] } }
+    Returns MapMeta: { "id", "label", "n_districts", "created" }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, 'Request body must be valid JSON')
+
+    label    = body.get('label', 'Uploaded Map')
+    geojson  = body.get('geojson', {})
+    features = geojson.get('features', [])
+    if not features:
+        raise HTTPException(400, 'geojson.features must be a non-empty array')
+
+    map_id   = _map_slug(label)
+    MAPS_DIR.mkdir(parents=True, exist_ok=True)
+    (MAPS_DIR / f'{map_id}.geojson').write_text(json.dumps(geojson))
+
+    meta = {
+        'id':          map_id,
+        'label':       label,
+        'n_districts': len(features),
+        'created':     datetime.now().strftime('%Y-%m-%d'),
+    }
+    _maps_catalog.append(meta)
+    _save_maps_catalog(_maps_catalog)
+    print(f'  Map saved: {map_id} ({len(features)} districts)')
+    return meta
+
+
+@app.post('/api/score-map')
+async def score_map_from_library(request: Request):
+    """
+    Score a stored library map against an ensemble benchmark.
+
+    Body: { "map_id": "my_map_abc123", "run_id": "fdga_2026_benchmark_congress" }
+    Returns a ScoredPlan object.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, 'Request body must be valid JSON')
+
+    map_id = body.get('map_id')
+    run_id = body.get('run_id') or next(iter(_runs))
+
+    if not map_id:
+        raise HTTPException(400, 'map_id is required')
+
+    geojson_path = MAPS_DIR / f'{map_id}.geojson'
+    if not geojson_path.exists():
+        raise HTTPException(404, f'Map {map_id!r} not found in library')
+
+    geojson  = json.loads(geojson_path.read_text())
+    features = geojson.get('features', [])
+
+    meta = next((m for m in _maps_catalog if m['id'] == map_id), {'label': map_id})
+
+    try:
+        result = _score_geojson(features, run_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(500, str(e))
+
+    result['label']  = meta['label']
+    result['map_id'] = map_id
+    return result
+
+
+@app.delete('/api/maps/{map_id}')
+def delete_map(map_id: str):
+    """Remove a map from the library."""
+    global _maps_catalog
+    geojson_path = MAPS_DIR / f'{map_id}.geojson'
+    if geojson_path.exists():
+        geojson_path.unlink()
+    _maps_catalog = [m for m in _maps_catalog if m['id'] != map_id]
+    _save_maps_catalog(_maps_catalog)
+    return {'deleted': map_id}
 
 
 @app.get('/api/river')

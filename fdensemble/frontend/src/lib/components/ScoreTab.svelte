@@ -1,41 +1,29 @@
 <script lang="ts">
-  import type { Analysis, ElectionOption, MetricGrade, Grades, ScoredPlan } from '../types.js';
+  import { onMount } from 'svelte';
+  import type { Analysis, ElectionOption, MetricGrade, Grades, ScoredPlan, MapMeta } from '../types.js';
   import GradePanel   from './GradePanel.svelte';
   import MetricCard   from './MetricCard.svelte';
   import RiverChart   from './RiverChart.svelte';
-  import PlanUploader from './PlanUploader.svelte';
+  import MapUploader  from './MapUploader.svelte';
 
   interface Props {
     analysis: Analysis;
-    scoredPlans: ScoredPlan[];
     selectedRunId: string;
     selectedElectionIdx: number;
     onSwitchElection: (idx: number) => void;
     onAddPlan: (plan: ScoredPlan) => void;
-    onRemovePlan: (id: string) => void;
   }
-  let {
-    analysis, scoredPlans, selectedRunId, selectedElectionIdx,
-    onSwitchElection, onAddPlan, onRemovePlan,
-  }: Props = $props();
+  let { analysis, selectedRunId, selectedElectionIdx, onSwitchElection, onAddPlan }: Props = $props();
 
-  let selectedPlanId: string = $state('');
+  // Map library state
+  let maps: MapMeta[]    = $state([]);
+  let selectedMapId      = $state('');
+  let scoredPlan: ScoredPlan | null = $state(null);
+  let scoring            = $state(false);
+  let scoreError         = $state('');
+  let showUploader       = $state(false);
 
-  // Default to the first (enacted) plan when scoredPlans changes
-  $effect(() => {
-    const plans = scoredPlans;
-    if (plans.length && (!selectedPlanId || !plans.find(p => p.id === selectedPlanId))) {
-      selectedPlanId = plans[0]?.id ?? '';
-    }
-  });
-
-  const selectedPlan: ScoredPlan | null = $derived(
-    scoredPlans.find(p => p.id === selectedPlanId) ?? null
-  );
-  const isEnacted: boolean = $derived(selectedPlan?.source === 'catalog');
-
-  const uploadedPlans: ScoredPlan[] = $derived(scoredPlans.filter(p => p.source === 'upload'));
-
+  // Metric display constants
   const PARTISAN_KEYS    = ['dem_seats', 'partisan_bias', 'efficiency_gap', 'mean_median'];
   const COMPETITIVE_KEYS = ['comp_seats'];
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];
@@ -50,38 +38,102 @@
       .filter(({metric}) => metric && 'histogram' in metric);
   }
 
+  // When a map is selected and run changes, re-score automatically
+  $effect(() => {
+    const mapId = selectedMapId;
+    const runId = selectedRunId;
+    if (mapId && runId) {
+      scoreMap(mapId, runId);
+    } else if (!mapId) {
+      scoredPlan = null;
+      scoreError = '';
+    }
+  });
+
+  // When run changes, reset scored result so the effect triggers a fresh score
+  $effect(() => {
+    selectedRunId;
+    if (selectedMapId) {
+      scoredPlan = null;
+    }
+  });
+
+  async function loadMaps() {
+    try {
+      const res = await fetch('/api/maps');
+      maps = await res.json();
+    } catch {
+      maps = [];
+    }
+  }
+
+  async function scoreMap(mapId: string, runId: string) {
+    scoring    = true;
+    scoreError = '';
+    scoredPlan = null;
+    try {
+      const res = await fetch('/api/score-map', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ map_id: mapId, run_id: runId }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Server error ${res.status}: ${txt}`);
+      }
+      const plan: ScoredPlan = await res.json();
+      plan.run_id = runId;
+      plan.source = 'library';
+      scoredPlan = plan;
+      onAddPlan(plan);  // make available in Compare tab
+    } catch (e: any) {
+      scoreError = e.message ?? 'Scoring failed';
+    } finally {
+      scoring = false;
+    }
+  }
+
+  async function handleMapSaved(meta: MapMeta) {
+    maps = [...maps, meta];
+    selectedMapId = meta.id;
+    showUploader = false;
+  }
+
+  async function handleDeleteMap(mapId: string) {
+    await fetch(`/api/maps/${mapId}`, { method: 'DELETE' });
+    maps = maps.filter(m => m.id !== mapId);
+    if (selectedMapId === mapId) { selectedMapId = ''; scoredPlan = null; }
+  }
+
   const displayGrades: Grades | null = $derived(
-    isEnacted ? analysis.grades : (selectedPlan?.grades ?? null)
+    scoredPlan ? scoredPlan.grades : analysis.grades
   );
 
   function planMetricFor(key: string) {
-    if (!selectedPlan || isEnacted) return null;
-    return selectedPlan.metrics[key] ?? null;
+    return scoredPlan?.metrics[key] ?? null;
   }
 
-  const summary           = $derived(analysis.summary);
-  const river             = $derived(analysis.river);
+  const summary            = $derived(analysis.summary);
+  const river              = $derived(analysis.river);
   const availableElections: ElectionOption[] = $derived(summary?.run?.elections ?? []);
+  const selectedMap        = $derived(maps.find(m => m.id === selectedMapId) ?? null);
 
-  function handlePlanAdded(plan: ScoredPlan) {
-    onAddPlan(plan);
-    selectedPlanId = plan.id;
-  }
+  onMount(loadMaps);
 </script>
 
 <div>
-  <!-- Run info strip with plan switcher -->
-  <div style="background:var(--card);border-radius:8px;padding:.6rem 1rem;box-shadow:var(--shadow);
+  <!-- Controls strip -->
+  <div style="background:var(--card);border-radius:8px;padding:.65rem 1rem;box-shadow:var(--shadow);
               border:1.5px solid var(--border);margin-bottom:.9rem;
               display:flex;gap:1rem;flex-wrap:wrap;font-size:.78rem;color:var(--gray);align-items:center;">
+
+    <!-- Ensemble metadata -->
     <span><b>State:</b> {summary?.state_full}</span>
     <span><b>Chamber:</b> {(summary?.run?.chamber ?? summary?.plan_type ?? '').toUpperCase()}</span>
-    <span><b>Cycle:</b> {summary?.plan_year}</span>
-    <span><b>Plans:</b> {summary?.n_plans.toLocaleString()}</span>
-    <span><b>Algorithm:</b> {summary?.run.algorithm}</span>
-    <span><b>Run date:</b> {summary?.run.date}</span>
+    <span><b>Plans:</b> {summary?.n_plans?.toLocaleString()}</span>
 
-    <span style="margin-left:auto;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+    <span style="display:flex;align-items:center;gap:1.2rem;margin-left:auto;flex-wrap:wrap;">
+
       <!-- Election selector -->
       {#if availableElections.length > 1}
         <span class="no-print" style="display:flex;align-items:center;gap:.4rem;">
@@ -99,38 +151,11 @@
         </span>
       {/if}
 
-      <!-- Plan selector (only if uploads exist) -->
-      {#if scoredPlans.length > 1}
-        <span class="no-print" style="display:flex;align-items:center;gap:.4rem;">
-          <b>Viewing:</b>
-          <select
-            value={selectedPlanId}
-            onchange={(e) => selectedPlanId = (e.target as HTMLSelectElement).value}
-            style="font-size:.78rem;padding:.2rem .4rem;border:1px solid var(--border);
-                   border-radius:4px;background:var(--card);color:inherit;cursor:pointer;max-width:200px;"
-          >
-            {#each scoredPlans as plan}
-              <option value={plan.id}>{plan.label}{plan.source === 'upload' ? ' ↑' : ''}</option>
-            {/each}
-          </select>
-          {#if selectedPlan?.source === 'upload'}
-            <button
-              onclick={() => { onRemovePlan(selectedPlanId); selectedPlanId = scoredPlans[0]?.id ?? ''; }}
-              title="Remove uploaded plan"
-              style="background:none;border:1px solid var(--border);border-radius:4px;
-                     cursor:pointer;color:var(--gray);padding:.15rem .4rem;font-size:.72rem;"
-            >Remove</button>
-          {/if}
-        </span>
-      {/if}
-
-      <!-- Upload button -->
-      <span class="no-print">
-        <PlanUploader runId={selectedRunId} onPlanScored={handlePlanAdded} compact={true} />
-      </span>
-
       <!-- Export PDF -->
-      <button class="export-pdf-btn no-print" onclick={() => window.print()} title="Export as PDF">
+      <button class="export-pdf-btn no-print" onclick={() => window.print()} title="Export as PDF"
+        style="display:flex;align-items:center;gap:.3rem;padding:.25rem .6rem;
+               border:1px solid var(--border);border-radius:4px;background:transparent;
+               cursor:pointer;font-size:.78rem;color:var(--gray);">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6,9 6,2 18,2 18,9"/>
           <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
@@ -141,33 +166,114 @@
     </span>
   </div>
 
-  <!-- Plan label (for uploaded plans) -->
-  {#if !isEnacted && selectedPlan}
+  <!-- Map picker -->
+  <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;
+              padding:.8rem 1rem;margin-bottom:.9rem;">
+    <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;">
+      <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                  color:var(--gray);white-space:nowrap;">Score a map:</div>
+
+      <!-- Map select -->
+      <select
+        value={selectedMapId}
+        onchange={(e) => selectedMapId = (e.target as HTMLSelectElement).value}
+        style="flex:1;min-width:200px;max-width:400px;padding:.35rem .5rem;font-size:.84rem;
+               border:1.5px solid var(--border);border-radius:6px;
+               background:var(--card);color:inherit;cursor:pointer;"
+      >
+        <option value="">— show neutral ensemble baseline —</option>
+        {#each maps as m}
+          <option value={m.id}>{m.label} ({m.n_districts}d · {m.created})</option>
+        {/each}
+      </select>
+
+      <!-- Delete selected map -->
+      {#if selectedMapId}
+        <button
+          onclick={() => handleDeleteMap(selectedMapId)}
+          title="Remove map from library"
+          style="padding:.3rem .6rem;border:1px solid var(--border);border-radius:4px;
+                 background:transparent;cursor:pointer;font-size:.72rem;color:var(--gray);"
+        >Remove</button>
+      {/if}
+
+      <!-- Add map toggle -->
+      <button
+        onclick={() => showUploader = !showUploader}
+        style="display:flex;align-items:center;gap:.3rem;padding:.3rem .7rem;
+               border:1.5px solid var(--blue);border-radius:5px;
+               background:{showUploader ? 'var(--blue)' : 'transparent'};
+               color:{showUploader ? '#fff' : 'var(--blue)'};
+               cursor:pointer;font-size:.78rem;font-weight:600;"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        {showUploader ? 'Cancel' : 'Add map'}
+      </button>
+    </div>
+
+    <!-- Uploader (collapsible) -->
+    {#if showUploader}
+      <div style="margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
+        <MapUploader onMapSaved={handleMapSaved} />
+      </div>
+    {/if}
+
+    <!-- Scoring status -->
+    {#if scoring}
+      <div style="margin-top:.6rem;font-size:.76rem;color:var(--gray);display:flex;align-items:center;gap:.5rem;">
+        <span style="display:inline-block;width:10px;height:10px;border:2px solid var(--blue);
+                     border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;"></span>
+        Scoring <b>{selectedMap?.label}</b> against the neutral ensemble…
+      </div>
+    {/if}
+    {#if scoreError}
+      <div style="margin-top:.6rem;font-size:.75rem;color:var(--red);background:#fef0f0;
+                  border:1px solid #f5a9a9;border-radius:4px;padding:.35rem .6rem;">
+        {scoreError}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Active map banner -->
+  {#if scoredPlan && !scoring}
     <div style="background:var(--light);border:1.5px solid var(--border);border-radius:8px;
-                padding:.55rem 1rem;margin-bottom:.8rem;font-size:.78rem;display:flex;
-                align-items:center;gap:.6rem;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17,8 12,3 7,8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
+                padding:.55rem 1rem;margin-bottom:.8rem;font-size:.78rem;
+                display:flex;align-items:center;gap:.6rem;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--blue)"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 8 12 12 14 14"/>
       </svg>
       <span>
-        <b>{selectedPlan.label}</b>
-        <span style="color:var(--gray);margin-left:.4rem;">— {selectedPlan.districts.length} districts · scored against neutral ensemble</span>
+        Showing <b>{scoredPlan.label}</b>
+        <span style="color:var(--gray);margin-left:.4rem;">
+          — {scoredPlan.districts.length} districts · scored against {summary?.n_plans?.toLocaleString()} neutral alternatives
+        </span>
       </span>
+    </div>
+  {:else if !selectedMapId}
+    <div style="background:var(--light);border:1.5px solid var(--border);border-radius:8px;
+                padding:.55rem 1rem;margin-bottom:.8rem;font-size:.78rem;color:var(--gray);">
+      Showing the <b>neutral ensemble baseline</b> — select a map above to score it against this benchmark.
     </div>
   {/if}
 
-  <!-- Print-only title -->
+  <!-- Print header -->
   <div class="print-only" style="font-size:1.1rem;font-weight:700;margin-bottom:.6rem;color:#111;">
     Fair Districts GA — Redistricting Ensemble Analysis
     {#if summary}· {summary.state_full} {summary.plan_type.toUpperCase()} {summary.plan_year}{/if}
   </div>
 
   <!-- Composite grade cards -->
-  {#if displayGrades}
-    <GradePanel grades={analysis.grades} planGrades={isEnacted ? null : displayGrades} />
-  {/if}
+  <GradePanel
+    grades={analysis.grades}
+    planGrades={scoredPlan ? scoredPlan.grades : null}
+  />
 
   <!-- Metric groups -->
   {#each ALL_METRIC_GROUPS as keys, gi}
@@ -189,3 +295,7 @@
     </div>
   {/if}
 </div>
+
+<style>
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
