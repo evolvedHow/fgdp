@@ -996,7 +996,9 @@ _maps_catalog: list = _load_maps_catalog()
 print(f'Map library: {len(_maps_catalog)} map(s) in {MAPS_DIR}')
 
 # ── VTD composite spatial index (lazy-loaded on first /api/score-plan request) ─
-_VTD_COMPOSITE_PATH = Path('..') / 'fdp' / 'data' / 'repos' / 'main' / 'vtd' / 'vtd_composite.parquet'
+# Primary: bundled alongside the app (committed to fdensemble/data/, copied by Dockerfile)
+# Fallback: local dev path relative to the fdp sibling directory
+_VTD_COMPOSITE_PATH = Path('data/vtd_composite.parquet')
 _vtd_df: pd.DataFrame | None = None
 _vtd_tree: STRtree | None = None
 _vtd_points: list | None = None  # parallel list of shapely Points
@@ -1008,16 +1010,21 @@ def _load_vtd_composite():
         return
     path = _VTD_COMPOSITE_PATH
     if not path.exists():
-        # Try relative to fdp sibling
+        # Fallbacks for local dev (running from fgdp/ root or fdensemble/ subdirectory)
         for candidate in [
             Path('fdp/data/repos/main/vtd/vtd_composite.parquet'),
             Path('../fdp/data/repos/main/vtd/vtd_composite.parquet'),
+            Path('fdensemble/data/vtd_composite.parquet'),
         ]:
             if candidate.exists():
                 path = candidate
                 break
         else:
-            raise FileNotFoundError('vtd_composite.parquet not found')
+            raise FileNotFoundError(
+                'vtd_composite.parquet not found. '
+                'Expected at data/vtd_composite.parquet (bundled) or '
+                'fdp/data/repos/main/vtd/vtd_composite.parquet (local dev).'
+            )
 
     _vtd_df = pd.read_parquet(path)
     _vtd_points = [Point(row.centroid_lon, row.centroid_lat) for row in _vtd_df.itertuples()]

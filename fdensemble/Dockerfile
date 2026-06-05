@@ -39,6 +39,9 @@ COPY fdensemble/dataverse_files/ ./dataverse_files/
 # Copy canonical scorecard JSONs (GerryChain runs — pre-computed, small)
 COPY fdensemble/input_data/ ./input_data/
 
+# Copy VTD composite parquet (required for map scoring — 287KB, bundled for Railway)
+COPY fdensemble/data/ ./data/
+
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8010
 
