@@ -22,7 +22,9 @@ RUN pip install --no-cache-dir \
     "matplotlib" \
     "python-dotenv" \
     "requests" \
-    "httpx>=0.27.0"
+    "httpx>=0.27.0" \
+    "shapely>=2.0.0" \
+    "pyarrow>=14.0.0"
 
 # Copy application source
 COPY fdensemble/main.py ./
