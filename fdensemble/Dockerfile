@@ -6,14 +6,22 @@
 #
 # Multi-stage: Node builds the Svelte frontend, Python runs the API.
 
-# ── Single stage: Python API server ──────────────────────────────────────────
-# Frontend is pre-built locally and committed to git (frontend/dist/).
-# This avoids Docker multi-stage build complexity and npm install in CI.
+# ── Stage 1: Build Svelte frontend ───────────────────────────────────────────
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /build
+COPY fdensemble/frontend/package.json fdensemble/frontend/package-lock.json ./
+RUN npm ci
+
+COPY fdensemble/frontend/ ./
+RUN npm run build
+# Output: /build/dist/
+
+# ── Stage 2: Python API server ───────────────────────────────────────────────
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# Only install what main.py actually imports
 RUN pip install --no-cache-dir \
     "fastapi" \
     "uvicorn[standard]" \
@@ -30,8 +38,8 @@ RUN pip install --no-cache-dir \
 COPY fdensemble/main.py ./
 COPY fdensemble/fdp_client.py ./
 
-# Copy pre-built Svelte frontend
-COPY fdensemble/frontend/dist/ ./frontend/dist/
+# Copy frontend built in stage 1 (never depends on committed dist/)
+COPY --from=frontend-builder /build/dist/ ./frontend/dist/
 
 # Copy ALARM dataverse files (GA_cd_2020_stats.csv etc.)
 COPY fdensemble/dataverse_files/ ./dataverse_files/
