@@ -22,11 +22,14 @@ No programming knowledge is required to follow this guide.
    - 5.1 [Majority-Black Districts](#51-majority-black-districts)
    - 5.2 [Majority-White Districts](#52-majority-white-districts)
    - 5.3 [Majority-Minority Coalition](#53-majority-minority-coalition)
-6. [The Princeton Grading System](#6-the-princeton-grading-system)
-7. [Key Findings — Georgia Congress 2026 v1](#7-key-findings--georgia-congress-2026-v1)
-8. [Interpreting the Charts](#8-interpreting-the-charts)
-9. [Data Quality & Limitations](#9-data-quality--limitations)
-10. [Glossary](#10-glossary)
+6. [Metrics — Proportionality & Geography](#6-metrics--proportionality--geography)
+   - 6.1 [Proportionality Gap](#61-proportionality-gap)
+   - 6.2 [Municipal Splits (Urban Cracking)](#62-municipal-splits-urban-cracking)
+7. [The Princeton Grading System](#7-the-princeton-grading-system)
+8. [Key Findings — Georgia Congress 2026](#8-key-findings--georgia-congress-2026)
+9. [Interpreting the Charts](#9-interpreting-the-charts)
+10. [Data Quality & Limitations](#10-data-quality--limitations)
+11. [Glossary](#11-glossary)
 
 ---
 
@@ -383,36 +386,157 @@ at the 37th percentile of the ensemble — roughly within the normal range.
 
 ---
 
-## 6. The Princeton Grading System
+---
 
-The Princeton Gerrymandering Project grades maps based on where the enacted plan
-falls in the distribution of simulated plans. We use the same framework.
+## 6. Metrics — Proportionality & Geography
 
-**For seat counts, the grade is:**
+### 6.1 Proportionality Gap
 
-| Grade | What it means | Percentile range |
+**What it measures:** The difference between what the enacted map delivers and
+what a truly proportional system would deliver — decomposed into two parts:
+
+| Component | Formula | What it captures |
 |---|---|---|
-| **A** | Enacted map falls in the center 50% of simulated maps | 25th–75th percentile |
-| **B** | Enacted map falls in the center 80% of simulated maps | 10th–90th percentile |
-| **C** | Enacted map falls in the center 90% of simulated maps | 5th–95th percentile |
-| **F** | Enacted map is a significant outlier | 1st–99th percentile |
-| **FAIL** | Enacted map is an extreme outlier | Below 1st or above 99th percentile |
+| **Geographic Baseline Gap** | Ensemble median seats − Proportional target | How much geography alone (sorting, concentration) costs Democrats. This would exist even with a perfectly neutral map. |
+| **Manipulation Gap** | Enacted seats − Ensemble median seats | How much the **specific choices made by the map-drawers** cost Democrats beyond neutral geography. |
+| **Total Gap** | Enacted seats − Proportional target | The full deficit from proportionality. |
 
-**Important note:** The grade is based on the enacted map's **percentile rank**,
-not the direction. A map can get an "A" grade by being in the IQR whether it's
-favorable to Democrats or Republicans. The grade measures statistical extremeness,
-not partisan direction. Advocates should report both the grade and the direction
-(e.g., "Grade C, enacted map at 95th percentile, meaning 95% of neutral maps
-produced more Democratic seats").
+**Proportional target formula:**
+```
+proportional_target = statewide_dem_2pv × N_districts
+                    = 51.49% × 14 ≈ 7.2 seats
+```
 
-**Composite grading:** If a run has multiple elections, the **worst grade across
-all elections** is used as the composite grade. This is the most conservative
-approach — a map that looks fair in one election but is an outlier in another
-should not receive a passing composite grade.
+**Georgia Congress findings:**
+- Proportional target: **7.2 seats** (Democrats win 51.49% of the statewide composite vote)
+- Ensemble median: **6 seats** (geography alone costs ~1.2 seats)
+- Enacted: **5 seats** (map choices cost another 1 seat)
+- Total gap: **2.2 seats** — Democrats win 5 seats while winning 51% of votes
+
+**Why this matters:** The geographic baseline gap is beyond any mapper's control —
+it reflects where people live. The manipulation gap is a direct measure of
+deliberate partisan design above and beyond what geography requires.
+
+**How it appears in the UI (Benchmark tab):**
+A number line shows three markers:
+- Gray: Neutral ensemble median
+- Blue: Proportional target
+- Red: Enacted plan position
+Two segments are labeled: "Geographic baseline" (gray span) and "Manipulation" (red span).
 
 ---
 
-## 7. Key Findings — Georgia Congress 2026 v1
+### 6.2 Municipal Splits (Urban Cracking)
+
+**What it measures:** How many cities and municipalities are split across two
+or more congressional districts. Georgia's constitution requires avoiding
+unnecessary splits.
+
+**Formula:**
+```
+muni_splits = count of municipalities where VTDs are assigned to
+              more than one district
+```
+
+**Georgia's paradox:** The enacted congressional map has **12 municipal splits**
+— cleaner than 99.9% of neutral ensemble plans (ensemble median: ~27 splits).
+This seems to favor Democrats (fewer splits = less cracking). Yet:
+- The `muni_splits ↔ dem_seats` Pearson correlation across the ensemble is **r ≈ 0.026** (near-zero)
+- The map produces **0 competitive seats** despite its clean municipal boundaries
+
+**What this means:** Manipulation occurs **below the city level** — at the
+sub-municipal VTD granularity. The map-drawers respected city limits while
+carefully selecting which VTDs within cities go to which districts, concentrating
+Democratic voters into a small number of landslide districts (packing) and
+diluting the rest. This is a sophisticated technique invisible to city-level metrics.
+
+**The UrbanCrackPanel (Benchmark tab):** An interactive panel tests four
+correlation questions across all neutral ensemble draws:
+
+| Pair | r (Georgia Congress) | Finding |
+|---|---|---|
+| City splits → Dem seats | ~0.03 | Near-zero — independent |
+| City splits → Efficiency gap | ~0.10 | Near-zero — independent |
+| City splits → Competitive seats | ~0.08 | Near-zero — independent |
+| Dem seats → Efficiency gap | ~0.89 | Strong — same signal |
+
+Each pair shows a scatter plot with all neutral ensemble plans (blue dots),
+a regression trend line, and the enacted map's position (red crosshair + label).
+
+---
+
+## 7. The Princeton Grading System
+
+The Princeton Gerrymandering Project grades maps based on where the enacted plan
+falls in the distribution of simulated plans. We use the same framework with one
+important modification for Voting Rights Act (VRA) metrics.
+
+### Standard grading (partisan metrics)
+
+The enacted plan's **percentile rank** determines its grade. Grades measure
+statistical extremeness — not direction.
+
+**Seats-type metrics** (`dem_seats` — higher is better for Democrats):
+
+| Grade | Percentile | Meaning |
+|---|---|---|
+| **A** | ≥ 50th | At or above the neutral ensemble median |
+| **B** | ≥ 20th | Within the lower 80% of neutral maps |
+| **C** | ≥ 5th | Within the lower 95% of neutral maps |
+| **F** | < 5th | Extreme outlier — fewer Democratic seats than 95% of neutral maps |
+
+**Competitiveness metric** (`comp_seats` — higher is better):
+
+| Grade | Percentile | Meaning |
+|---|---|---|
+| **A** | ≥ 95th | More competitive than 95% of neutral maps |
+| **B** | ≥ 64th | More competitive than 64% of neutral maps |
+| **C** | ≥ 5th | Within normal range |
+| **F** | < 5th | Fewer competitive seats than 95% of neutral maps |
+
+**Symmetric metrics** (`efficiency_gap`, `mean_median` — center of distribution is best):
+
+| Grade | Distance from 50th percentile | Meaning |
+|---|---|---|
+| **A** | ≤ 10 pp from median | Within normal fluctuation range |
+| **B** | ≤ 30 pp from median | Mild partisan lean |
+| **C** | ≤ 45 pp from median | Noticeable lean, not yet extreme |
+| **F** | > 45 pp from median | Outside the 5th–95th percentile band |
+
+**Important note:** Always report the grade AND the direction. "Grade F, at the
+96th percentile" means the enacted map is an extreme outlier *favorable to
+Republicans* — it wastes more Democratic votes than 96% of neutral maps.
+
+### Floor-based grading (VRA minority metrics)
+
+The Voting Rights Act is a **floor statute**: it prohibits maps that dilute
+minority voting power but never penalizes having more minority-opportunity
+districts than a neutral baseline. The standard Princeton symmetric grade
+(which penalizes "too many" minority districts) is legally incoherent for
+these metrics.
+
+**Applied to:** `maj_black` (majority-Black districts), `min_coal` (minority coalition)
+
+| Grade | Percentile | Meaning |
+|---|---|---|
+| **A** | ≥ 50th | At or above the neutral ensemble median — comfortably adequate |
+| **B** | ≥ 10th | At or above the VRA floor — meets minimum legal standard |
+| **F** | < 10th | Below the VRA floor — potential Section 2 vote dilution |
+
+The traditional symmetric grade is retained in the scorecard data as
+`grade_symmetric` for researchers who want to compare with original Princeton
+methodology. It is shown at reduced opacity in the MetricsGlossary panel.
+
+### Composite grading
+
+A composite **Partisan Fairness** grade combines `dem_seats`, `efficiency_gap`,
+and `mean_median`. An **Overall** grade further incorporates geographic metrics
+and competitiveness. Both are recomputed from per-metric data at serve time —
+never pre-stored in the scorecard file.
+
+---
+
+## 8. Key Findings — Georgia Congress 2026
 
 **Run name:** `congress_2026_v1`  
 **Draws:** 9,999 simulated maps + 1 enacted (draw 1)  
@@ -456,7 +580,7 @@ politically effective seats.
 
 ---
 
-## 8. Interpreting the Charts
+## 9. Interpreting the Charts
 
 ### Partisan histogram
 
@@ -501,9 +625,40 @@ The blue bands show the 5th–95th percentile (outer band) and 25th–75th perce
 - The classic gerrymander pattern is a zigzag: alternating very safe R and very
   safe D districts, with no competitive ones in between.
 
+### Proportionality gap number line
+
+Three markers on a horizontal axis:
+- **Gray dot** — Neutral ensemble median (what neutral geography produces)
+- **Blue dot** — Proportional target (what the statewide vote share would ideally produce)
+- **Red dot** — Enacted plan position
+
+Two spans are labeled: "Geographic baseline" (gray → blue) and "Manipulation" (red → gray).
+
+**What to look for:**
+- How far left is the red dot from the blue dot? That's the total gap.
+- How much of that gap is "Manipulation" vs. "Geographic baseline"?
+
+### Urban cracking correlation table (4 buttons)
+
+Four clickable buttons show the Pearson correlation between a geographic
+metric (city splits) and partisan outcomes, across all neutral ensemble draws.
+
+**What to look for:**
+- `r` near 0: these two metrics are independent — the geographic pattern doesn't
+  drive the partisan outcome (Georgia's case: cracking works sub-municipally)
+- `r` near ±1: the metrics move together — knowing one predicts the other
+
+Each button opens a scatter chart with:
+- Blue dots = neutral ensemble plans
+- Orange trend line = linear regression
+- **Red crosshair** = enacted plan's position (dashed lines to both axes + coordinate label)
+
+The enacted map's red marker may sit far from the blue cloud even when `r ≈ 0`,
+showing that the enacted plan is an outlier in both dimensions simultaneously.
+
 ---
 
-## 9. Data Quality & Limitations
+## 10. Data Quality & Limitations
 
 ### Election data accuracy
 
@@ -547,7 +702,7 @@ to accommodate this. This is consistent with Princeton and ALARM methodologies.
 
 ---
 
-## 10. Glossary
+## 11. Glossary
 
 | Term | Definition |
 |---|---|
@@ -567,5 +722,10 @@ to accommodate this. This is consistent with Princeton and ALARM methodologies.
 | **ReCom** | Redistricting Combinatorics — the Markov Chain algorithm used to generate random maps |
 | **VTD** | Voting Tabulation District — Census precinct equivalent; the atom of this analysis |
 | **VRA** | Voting Rights Act of 1965 — federal law prohibiting racial discrimination in voting |
+| **VRA floor grading** | Grading method for minority metrics: penalizes too-few minority districts (potential §2 dilution) but never too-many; uses 10th percentile as the legal floor |
 | **Win margin** | |dem_2pv − 0.5| × 2; a margin of 0.05 means 52.5% vs 47.5% |
 | **ε (epsilon)** | Population tolerance — how much any district can deviate from ideal population |
+| **Proportionality gap** | Deficit between Democratic seat share and vote share; decomposed into geographic baseline (unavoidable) + manipulation (deliberate map choices) |
+| **Municipal splits** | Count of cities/municipalities divided across multiple districts; high splits indicate potential urban cracking |
+| **Manipulation gap** | Portion of the proportionality gap attributable to deliberate redistricting choices (enacted − neutral ensemble median) |
+| **Geographic baseline gap** | Portion of proportionality gap from geographic sorting alone (neutral ensemble median − proportional target) |

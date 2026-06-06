@@ -8,10 +8,13 @@
 
 | Guide | Audience | Contents |
 |---|---|---|
-| [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) | **Admins** | Running ensemble jobs, scoring pipeline, updating elections, DB migrations, secrets |
+| [`docs/ADMIN_GUIDE.md`](docs/ADMIN_GUIDE.md) | **Admins** | Running ensemble jobs, scoring pipeline, updating elections, secrets |
 | [`docs/ANALYST_GUIDE.md`](docs/ANALYST_GUIDE.md) | **Analysts** | What data was used, every metric formula, how to interpret results, key findings |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Engineers** | System design, technology stack, data flow, DB schema, key decisions |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Engineers** | System design, technology stack, data flow, scorecard format, map library API, key decisions |
+| [`METRICS.md`](METRICS.md) | **Everyone** | All 17 metrics: formula, data source, grading method, thresholds, CLI overrides |
 | [`TECHNICAL_GUIDE.md`](TECHNICAL_GUIDE.md) | **Engineers** | Full CDM schemas, all metric formulas, app-by-app metric mapping |
+| [`TECHNICAL_AUDIT.md`](TECHNICAL_AUDIT.md) | **Engineers** | Full pipeline audit: data sources, ensemble methodology, grading logic, results |
+| [`WORKAROUNDS.md`](WORKAROUNDS.md) | **Engineers** | Known data anomalies, approximations, and resolved issues |
 
 ## Mission
 
@@ -28,14 +31,22 @@ GitHub repository; `fgdp` holds git submodule pointers to all of them.
 
 ```
 ~/codebox/fgdp/                   ← monorepo root (github: evolvedHow/fgdp)
-├── fdp/           ← Shared data platform (Python package + canonical data)
+├── fdp/           ← Shared data platform (Python package + canonical data + scoring scripts)
+├── fdensemble/    ← Ensemble benchmark app (FastAPI + Svelte 5, Railway)
+│   ├── main.py              ← FastAPI server + map library + scoring API
+│   ├── input_data/          ← Pre-computed scorecard JSONs (committed)
+│   ├── dataverse_files/     ← ALARM/Harvard CSV (committed)
+│   ├── data/                ← vtd_composite.parquet, vtd_muni.parquet (committed)
+│   ├── uploaded_maps/       ← Preloaded proposed maps (gitignored; Railway persistent volume)
+│   └── frontend/            ← Svelte 5 app (dist/ committed for Railway)
 ├── fdex/          ← Georgia Explorer — public-facing district map
-├── fdga-chain/    ← Ensemble analysis API (GerryChain / statistics)
+├── fdga-chain/    ← Ensemble compute API (GerryChain / Modal)
 ├── fdworkbench/   ← NLQ-to-SQL analytics workbench
 ├── lrdb/          ← Local Redistricting Database (county/city/school boards)
 ├── map-compare/   ← Plan comparison and metrics tool
 ├── scripts/
 │   └── push_cdm.sh   ← Sync updated CDM data into all apps
+├── METRICS.md         ← All 17 metrics: formula, data source, grading method
 ├── TECHNICAL_GUIDE.md ← CDM schemas, all metric formulas, app-by-app mapping
 └── README.md
 ```
@@ -89,6 +100,35 @@ plans — enacted maps, historical maps, remedy plans, and demographic overlays.
 - **Dev:** `cd fdex/frontend && npm install && npm run dev` → http://localhost:5173
 - **Deploy:** Push to `main` → GitHub Actions builds and deploys to Pages
 - **Docs:** [fdex/README.md](fdex/README.md)
+
+---
+
+### `fdensemble` — Redistricting Ensemble Benchmark App
+
+**Role:** The primary benchmark visualization tool. Shows how the enacted maps
+compare against thousands of algorithmically-neutral redistricting plans.
+Deployed on Railway; all data is pre-computed and served from JSON/Parquet files.
+
+**Key features:**
+- Four benchmark runs: GerryChain (Congress, Senate, House) + ALARM (Congress)
+- Per-metric Princeton grades with histogram and river chart
+- Metrics Glossary: every metric with formula, grading method, config thresholds
+- Proportionality gap decomposition (geographic baseline vs. manipulation)
+- Urban cracking analysis: scatter plots testing city-split → partisan-outcome hypothesis
+- Map library: preload QC'd proposed plans via API and score against ensemble
+
+**Map library API (no upload from browser):**
+- `POST /api/maps` — preload a validated GeoJSON plan
+- `GET /api/maps` — list preloaded plans
+- `POST /api/score-map` — score a plan against any benchmark run
+- `DELETE /api/maps/{id}` — remove a plan
+
+**Audience:** Researchers, advocates, journalists comparing enacted maps to neutral baselines
+- **Stack:** Python 3.12, FastAPI, DuckDB, Svelte 5, Vite, TypeScript, Chart.js
+- **Dev:** `cd fdensemble && uv sync && uv run uvicorn main:app --reload --port 8010`
+  - Frontend hot-reload: `cd frontend && npm install && npm run dev` → http://localhost:5174
+- **Deploy:** Push to `master` → Railway auto-redeploys (pre-built `frontend/dist/` committed to git)
+- **Docs:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ---
 
@@ -261,24 +301,31 @@ All sync scripts skip silently in CI environments (`$CI` env var set).
 cd ~/codebox/fgdp/fdp
 uv sync && uv pip install -e .
 
-# ── 2. fdex — Georgia Explorer ───────────────────────────────────────────────
+# ── 2. fdensemble — Ensemble Benchmark App ───────────────────────────────────
+cd ~/codebox/fgdp/fdensemble
+uv sync
+uv run uvicorn main:app --reload --port 8010    # → http://localhost:8010
+# Dev (hot-reload frontend separately):
+cd frontend && npm install && npm run dev        # → http://localhost:5174
+
+# ── 3. fdex — Georgia Explorer ───────────────────────────────────────────────
 cd ~/codebox/fgdp/fdex/frontend
 npm install && npm run dev            # → http://localhost:5173
 
-# ── 3. fdga-chain — Ensemble Analysis API ────────────────────────────────────
+# ── 4. fdga-chain — Ensemble Analysis API ────────────────────────────────────
 cd ~/codebox/fgdp/fdga-chain
 uv sync
 uv run uvicorn api.main:app --reload --port 8001
 
-# ── 4. lrdb — Local Redistricting Database ───────────────────────────────────
+# ── 5. lrdb — Local Redistricting Database ───────────────────────────────────
 cd ~/codebox/fgdp/lrdb
 npm install && npm run dev            # → http://localhost:5000
 
-# ── 5. map-compare — Plan Comparison ─────────────────────────────────────────
+# ── 6. map-compare — Plan Comparison ─────────────────────────────────────────
 cd ~/codebox/fgdp/map-compare
-npm install && npm run dev            # → http://localhost:5174
+npm install && npm run dev            # → http://localhost:5175
 
-# ── 6. fdworkbench — Analytics Workbench ─────────────────────────────────────
+# ── 7. fdworkbench — Analytics Workbench ─────────────────────────────────────
 cd ~/codebox/fgdp/fdworkbench
 uv sync && ./start.sh                 # → http://localhost:8003
 ```
@@ -349,6 +396,7 @@ cd fdex/frontend && FDP_WORKSPACE=my_test_shapes npm run sync && npm run dev
 
 | App | Platform | Branch | Trigger |
 |---|---|---|---|
+| **fdensemble** | **Railway** | `master` | Push → Railway auto-redeploys (pre-built dist/ required) |
 | fdex | GitHub Pages | `main` | Push → GitHub Actions |
 | fdga-chain | GitHub Pages (frontend) + Modal (API) | `master` | Push → GitHub Actions; `modal deploy` for API |
 | lrdb | GitHub Pages | `main` | Push → GitHub Actions |

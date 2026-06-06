@@ -799,24 +799,30 @@ Excess displacement is the amount of voter disruption that went beyond populatio
 
 ### 3.17 Proportionality Gap
 
-**Definition:** The difference between a party's seat share and its vote share. In a proportional system, a party that wins 55% of statewide votes should win approximately 55% of seats. The gap measures how much the map diverges from this baseline.
+**Definition:** The total deficit between the Democratic seat count and what a
+proportional system would deliver, decomposed into three components:
 
-**Formula:**
+| Component | Formula | What it captures |
+|---|---|---|
+| **Proportional target** | `statewide_dem_2pv × N_districts` | How many seats perfect proportionality implies (≈7.2 for Congress at 51.49% D) |
+| **Geographic Baseline Gap** | `ensemble_median_dem_seats − proportional_target` | How much neutral geography costs Democrats (~1.2 seats for Congress) |
+| **Manipulation Gap** | `enacted_dem_seats − ensemble_median_dem_seats` | How much the map-drawers' choices cost Democrats beyond neutral geography (~1 seat) |
+| **Total Gap** | `enacted_dem_seats − proportional_target` | Full deficit (enacted D5 vs. proportional ~7.2 = gap of ~2.2) |
 
-```
-rep_proportionality_gap = rep_seat_share − rep_vote_share
-```
+**Sign convention (manipulation gap):**
+- **Negative** → enacted map gives Democrats fewer seats than the neutral median → Republican structural advantage
+- **Zero** → map choices are neutral (geography explains all of the proportionality gap)
 
-**Sign convention:**
-- **Positive** → Republicans win more seats than their vote share warrants → structural Republican advantage
-- **Negative** → Republicans win fewer seats than their vote share warrants (rare in Georgia)
+**Statewide dem_2pv source:** `_get_statewide_dem_2pv()` in `fdensemble/main.py`.
+Computed as `Σ(composite_dem_pct × VAP_MOD) / Σ((composite_dem_pct + composite_rep_pct) × VAP_MOD)`
+from `vtd_composite.parquet` — VAP-weighted 2018–2024 composite.
+**Georgia value: 51.49%.**
 
-**Example:** If Republicans win 57% of statewide votes but hold 67% of seats:
-```
-rep_proportionality_gap = 0.67 − 0.57 = +0.10  → R wins 10 percentage points more seats than votes
-```
+**Implementation:** `_build_proportionality_gap()` in `fdensemble/main.py`.
+Reads `vtd_composite.parquet` once at startup, caches result.
 
-**In the CDM:** Computed per cycle in `fdga-chain/api/main.py`'s `/proportionality` endpoint, which draws on `dem_seat_share` and `dem_vote_share` from `metrics.json` for each cycle year.
+**Displayed in fdensemble** (Benchmark tab, ProportionalityGapPanel.svelte):
+Number line with gray/blue/red markers and labeled gap spans.
 
 ---
 
@@ -929,6 +935,53 @@ The ensemble uses **2020 Presidential election results** at the precinct level a
 
 ## 5. How Metrics Appear in Each App
 
+### 5.0 fdensemble — Ensemble Benchmark App
+
+**URL:** Deployed on Railway (see README.md for URL)  
+**Purpose:** Compare Georgia's enacted redistricting maps against thousands of
+algorithmically-neutral simulated plans. Primary tool for ensemble benchmark analysis.
+
+**Data source:** Pre-computed scorecard JSON files (`fdensemble/input_data/*.json`)
+and ALARM Harvard CSV (`fdensemble/dataverse_files/`). No live database.
+
+**Available benchmark runs:**
+
+| Run ID | Source | Chamber | Draws |
+|---|---|---|---|
+| `fdga_2026_benchmark_congress` | GerryChain ReCom | Congress (14) | ~9,501 |
+| `fdga_2026_benchmark_senate` | GerryChain ReCom | Senate (56) | ~10,001 |
+| `fdga_2026_benchmark_house` | GerryChain ReCom | House (180) | ~24,003 |
+| `fdga_2026_benchmark_congress_alarm` | ALARM SMC (Harvard) | Congress (14) | 5,001 |
+
+**Metrics displayed per run:**
+
+| Tab | What's shown |
+|---|---|
+| Benchmark | Per-metric grade cards (histogram + river chart), Metrics Glossary, Proportionality Gap |
+| Geographic Cracking | Urban cracking panel — city splits vs. partisan outcomes scatter plots + correlations |
+| Score | Map library; score preloaded proposed plans against ensemble |
+| Demographics | Majority-minority district counts |
+
+**Metrics Glossary** (collapsible, in Benchmark tab): For every metric shows:
+formula, data source, grading method (seats/comp/symmetric/directional/floor),
+enacted value + percentile, configurable thresholds with source constant names.
+
+**Proportionality Gap panel** (§3.17): Decomposed into geographic baseline gap
+(neutral geography) + manipulation gap (deliberate map choices). Displayed as a
+number line with gray/blue/red markers.
+
+**Map library** (Score tab): Shows preloaded proposed plans. Maps must be added
+via `POST /api/maps` after manual QC — no direct upload from the browser.
+
+**API endpoints for programmatic access:**
+- `GET /api/runs` — list runs
+- `GET /api/analysis?run={id}` — full scorecard data including all metric grades
+- `GET /api/analysis/correlations?run={id}` — scatter-pair correlation data
+- `POST /api/maps` — preload a proposed GeoJSON plan
+- `POST /api/score-map` — score a preloaded plan against the ensemble
+
+---
+
 ### 5.1 fdex — District Explorer
 
 **URL:** https://evolvedhow.github.io/fdex/
@@ -1039,7 +1092,11 @@ Timeline of mid-decade redistricting waves sourced from `redistricting_waves.yml
 
 ---
 
-### 5.3 fdga-chain — Ensemble Analysis API
+### 5.3 fdga-chain — Ensemble Compute Layer (not the visualization UI)
+
+> **Note:** fdga-chain is the compute backend (GerryChain + Modal). The visualization
+> UI is `fdensemble` (§5.0). fdga-chain's FastAPI (`api/main.py`) is used for
+> direct API access to ensemble statistics but is not the primary analysis UI.
 
 **URL:** https://evolvedhow.github.io/fdga-chain/  
 **API base:** configured per deployment (local: `http://localhost:8001`)

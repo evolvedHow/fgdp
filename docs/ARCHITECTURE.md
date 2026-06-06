@@ -16,7 +16,8 @@ how they connect.
 6. [Ensemble Pipeline Deep Dive](#6-ensemble-pipeline-deep-dive)
 7. [Configuration System](#7-configuration-system)
 8. [Deployment Architecture](#8-deployment-architecture)
-9. [Key Design Decisions](#9-key-design-decisions)
+9. [fdensemble Frontend UI Components](#9-fdensemble-frontend-ui-components)
+10. [Key Design Decisions](#10-key-design-decisions)
 
 ---
 
@@ -131,16 +132,37 @@ the Modal container.
 
 ---
 
-### `fdensemble` — Frontend Visualization
+### `fdensemble` — Ensemble Benchmark App (FastAPI + Svelte 5)
 
-Svelte 5 frontend that displays ensemble benchmark results to end users.
+The redistricting ensemble benchmark visualization app. Deployed on Railway
+and served from a single FastAPI process that also serves the compiled frontend.
 
 **Key responsibilities:**
-- Calls the fdga-chain FastAPI backend for ensemble statistics
-- Displays partisan histograms, river charts, demographic charts
-- Shows the Princeton grading results
+- Reads pre-computed scorecard JSON files from `fdensemble/input_data/`
+- Reads ALARM/Harvard CSV from `fdensemble/dataverse_files/`
+- Serves the Svelte 5 frontend from `fdensemble/frontend/dist/` (pre-built, committed to git)
+- Exposes a REST API for the frontend — all data is derived from local files at startup
+- Maintains the **map library** (`fdensemble/uploaded_maps/`) for proposed plan GeoJSON files
+- Scores proposed plans against the ensemble via `POST /api/score-map`
 
-**Directory:** `fdensemble/frontend/`
+**No live database.** Everything is loaded from JSON/Parquet files at startup.
+No network calls to fdga-chain or any external service at serve time.
+
+**Key API endpoints:**
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/runs` | GET | List all available benchmark runs |
+| `/api/analysis?run={id}` | GET | Full scorecard + grades for a run |
+| `/api/analysis/correlations?run={id}` | GET | Scatter-pair correlation data (UrbanCrackPanel) |
+| `/api/maps` | GET | List preloaded proposed maps |
+| `/api/maps` | POST | Preload a QC'd GeoJSON map into the library |
+| `/api/maps/{map_id}` | DELETE | Remove a map from the library |
+| `/api/score-map` | POST | Score a preloaded map against the ensemble |
+
+**Deployment:** Railway (hobby plan). See §8 for details.
+
+**Directory:** `fdensemble/`
 
 ---
 
@@ -173,15 +195,14 @@ Redistricting Data Hub (RDH)
            ▼ fdp/scripts/build_vtd_inputs.py
            │
     Block → VTD aggregation
-    (largest-overlap spatial join: each of 232,717 blocks assigned
-     to 1 of 2,698 VTDs using intersection area)
+    (centroid-in-polygon: each of 232,717 blocks assigned
+     to 1 of 2,698 VTDs)
            │
            ▼
-    fdp.election_results (Supabase)
-    ── geoid TEXT (11-char VTD GEOID20)
-    ── year, election_type, office
-    ── dem_votes, rep_votes
-    ── CVAP_TOT, CVAP_BLK, CVAP_HSP, CVAP_WHT, CVAP_ASN
+    Parquet files (local disk — not committed to git)
+    ── election_results_vtd.parquet
+    ── cvap_vtd.parquet
+    ── vtd/vtd_composite.parquet  (6-election 2018–2024 composite dem_2pv)
 ```
 
 ### Graph construction
@@ -312,30 +333,52 @@ Modal volume only.
 ```json
 {
   "run": {
-    "id": "congress_2026_v2",
-    "name": "Congress 2026 V2",
+    "id": "fdga_2026_benchmark_congress",
+    "name": "FDGA 2026 Benchmark — Congress",
     "source": "gerrychain",
     "chamber": "congress",
     "n_districts": 14,
     "n_draws": 9501,
-    "n_plans": 9501,
     "algorithm": "ReCom",
-    "date": "2026-06-03",
-    "description": "GerryChain ReCom MCMC ensemble — congress, 9,501 draws across 6 elections.",
-    "elections": [
-      {"year": 2022, "election_type": "general", "office": "governor", "label": "2022 Governor"},
-      {"year": 2024, "election_type": "general", "office": "president", "label": "2024 President"}
-    ]
+    "date": "2026-06-07",
+    "description": "GerryChain ReCom MCMC ensemble — congress, 9,501 draws across 6 elections."
+  },
+  "config": {
+    "competitive_threshold": 0.05,
+    "majority_threshold": 0.50,
+    "bvap_majority_threshold": 0.50,
+    "influence_min_threshold": 0.37,
+    "influence_max_threshold": 0.50,
+    "grading": {
+      "ensemble_pass_lo": 5, "ensemble_pass_hi": 95,
+      "floor_grade_floor_pct": 10, "floor_grade_a_pct": 50,
+      "seats_grade_a_pct": 50, "seats_grade_b_pct": 20,
+      "comp_grade_a_pct": 95, "symmetric_a_band": 10,
+      "symmetric_b_band": 30, "directional_a_pct": 95, "directional_b_pct": 64
+    },
+    "source_locations": {
+      "competitive_threshold": "fdp/scripts/build_scorecard.py → COMPETITIVE_THRESHOLD_DEFAULT"
+    }
   },
   "elections": [
     {
       "year": 2022, "election_type": "general", "office": "governor",
       "label": "2022 Governor",
       "metrics": {
-        "dem_seats":      {"label": "Dem. Seats", "grade": "C", "enacted": 5, "pct_rank": 32.4, "histogram": {...}},
-        "efficiency_gap": {"label": "Efficiency Gap", "grade": "F", "enacted": 0.089, ...},
-        "mean_median":    {"label": "Mean–Median Diff.", "grade": "B", "enacted": -0.023, ...},
-        "comp_seats":     {"label": "Competitive Seats", "grade": "D", "enacted": 2, "threshold": 0.05, ...},
+        "dem_seats": {
+          "label": "Dem. Seats", "grade": "B", "enacted": 5, "pct_rank": 78.3,
+          "formula_info": {
+            "formula": "count(dem_2pv_d ≥ 0.50) across all districts",
+            "detail": "Districts where Democrats win majority of two-party vote",
+            "data_source": "vtd_composite.parquet (6-election 2018–2024 composite)",
+            "config_keys": ["majority_threshold"],
+            "grading_method": "seats"
+          },
+          "histogram": {"bin_edges": [...], "bin_counts": [...]}
+        },
+        "efficiency_gap": {"grade": "F", "enacted": 0.171, "pct_rank": 96.2, ...},
+        "mean_median":    {"grade": "F", "enacted": 0.080, "pct_rank": 100.0, ...},
+        "comp_seats":     {"grade": "C", "enacted": 0, "threshold": 0.05, ...},
         "partisan_bias":  null
       },
       "river": {
@@ -347,19 +390,42 @@ Modal volume only.
   "demographics": {
     "source": "cvap", "year": 2024,
     "metrics": {
-      "maj_black": {"label": "Majority-Black Dist.", "grade": "B", "enacted": 1, ...},
-      "min_coal":  {"label": "Minority Coalition", "grade": "A", "enacted": 5, ...}
+      "maj_black": {
+        "label": "Majority-Black Districts",
+        "grade": "A",
+        "grade_symmetric": "F",
+        "floor": 1.0,
+        "enacted": 4, "pct_rank": 100.0,
+        "formula_info": {"grading_method": "floor"}
+      },
+      "min_coal": {"label": "Minority Coalition", "grade": "A", "enacted": 5, ...}
     }
   },
-  "compactness": {"polsby_popper": null, "county_splits": null, "muni_splits": null},
+  "compactness": {"polsby_popper": null, "county_splits": null, "muni_splits": {...}},
   "grades": {
-    "maj_black":           {...},
-    "min_coal":            {...},
-    "_partisan_fairness":  {"grade": "C", "ensemble_pass": false, "normative_pass": true, ...},
-    "_overall":            {"grade": "C", ...}
+    "maj_black":           {"grade": "A", "grade_symmetric": "F", "floor": 1.0},
+    "_partisan_fairness":  {"grade": "B", "ensemble_pass": true, "normative_pass": true, ...},
+    "_overall":            {"grade": "B", ...}
+  },
+  "correlations": {
+    "matrix": {"dem_seats": {"efficiency_gap": 0.91, ...}, ...},
+    "scatter": {
+      "muni_splits_vs_dem_seats": {
+        "x": [...], "y": [...],
+        "r": 0.026,
+        "enacted_x": 12, "enacted_y": 5.0
+      }
+    }
   }
 }
 ```
+
+**Key scorecard fields introduced 2026-06-07:**
+- `config` block — all scoring thresholds and grade-band boundaries; `source_locations` maps each key to the Python constant where it is defined
+- `formula_info` on each metric — `formula`, `detail`, `data_source`, `config_keys`, `grading_method`
+- `grade_symmetric` on VRA floor metrics (`maj_black`, `min_coal`) — traditional Princeton symmetric grade retained for lineage
+- `floor` — 10th-percentile value (VRA floor); grade A ≥ 50th pct, grade B ≥ 10th pct, grade F < 10th pct
+- `correlations.scatter` — per scatter-pair data for the UrbanCrackPanel
 
 ### Metric coverage by source
 
@@ -554,23 +620,88 @@ modal volume get fdga-chain-data /ensemble/{run_name}_plans.parquet .
 
 ### fdensemble (visualization backend)
 
-Runs on Railway (hobby plan) or locally. Reads two data sources:
+Runs on Railway (hobby plan) or locally. Reads from:
 1. **ALARM CSV** — `fdensemble/dataverse_files/GA_cd_2020/GA_cd_2020_stats.csv` (committed to repo)
-2. **Canonical scorecard JSON** — `fdensemble/input_data/{run_name}_scorecard.json` (generated locally, committed to repo)
+2. **Canonical scorecard JSONs** — `fdensemble/input_data/*_scorecard.json` (generated locally, committed to repo)
+3. **vtd_composite.parquet** — `fdensemble/data/vtd_composite.parquet` (committed to repo; used for proportionality gap)
+4. **vtd_muni.parquet** — `fdensemble/data/vtd_muni.parquet` (committed; used for municipality splits in interactive scorer)
 
-To add a new GerryChain run to fdensemble:
+**Development startup:**
 ```bash
-# 1. Build scorecard from scored Parquets
-uv run --project fdp python fdp/scripts/build_scorecard.py --run-name congress_2026_v2
+# Build frontend (if dist/ is stale or missing)
+cd ~/codebox/fgdp/fdensemble/frontend && npm run build
+# Start API server
+cd ~/codebox/fgdp/fdensemble
+uv run uvicorn main:app --reload --port 8010
+# Dev with hot-reload:
+cd frontend && npm run dev   # → http://localhost:5174 (proxies /api to :8010)
+```
+
+**Adding a new GerryChain run:**
+```bash
+# 1. Build scorecard from scored Parquets (run from fgdp root)
+uv run --project fdp python fdp/scripts/build_scorecard.py \
+    --run-name fdga_2026_benchmark_congress
 
 # 2. Copy to fdensemble input_data/
-cp fdp/data/repos/main/ensemble/congress_2026_v2_scorecard.json fdensemble/input_data/
+cp fdp/data/repos/main/ensemble/fdga_2026_benchmark_congress_scorecard.json \
+   fdensemble/input_data/
 
-# 3. Commit and push → Railway redeploys automatically
-git add fdensemble/input_data/congress_2026_v2_scorecard.json
-git commit -m "Add congress_2026_v2 scorecard to fdensemble"
+# 3. Rebuild frontend (scorecard data is baked in at runtime, not build time —
+#    but dist/ must be fresh before deployment)
+cd fdensemble/frontend && npm run build
+
+# 4. Commit and push → Railway redeploys automatically
+git add fdensemble/input_data/fdga_2026_benchmark_congress_scorecard.json \
+        fdensemble/frontend/dist/
+git commit -m "Add fdga_2026_benchmark_congress scorecard"
 git push
 ```
+
+**⚠️ Frontend dist/ is committed to git** (Railway free tier can't build it).
+Always rebuild locally and commit dist/ before pushing scorecard changes.
+
+### Map Library (Proposed Plans)
+
+The map library stores QC'd proposed GeoJSON plans for comparison against the
+ensemble. It is **not** populated from the UI — maps must be preloaded via the
+REST API after manual validation.
+
+**Local storage:** `fdensemble/uploaded_maps/` (gitignored)  
+**Railway storage:** `/app/uploaded_maps/` (Railway persistent volume, survives redeploys)  
+**Override:** Set `MAPS_DIR` env var to use a different path
+
+**Structure:**
+```
+uploaded_maps/
+├── catalog.json          ← { "maps": [{id, label, n_districts, uploaded_at}, ...] }
+└── {map_id}.geojson      ← Individual plan GeoJSON (one file per map)
+```
+
+**Preloading a map:**
+```bash
+# Upload a QC'd GeoJSON plan (label is displayed in UI)
+curl -X POST https://<railway-url>/api/maps \
+  -H "Content-Type: application/json" \
+  -d '{"label": "Proposed Plan A", "geojson": {...}}'
+# Returns: {"map_id": "abc123", "label": "Proposed Plan A", ...}
+
+# List all preloaded maps
+curl https://<railway-url>/api/maps
+
+# Score a preloaded map against ensemble
+curl -X POST https://<railway-url>/api/score-map \
+  -H "Content-Type: application/json" \
+  -d '{"map_id": "abc123", "run_id": "fdga_2026_benchmark_congress"}'
+
+# Remove a map
+curl -X DELETE https://<railway-url>/api/maps/abc123
+```
+
+**Design rationale:** Upload was removed from the browser UI intentionally.
+All maps must pass QC validation before entering the library. Analyst reviews
+the GeoJSON locally, then uses the API to publish. This prevents raw or
+unvalidated data from being scored against the benchmark.
 
 ### GitHub Actions (frontend CI/CD)
 
@@ -579,7 +710,61 @@ builds and deploys to GitHub Pages on every push to the main branch.
 
 ---
 
-## 9. Key Design Decisions
+## 9. fdensemble Frontend UI Components
+
+All components live in `fdensemble/frontend/src/lib/components/`.
+
+| Component | Purpose | Key feature |
+|---|---|---|
+| `App.svelte` | Root — run selector + tab router | |
+| `BenchmarkTab.svelte` | Princeton grades + metric cards grid | Contains MetricsGlossary |
+| `MetricCard.svelte` | Single-metric grade card (histogram + river) | p25/p75 null-guarded |
+| **`MetricsGlossary.svelte`** | Collapsible accordion: formula, data source, grading method, config thresholds for every metric | Added 2026-06-07 |
+| `BenchmarkMethodology.svelte` | Methodology explanation panel | |
+| `ScoreTab.svelte` | Map library: list preloaded plans, score against ensemble | No upload UI — API only |
+| `ProportionalityGapPanel.svelte` | Three-part proportionality decomposition (geographic + manipulation gap) | Number-line visualization |
+| **`UrbanCrackPanel.svelte`** | Geographic cracking & partisan outcomes | 4-button correlation table (replaced heatmap 2026-06-07) |
+| **`CrossMetricScatter.svelte`** | Scatter plot of any two metrics across ensemble | Custom canvas: dashed crosshair + ring + coordinate label for enacted map |
+| `DemographicsTab.svelte` | Minority representation charts | |
+
+### UrbanCrackPanel: four scatter pairs
+
+Tests the "urban cracking hypothesis" — does splitting cities lead to fewer
+Democratic seats and more wasted votes?
+
+| Pair key | X-axis | Y-axis | Question |
+|---|---|---|---|
+| `muni_splits_vs_dem_seats` | City Splits | Dem-Lean Seats | Does cracking cities produce fewer Dem-leaning seats? |
+| `muni_splits_vs_efficiency_gap` | City Splits | Efficiency Gap | Does cracking cities waste more Democratic votes? |
+| `muni_splits_vs_comp_seats` | City Splits | Competitive Seats | Does cracking cities eliminate competitive races? |
+| `dem_seats_vs_efficiency_gap` | Dem-Lean Seats | Efficiency Gap | Are seat count and vote waste measuring the same thing? |
+
+The correlation coefficient `r` (Pearson) is shown alongside a plain-English
+strength label: "Near zero — independent" / "Weak" / "Moderate" / "Strong".
+The enacted map's position on each chart is annotated with a dashed red crosshair
+reaching to both axes, an outer ring, and a white-backed coordinate label.
+
+**Key finding for Georgia congress:** `r ≈ 0.026` for muni_splits vs. dem_seats.
+City-split count has near-zero correlation with partisan outcomes across the
+neutral ensemble. Manipulation occurs below municipal boundaries (sub-VTD level).
+
+### MetricsGlossary: what it shows
+
+For each metric the glossary displays:
+- Formula in monospace
+- Plain-English detail
+- Data source (which parquet/CSV column)
+- Grading method: `seats` | `comp` | `symmetric` | `directional` | `floor`
+- For `floor` metrics: VRA floor concept + 10th/50th percentile thresholds
+- Enacted value + percentile rank
+- Config table: key → current value → source constant name + file
+
+All values are live from `analysis.config` (served by `/api/analysis`),
+never hardcoded in the frontend.
+
+---
+
+## 10. Key Design Decisions
 
 ### Why normalized competitive_counts table?
 

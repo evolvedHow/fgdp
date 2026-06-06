@@ -28,12 +28,13 @@ Supabase has been fully eliminated from the scoring pipeline.
 2. [Environment Setup](#2-environment-setup)
 3. [Running Ensemble Jobs](#3-running-ensemble-jobs)
 4. [After a Run Completes — Scoring Pipeline](#4-after-a-run-completes--scoring-pipeline)
-5. [Updating Election Data](#5-updating-election-data)
-6. [Monitoring & Status Checks](#6-monitoring--status-checks)
-7. [Handling Failed Runs](#7-handling-failed-runs)
-8. [Generating Charts](#8-generating-charts)
-9. [Secrets & Credentials](#9-secrets--credentials)
-10. [Data Maintenance](#10-data-maintenance)
+5. [Map Library (Proposed Plans)](#5-map-library-proposed-plans)
+6. [Updating Election Data](#6-updating-election-data)
+7. [Monitoring & Status Checks](#7-monitoring--status-checks)
+8. [Handling Failed Runs](#8-handling-failed-runs)
+9. [Generating Charts](#9-generating-charts)
+10. [Secrets & Credentials](#10-secrets--credentials)
+11. [Data Maintenance](#11-data-maintenance)
 
 ---
 
@@ -276,6 +277,37 @@ uv run --project fdp python fdp/scripts/visualize_benchmark.py \
 
 Charts are saved to `fdp/data/repos/main/ensemble/charts/`.
 
+### Step 6 — Build the scorecard JSON and deploy to fdensemble
+
+This is the final step. `build_scorecard.py` reads all scored Parquets and
+produces the canonical `{run_name}_scorecard.json` consumed by the fdensemble UI.
+
+```bash
+# Build scorecard (congress example)
+uv run --project fdp python fdp/scripts/build_scorecard.py \
+    --run-name fdga_2026_benchmark_congress
+
+# For ALARM benchmark:
+uv run --project fdp python fdp/scripts/build_alarm_scorecard.py
+
+# Copy to fdensemble input_data/
+cp fdp/data/repos/main/ensemble/fdga_2026_benchmark_congress_scorecard.json \
+   ~/codebox/fgdp/fdensemble/input_data/
+
+# Rebuild frontend (Railway uses pre-built dist/)
+cd ~/codebox/fgdp/fdensemble/frontend && npm run build
+
+# Commit and push → Railway auto-redeploys
+cd ~/codebox/fgdp
+git add fdensemble/input_data/fdga_2026_benchmark_congress_scorecard.json \
+        fdensemble/frontend/dist/
+git commit -m "Update fdga_2026_benchmark_congress scorecard"
+git push origin master
+```
+
+**⚠️ Push to master is blocked by auto-mode classifier in Claude Code.**
+Run the `git push` manually in your WSL terminal.
+
 ### Full pipeline (all chambers)
 
 ```bash
@@ -303,7 +335,65 @@ done
 
 ---
 
-## 5. Updating Election Data
+---
+
+## 5. Map Library (Proposed Plans)
+
+The fdensemble app maintains a library of proposed GeoJSON plans that can be
+scored against the ensemble. Maps are **not** uploaded from the browser UI —
+they must be preloaded via the REST API after manual QC validation.
+
+**Storage:**
+- Local dev: `fdensemble/uploaded_maps/` (gitignored)
+- Railway: `/app/uploaded_maps/` (persistent Railway volume — survives redeploys)
+- Override: set `MAPS_DIR` env var
+
+**Contents:** `catalog.json` + one `{map_id}.geojson` per map.
+
+### Preloading a map
+
+```bash
+# Read the GeoJSON into a variable and POST it
+GJ=$(cat my_proposed_plan.geojson | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d))")
+
+curl -X POST https://<railway-url>/api/maps \
+  -H "Content-Type: application/json" \
+  -d "{\"label\": \"Proposed Plan A\", \"geojson\": $GJ}"
+# → {"map_id":"abc123","label":"Proposed Plan A","n_districts":14,...}
+```
+
+Or from Python:
+```python
+import requests, json
+
+with open("my_proposed_plan.geojson") as f:
+    geojson = json.load(f)
+
+resp = requests.post("https://<railway-url>/api/maps",
+    json={"label": "Proposed Plan A", "geojson": geojson})
+print(resp.json())  # {"map_id": "abc123", ...}
+```
+
+### Scoring a preloaded map
+
+```bash
+curl -X POST https://<railway-url>/api/score-map \
+  -H "Content-Type: application/json" \
+  -d '{"map_id": "abc123", "run_id": "fdga_2026_benchmark_congress"}'
+```
+
+Returns per-metric grades + percentile ranks for the proposed plan, using the
+same histogram-approximation method as `_rank_and_grade()` in `main.py`.
+
+### Removing a map
+
+```bash
+curl -X DELETE https://<railway-url>/api/maps/abc123
+```
+
+---
+
+## 6. Updating Election Data
 
 ### Adding a new election cycle (e.g. 2026)
 
@@ -349,7 +439,7 @@ uv run --project fdp python fdp/scripts/build_vtd_inputs.py --only cvap
 
 ---
 
-## 6. Monitoring & Status Checks
+## 7. Monitoring & Status Checks
 
 ### Check Modal volume contents
 
@@ -457,7 +547,7 @@ uv run --project fdp python fdp/scripts/build_draw_stats.py \
 
 ---
 
-## 8. Generating Charts
+## 9. Generating Charts
 
 Charts read from local Parquet files — draw stats must be built first (§4 Step 4).
 No `DATABASE_URL` needed.
@@ -488,7 +578,7 @@ Charts output to `fdp/data/repos/main/ensemble/charts/`:
 
 ---
 
-## 9. Secrets & Credentials
+## 10. Secrets & Credentials
 
 ### Current secrets
 
@@ -514,7 +604,7 @@ modal deploy modal_app.py
 
 ---
 
-## 10. Data Maintenance
+## 11. Data Maintenance
 
 ### Rebuilding the VTD dual graphs
 
