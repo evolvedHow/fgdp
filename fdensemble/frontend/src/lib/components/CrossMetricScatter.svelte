@@ -52,14 +52,14 @@
 
     if (snap.enacted_x != null && snap.enacted_y != null) {
       datasets.push({
-        label:           'Enacted',
-        data:            [{ x: snap.enacted_x, y: snap.enacted_y }],
-        backgroundColor: '#e74c3c',
-        borderColor:     '#fff',
-        borderWidth:     2,
-        pointRadius:     9,
-        pointStyle:      'star',
-        pointHoverRadius: 11,
+        label:            'Enacted map',
+        data:             [{ x: snap.enacted_x, y: snap.enacted_y }],
+        backgroundColor:  '#e74c3c',
+        borderColor:      '#fff',
+        borderWidth:      2.5,
+        pointRadius:      10,
+        pointStyle:       'star',
+        pointHoverRadius: 13,
       });
     }
 
@@ -120,12 +120,70 @@
           ctx.restore();
         },
         afterDraw(ch: any) {
-          const { ctx, chartArea: { right, top } } = ch;
+          const { ctx, chartArea: { right, top, left, bottom } } = ch;
           ctx.save();
+
+          // r label — top right
           ctx.font      = '10px system-ui, sans-serif';
           ctx.fillStyle = '#555';
           ctx.textAlign = 'right';
           ctx.fillText(rLabel, right - 4, top + 14);
+
+          // Crosshair + label for enacted point
+          if (snap.enacted_x != null && snap.enacted_y != null) {
+            const xScale = ch.scales.x;
+            const yScale = ch.scales.y;
+            const px = xScale.getPixelForValue(snap.enacted_x);
+            const py = yScale.getPixelForValue(snap.enacted_y);
+
+            // Only draw if the point falls inside the chart area
+            if (px >= left && px <= right && py >= top && py <= bottom) {
+              const RED = '#e74c3c';
+
+              // Dashed crosshair lines from point to axes
+              ctx.strokeStyle = RED;
+              ctx.lineWidth   = 1;
+              ctx.setLineDash([4, 3]);
+              ctx.globalAlpha = 0.6;
+
+              // Vertical drop to x-axis
+              ctx.beginPath();
+              ctx.moveTo(px, py);
+              ctx.lineTo(px, bottom);
+              ctx.stroke();
+
+              // Horizontal line to y-axis
+              ctx.beginPath();
+              ctx.moveTo(px, py);
+              ctx.lineTo(left, py);
+              ctx.stroke();
+
+              ctx.setLineDash([]);
+              ctx.globalAlpha = 1;
+
+              // Outer ring to make the star stand out
+              ctx.beginPath();
+              ctx.arc(px, py, 13, 0, Math.PI * 2);
+              ctx.strokeStyle = RED;
+              ctx.lineWidth   = 1.5;
+              ctx.stroke();
+
+              // "Enacted" label — nudge above or below depending on room
+              const labelY = py > top + 22 ? py - 16 : py + 22;
+              ctx.font      = 'bold 10px system-ui, sans-serif';
+              ctx.fillStyle = RED;
+              ctx.textAlign = 'center';
+
+              // White background pill for readability
+              const txt   = `Enacted (${snap.enacted_x}, ${snap.enacted_y.toFixed(2)})`;
+              const tw    = ctx.measureText(txt).width;
+              ctx.fillStyle   = 'rgba(255,255,255,0.88)';
+              ctx.fillRect(px - tw / 2 - 3, labelY - 10, tw + 6, 13);
+              ctx.fillStyle   = RED;
+              ctx.fillText(txt, px, labelY);
+            }
+          }
+
           ctx.restore();
         },
       }],
