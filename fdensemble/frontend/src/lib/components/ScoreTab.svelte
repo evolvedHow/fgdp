@@ -5,7 +5,6 @@
   import GradePanel              from './GradePanel.svelte';
   import MetricCard              from './MetricCard.svelte';
   import RiverChart              from './RiverChart.svelte';
-  import MapUploader             from './MapUploader.svelte';
   import BenchmarkComparisonTable from './BenchmarkComparisonTable.svelte';
   import MultiMapScorecard       from './MultiMapScorecard.svelte';
   import UrbanCrackPanel         from './UrbanCrackPanel.svelte';
@@ -33,7 +32,6 @@
   let scoring            = $state(false);
   let companionScoring   = $state(false);
   let scoreError         = $state('');
-  let showUploader       = $state(false);
 
   // Metric display constants
   const PARTISAN_KEYS    = ['dem_seats', 'partisan_bias', 'efficiency_gap', 'mean_median'];
@@ -245,29 +243,15 @@
         >Remove</button>
       {/if}
 
-      <!-- Add map toggle -->
-      <button
-        onclick={() => showUploader = !showUploader}
-        style="display:flex;align-items:center;gap:.3rem;padding:.3rem .7rem;
-               border:1.5px solid var(--blue);border-radius:5px;
-               background:{showUploader ? 'var(--blue)' : 'transparent'};
-               color:{showUploader ? '#fff' : 'var(--blue)'};
-               cursor:pointer;font-size:.78rem;font-weight:600;"
-      >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        {showUploader ? 'Cancel' : 'Add map'}
-      </button>
     </div>
 
-    <!-- Uploader (collapsible) -->
-    {#if showUploader}
-      <div style="margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
-        <MapUploader onMapSaved={handleMapSaved} />
+    <!-- API hint: maps are preloaded server-side, not uploaded here -->
+    {#if maps.length === 0}
+      <div style="margin-top:.5rem;font-size:.67rem;color:var(--gray);line-height:1.5;">
+        No proposed maps loaded yet. Preload a QC'd map via the API:<br>
+        <code style="font-size:.66rem;background:#f0f2f5;padding:.1rem .35rem;border-radius:3px;user-select:all;">
+          POST /api/maps  · body: &#123;"label":"Plan A","geojson":&#123;...&#125;&#125;
+        </code>
       </div>
     {/if}
 
