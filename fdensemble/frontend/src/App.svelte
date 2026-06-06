@@ -5,6 +5,7 @@
   import EnsembleStoryTab  from './lib/components/EnsembleStoryTab.svelte';
   import AnalysisTab       from './lib/components/AnalysisTab.svelte';
   import { getAllScoredPlans, saveScoredPlan, deleteScoredPlan } from './lib/db.js';
+  import { apiGet } from './lib/api.js';
 
   type Tab = 'story' | 'analyze';
   let tab: Tab = $state('story');
@@ -29,8 +30,7 @@
   let scoredPlans: ScoredPlan[] = $state([]);
 
   async function loadRuns() {
-    const res = await fetch('/api/runs');
-    runs      = await res.json();
+    runs = await apiGet<RunMeta[]>('/runs');
     if (runs.length) {
       selectedRunId = runs[0].id;
       await Promise.all([
@@ -55,10 +55,10 @@
     loading = true;
     error   = '';
     try {
-      const url = `/api/analysis?run=${encodeURIComponent(runId)}&election=${electionIdx}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      analysis = await res.json();
+      analysis = await apiGet<Analysis>('/analysis', {
+        run: runId,
+        election: String(electionIdx),
+      });
     } catch (e: any) {
       error = e.message ?? 'Failed to load analysis';
     } finally {
@@ -68,8 +68,7 @@
     const paired = getCompanionRunId(runId);
     if (paired) {
       try {
-        const cRes = await fetch(`/api/analysis?run=${encodeURIComponent(paired)}&election=0`);
-        companionAnalysis = cRes.ok ? await cRes.json() : null;
+        companionAnalysis = await apiGet<Analysis>('/analysis', { run: paired, election: '0' });
       } catch {
         companionAnalysis = null;
       }

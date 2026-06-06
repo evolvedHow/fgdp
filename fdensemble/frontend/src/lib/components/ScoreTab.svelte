@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Analysis, ElectionOption, MetricGrade, Grades, ScoredPlan, MapMeta } from '../types.js';
+  import { STATIC_MODE, LIVE_SERVER_URL, apiPost, apiDelete } from '../api.js';
   import GradePanel              from './GradePanel.svelte';
   import MetricCard              from './MetricCard.svelte';
   import RiverChart              from './RiverChart.svelte';
@@ -83,6 +84,7 @@
   });
 
   async function loadMaps() {
+    if (STATIC_MODE) return; // map library not available in static mode
     try {
       const res = await fetch('/api/maps');
       maps = await res.json();
@@ -98,16 +100,7 @@
     companionScoredPlan = null;
 
     try {
-      const res = await fetch('/api/score-map', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ map_id: mapId, run_id: runId }),
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Server error ${res.status}: ${txt}`);
-      }
-      const plan: ScoredPlan = await res.json();
+      const plan = await apiPost<ScoredPlan>('/score-map', { map_id: mapId, run_id: runId });
       plan.run_id = runId;
       plan.source = 'library';
       scoredPlan = plan;
@@ -122,17 +115,10 @@
     if (companionRunId) {
       companionScoring = true;
       try {
-        const cRes = await fetch('/api/score-map', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ map_id: mapId, run_id: companionRunId }),
-        });
-        if (cRes.ok) {
-          const cPlan: ScoredPlan = await cRes.json();
-          cPlan.run_id = companionRunId;
-          cPlan.source = 'library';
-          companionScoredPlan = cPlan;
-        }
+        const cPlan = await apiPost<ScoredPlan>('/score-map', { map_id: mapId, run_id: companionRunId });
+        cPlan.run_id = companionRunId;
+        cPlan.source = 'library';
+        companionScoredPlan = cPlan;
       } catch { /* companion scoring failure is non-fatal */ }
       finally { companionScoring = false; }
     }
@@ -145,7 +131,7 @@
   }
 
   async function handleDeleteMap(mapId: string) {
-    await fetch(`/api/maps/${mapId}`, { method: 'DELETE' });
+    await apiDelete(`/maps/${mapId}`);
     maps = maps.filter(m => m.id !== mapId);
     if (selectedMapId === mapId) { selectedMapId = ''; scoredPlan = null; }
   }
@@ -211,7 +197,24 @@
     </span>
   </div>
 
-  <!-- Map picker -->
+  <!-- Static mode notice: map upload not available -->
+  {#if STATIC_MODE}
+    <div style="background:#f0f4ff;border:1.5px solid #b8c8f0;border-radius:8px;
+                padding:.6rem 1rem;margin-bottom:.9rem;font-size:.76rem;color:#2c4a8a;
+                display:flex;align-items:center;gap:.6rem;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      Map upload and shapefile scoring require the live server.
+      <a href={LIVE_SERVER_URL} target="_blank" rel="noopener"
+         style="color:var(--blue);font-weight:600;">Open live app ↗</a>
+    </div>
+  {/if}
+
+  <!-- Map picker (live mode only) -->
+  {#if !STATIC_MODE}
   <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;
               padding:.8rem 1rem;margin-bottom:.9rem;">
     <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;">
@@ -292,6 +295,7 @@
       </div>
     {/if}
   </div>
+  {/if}<!-- end !STATIC_MODE map picker -->
 
   <!-- Active map banner -->
   {#if scoredPlan && !scoring}

@@ -2,6 +2,7 @@
   import type { CorrelationData } from '../types.js';
   import CrossMetricScatter from './CrossMetricScatter.svelte';
   import CorrelationHeatmap from './CorrelationHeatmap.svelte';
+  import { apiGet } from '../api.js';
 
   interface Props {
     runId: string;
@@ -29,8 +30,7 @@
     if (loading || data) return;
     loading = true;
     try {
-      const res = await fetch(`/api/analysis/correlations?run=${encodeURIComponent(runId)}`);
-      data = await res.json() as CorrelationData;
+      data = await apiGet<CorrelationData>('/analysis/correlations', { run: runId });
       // Auto-select first scatter pair
       if (data.available && data.scatter) {
         const firstKey = Object.keys(data.scatter).find(k => k in PAIR_META) ?? null;

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { RunMeta, MapMeta, ScoredPlan, DistrictResult, VtdDetail } from '../types.js';
+  import { STATIC_MODE, LIVE_SERVER_URL, apiPost } from '../api.js';
   import DistrictDeltaTable from './DistrictDeltaTable.svelte';
   import DistrictSummaryCard from './DistrictSummaryCard.svelte';
 
@@ -13,6 +14,7 @@
   let libraryMaps: MapMeta[] = $state([]);
 
   onMount(async () => {
+    if (STATIC_MODE) return; // map library not available in static mode
     try {
       const res = await fetch('/api/maps');
       if (res.ok) libraryMaps = await res.json();
@@ -105,13 +107,7 @@
       const mapId = key.slice(8);
       const runId = defaultRunId();
       if (!runId) return null;
-      const res = await fetch('/api/score-map', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ map_id: mapId, run_id: runId }),
-      });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const plan: ScoredPlan = await res.json();
+      const plan = await apiPost<ScoredPlan>('/score-map', { map_id: mapId, run_id: runId });
       plan.source = 'library';
       return plan;
     }
@@ -167,6 +163,22 @@
   function pct(v: number) { return (v * 100).toFixed(1) + '%'; }
   function partyLabel(d: DistrictResult) { return d.dem_2pv >= 0.5 ? 'Dem' : 'Rep'; }
 </script>
+
+<!-- Static mode: library maps unavailable -->
+{#if STATIC_MODE}
+  <div style="background:#f0f4ff;border:1.5px solid #b8c8f0;border-radius:8px;
+              padding:.6rem 1rem;margin-bottom:.8rem;font-size:.76rem;color:#2c4a8a;
+              display:flex;align-items:center;gap:.6rem;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    Comparing current enacted maps across chambers is available here. To upload proposed maps,
+    <a href={LIVE_SERVER_URL} target="_blank" rel="noopener"
+       style="color:var(--blue);font-weight:600;">open the live app ↗</a>
+  </div>
+{/if}
 
 <!-- ── Map selectors ─────────────────────────────────────────────────────────── -->
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:.9rem;">

@@ -1,0 +1,88 @@
+name: Deploy fdensemble to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'fdensemble/**'
+      - '.github/workflows/fdensemble-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Python: install deps and run static export ──────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          pip install --no-cache-dir \
+            "fastapi" \
+            "uvicorn[standard]" \
+            "pandas" \
+            "numpy" \
+            "matplotlib" \
+            "python-dotenv" \
+            "requests" \
+            "httpx>=0.27.0" \
+            "shapely>=2.0.0" \
+            "pyarrow>=14.0.0" \
+            "httpx[http2]" \
+            "starlette" \
+            "anyio[trio]"
+
+      # ── Node: build the Svelte frontend in static mode ─────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: fdensemble/frontend/package-lock.json
+
+      - name: Install Node dependencies
+        working-directory: fdensemble/frontend
+        run: npm ci
+
+      - name: Build frontend (static mode)
+        working-directory: fdensemble/frontend
+        env:
+          # Enable static API routing (fetch from ./api/*.json instead of /api/...)
+          VITE_STATIC_MODE: '1'
+          # Set Vite base path to /fgdp/ for GitHub Pages project page
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      # ── Export: generate static API JSON into the built dist ───────────────
+      - name: Export static API JSON
+        working-directory: fdensemble
+        run: python scripts/export_static.py --out-dir frontend/dist
+
+      # ── Upload artifact for Pages deployment ────────────────────────────────
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: fdensemble/frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
