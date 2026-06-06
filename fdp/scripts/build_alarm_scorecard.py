@@ -38,6 +38,7 @@ import pandas as pd
 _SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPT_DIR))
 from build_scorecard import (  # noqa: E402
+    _FLOOR_GRADE_METRICS,
     _GRADE_ORDER,
     _METRIC_META,
     _adj,
@@ -45,6 +46,7 @@ from build_scorecard import (  # noqa: E402
     _comp_grade,
     _directional_grade,
     _ensemble_pass,
+    _floor_grade,
     _generate_takeaway,
     _histogram_data,
     _metric_entry,

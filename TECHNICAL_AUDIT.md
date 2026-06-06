@@ -449,6 +449,23 @@ A map can receive an A grade on `dem_seats` while still under-delivering Democra
 
 The proportionality gap decomposition (Section 5.8) addresses this by separating structural geography from deliberate manipulation.
 
+### Floor-Based Grading for Minority Metrics (Updated 2026-06-07)
+
+**Background:** The Voting Rights Act (VRA) is a floor statute. Section 2 prohibits drawing lines that *dilute* minority voting power — it creates a right not to be denied minority-opportunity districts, not a ceiling on how many a map may contain. The traditional Princeton symmetric grading penalized maps with "too many" minority districts (e.g., a map at the 100th percentile received Grade F), which is legally incoherent.
+
+**NYTimes study validation (May 2026):** The New York Times study "Redistricting, Race and Court Gerrymanders" (May 17, 2026) found that race-neutral redistricting simulations across the South produce approximately the same number of minority-opportunity districts as VRA-compliant maps. For Georgia, the study found fair maps would produce approximately 6 minority-opportunity congressional seats — matching the GerryChain ensemble median of 6 Democratic-leaning seats. This means **the partisan and racial gerrymandering narratives converge**: the 1 seat withheld by the manipulation gap is simultaneously a partisan gerrymandering finding and a VRA floor concern.
+
+**Implementation:**
+- **Affected metrics:** `maj_black`, `min_coal` (GerryChain); `maj_hisp`, `maj_aian`, `maj_asian` (ALARM/future)
+- **Floor:** 10th percentile of ensemble distribution (the race-neutral VRA floor)
+- **Grade A:** at or above 50th percentile (comfortably adequate)
+- **Grade B:** at or above 10th percentile (meets the VRA floor)
+- **Grade F:** below 10th percentile (potential VRA Section 2 dilution)
+- Note: Grade C is not used for floor metrics — the floor concept is binary (above/below)
+- **Backward compatibility:** `grade_symmetric` field retained in scorecard JSON for lineage comparison with traditional Princeton methodology
+
+**Nuance (displayed in frontend):** Having MORE majority-minority districts than the neutral median is never penalized. The traditional symmetric grade is shown at reduced opacity alongside the floor grade so reviewers can see the methodological difference.
+
 ---
 
 ## 7. Results Summary
@@ -516,3 +533,11 @@ The proportionality gap decomposition (Section 5.8) addresses this by separating
 | `partisan_bias` null for GerryChain runs (normative test defaults to pass) | Low | `build_scorecard.py` |
 | `polsby_popper` and `county_splits` null for all GerryChain runs | Medium | `build_scorecard.py` |
 | `maj_black` CVAP vs. VAP discrepancy between GerryChain (F) and ALARM (B) needs disclosure in public-facing materials | Medium | Communication |
+
+**Fixed Issues (2026-06-07):**
+- `comp_seats` margin inconsistency: `_score_geojson` was hardcoding ±5pp (0.45/0.55) instead of using `COMPETITIVE_MARGIN/2` (±3.5pp). Fixed — now uses `half_margin_score = COMPETITIVE_MARGIN / 2.0` consistently.
+- `maj_black` grading inconsistency: symmetric grading was penalizing "too many" minority districts. Fixed with floor-based grading. Symmetric grade retained as `grade_symmetric` for lineage.
+
+**Dead Code Removed (2026-06-07):**
+- `EvaluateTab.svelte`: Orphaned component (zero imports in the application). Deleted.
+- `PlanUploader.svelte`: Used only by the orphaned EvaluateTab. Deleted.

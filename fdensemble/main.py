@@ -1542,8 +1542,8 @@ def _score_geojson(features: list, run_id: str) -> dict:
     total_votes_all = grouped['total_vap'].sum()
     efficiency_gap = round((waste_dem - waste_rep) / total_votes_all, 4) if total_votes_all > 0 else 0.0
 
-    # Competitive seats (within 5pp of 50%)
-    comp_seats = int(((district_dem_2pvs >= 0.45) & (district_dem_2pvs <= 0.55)).sum())
+    # Competitive seats (within COMPETITIVE_MARGIN of 50%)
+    comp_seats = int(((district_dem_2pvs >= 0.5 - half_margin_score) & (district_dem_2pvs <= 0.5 + half_margin_score)).sum())
 
     # Look up pct_rank against stored ensemble histograms
     run_data = _runs.get(run_id)
@@ -1556,6 +1556,7 @@ def _score_geojson(features: list, run_id: str) -> dict:
         g = grades.get(metric_key)
         if g is None or 'histogram' not in g:
             return {'value': round(val, 4), 'pct_rank': 50.0, 'grade': 'C'}
+        grade_symmetric_val = None  # set only for floor-graded minority metrics
         hist = g['histogram']
         edges = hist['edges']
         counts = hist['counts']
@@ -1580,9 +1581,19 @@ def _score_geojson(features: list, run_id: str) -> dict:
             elif rank >= 64: grd = 'B'
             elif rank >= 5:  grd = 'C'
             else: grd = 'F'
-        elif metric_key in ('min_influence', 'polsby_popper',
-                            'maj_black', 'maj_hisp', 'maj_aian', 'maj_asian'):
-            # higher is better: directional
+        elif metric_key in ('maj_black', 'min_coal', 'maj_hisp', 'maj_aian', 'maj_asian'):
+            # Floor-based grade: VRA floor metric — having MORE is never penalized
+            # Grade A = >=50th pct, Grade B = >=10th pct (VRA floor), Grade F = <10th pct
+            d_sym = abs(pct - 50.0)
+            if d_sym <= 10: grade_symmetric_val = 'A'
+            elif d_sym <= 30: grade_symmetric_val = 'B'
+            elif d_sym <= 45: grade_symmetric_val = 'C'
+            else: grade_symmetric_val = 'F'
+            if pct >= 50: grd = 'A'
+            elif pct >= 10: grd = 'B'
+            else: grd = 'F'
+        elif metric_key in ('min_influence', 'polsby_popper'):
+            # higher is better: directional (existing behavior, unchanged)
             if pct >= 95: grd = 'A'
             elif pct >= 64: grd = 'B'
             elif pct >= 5:  grd = 'C'
@@ -1595,8 +1606,11 @@ def _score_geojson(features: list, run_id: str) -> dict:
             else: grd = 'F'
         # Pass through a_grade_range from the stored benchmark metric
         a_gr = g.get('a_grade_range')
-        return {'value': round(val, 4), 'pct_rank': round(pct, 1), 'grade': grd,
-                'a_grade_range': a_gr}
+        result_dict = {'value': round(val, 4), 'pct_rank': round(pct, 1), 'grade': grd,
+                       'a_grade_range': a_gr}
+        if grade_symmetric_val is not None:
+            result_dict['grade_symmetric'] = grade_symmetric_val
+        return result_dict
 
     metrics = {
         'dem_seats':      _rank_and_grade('dem_seats',      float(dem_seats)),

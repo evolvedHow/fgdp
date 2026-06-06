@@ -1670,9 +1670,9 @@
         "label": "Black Community Representation",
         "headline": "Do Black voters have the opportunity to elect representatives of their choice?",
         "category": "minority",
-        "description": "This counts districts where Black citizens make up more than 50% of the Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that dilute minority communities' ability to elect their preferred candidates. The histogram shows how many majority-Black districts thousands of neutrally drawn alternative maps produce \u2014 establishing what geography alone would naturally support. The Princeton ensemble test treats deviation in either direction as a statistical anomaly: too few raises VRA dilution concerns; too many means the map is also unusual compared to neutral redistricting. Uses CVAP rather than VAP for precision (excludes non-citizens).",
+        "description": "This counts districts where Black citizens make up more than 50% of the Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that dilute minority communities' ability to elect their preferred candidates. The histogram shows how many majority-Black districts thousands of neutrally drawn alternative maps produce \u2014 establishing the race-neutral VRA floor. This metric uses floor-based grading: having MORE majority-Black districts than neutral maps is never penalized \u2014 the VRA protects against dilution, not over-representation. Grade F means the map falls below the race-neutral redistricting floor (10th-percentile of ensemble). A symmetric grade is also reported alongside for comparison with the traditional Princeton methodology. Uses CVAP rather than VAP for legal precision (excludes non-citizens).",
         "takeaway": "The enacted map has 50 majority-Black district(s) \u2014 more than most neutral alternatives (neutral range: 35\u201340). Black communities have strong electoral representation opportunity.",
-        "grade": "F",
+        "grade": "A",
         "enacted": 50.0,
         "pct_rank": 100.0,
         "histogram": {
@@ -1781,16 +1781,18 @@
         },
         "a_grade_range": {
           "lo": 37.0,
-          "hi": 38.0
-        }
+          "hi": null
+        },
+        "grade_symmetric": "F",
+        "floor": 35.0
       },
       "min_coal": {
         "label": "Minority Coalition Representation",
         "headline": "Do communities of color collectively hold electoral influence?",
         "category": "minority",
-        "description": "This counts districts where voters of color \u2014 Black, Hispanic, Asian, and others \u2014 together make up more than 50% of the Citizen Voting Age Population. Even when no single racial group holds a majority, communities of color can collectively influence electoral outcomes. This 'coalition' measure is increasingly important as Georgia's demographics diversify. The Princeton ensemble test treats deviation in either direction as anomalous: the grade reflects statistical distance from neutral redistricting outcomes, not a policy judgment about the direction of that distance. Uses 2024 ACS 5-year CVAP estimates.",
+        "description": "This counts districts where voters of color \u2014 Black, Hispanic, Asian, and others \u2014 together make up more than 50% of the Citizen Voting Age Population. Even when no single racial group holds a majority, communities of color can collectively influence electoral outcomes. This coalition measure is increasingly important as Georgia's demographics diversify. This metric uses floor-based grading: having MORE minority-coalition districts than neutral maps is never penalized \u2014 the VRA protects against dilution of minority voting power, not against maps that are well-represented. Grade F means the enacted map has fewer coalition districts than the race-neutral redistricting floor (10th percentile of ensemble). A symmetric grade is reported alongside for comparison with the traditional Princeton methodology. Uses 2024 ACS 5-year CVAP estimates.",
         "takeaway": "The enacted map has 70 minority-coalition district(s) \u2014 more than most neutral alternatives. Communities of color have strong collective electoral influence.",
-        "grade": "F",
+        "grade": "A",
         "enacted": 70.0,
         "pct_rank": 98.2,
         "histogram": {
@@ -1898,9 +1900,11 @@
           ]
         },
         "a_grade_range": {
-          "lo": 65.0,
-          "hi": 66.0
-        }
+          "lo": 66.0,
+          "hi": null
+        },
+        "grade_symmetric": "F",
+        "floor": 63.0
       },
       "maj_white": {
         "label": "Majority-White Districts",
@@ -2266,9 +2270,9 @@
       "label": "Black Community Representation",
       "headline": "Do Black voters have the opportunity to elect representatives of their choice?",
       "category": "minority",
-      "description": "This counts districts where Black citizens make up more than 50% of the Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that dilute minority communities' ability to elect their preferred candidates. The histogram shows how many majority-Black districts thousands of neutrally drawn alternative maps produce \u2014 establishing what geography alone would naturally support. The Princeton ensemble test treats deviation in either direction as a statistical anomaly: too few raises VRA dilution concerns; too many means the map is also unusual compared to neutral redistricting. Uses CVAP rather than VAP for precision (excludes non-citizens).",
+      "description": "This counts districts where Black citizens make up more than 50% of the Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that dilute minority communities' ability to elect their preferred candidates. The histogram shows how many majority-Black districts thousands of neutrally drawn alternative maps produce \u2014 establishing the race-neutral VRA floor. This metric uses floor-based grading: having MORE majority-Black districts than neutral maps is never penalized \u2014 the VRA protects against dilution, not over-representation. Grade F means the map falls below the race-neutral redistricting floor (10th-percentile of ensemble). A symmetric grade is also reported alongside for comparison with the traditional Princeton methodology. Uses CVAP rather than VAP for legal precision (excludes non-citizens).",
       "takeaway": "The enacted map has 50 majority-Black district(s) \u2014 more than most neutral alternatives (neutral range: 35\u201340). Black communities have strong electoral representation opportunity.",
-      "grade": "F",
+      "grade": "A",
       "enacted": 50.0,
       "pct_rank": 100.0,
       "histogram": {
@@ -2377,16 +2381,18 @@
       },
       "a_grade_range": {
         "lo": 37.0,
-        "hi": 38.0
-      }
+        "hi": null
+      },
+      "grade_symmetric": "F",
+      "floor": 35.0
     },
     "min_coal": {
       "label": "Minority Coalition Representation",
       "headline": "Do communities of color collectively hold electoral influence?",
       "category": "minority",
-      "description": "This counts districts where voters of color \u2014 Black, Hispanic, Asian, and others \u2014 together make up more than 50% of the Citizen Voting Age Population. Even when no single racial group holds a majority, communities of color can collectively influence electoral outcomes. This 'coalition' measure is increasingly important as Georgia's demographics diversify. The Princeton ensemble test treats deviation in either direction as anomalous: the grade reflects statistical distance from neutral redistricting outcomes, not a policy judgment about the direction of that distance. Uses 2024 ACS 5-year CVAP estimates.",
+      "description": "This counts districts where voters of color \u2014 Black, Hispanic, Asian, and others \u2014 together make up more than 50% of the Citizen Voting Age Population. Even when no single racial group holds a majority, communities of color can collectively influence electoral outcomes. This coalition measure is increasingly important as Georgia's demographics diversify. This metric uses floor-based grading: having MORE minority-coalition districts than neutral maps is never penalized \u2014 the VRA protects against dilution of minority voting power, not against maps that are well-represented. Grade F means the enacted map has fewer coalition districts than the race-neutral redistricting floor (10th percentile of ensemble). A symmetric grade is reported alongside for comparison with the traditional Princeton methodology. Uses 2024 ACS 5-year CVAP estimates.",
       "takeaway": "The enacted map has 70 minority-coalition district(s) \u2014 more than most neutral alternatives. Communities of color have strong collective electoral influence.",
-      "grade": "F",
+      "grade": "A",
       "enacted": 70.0,
       "pct_rank": 98.2,
       "histogram": {
@@ -2494,9 +2500,11 @@
         ]
       },
       "a_grade_range": {
-        "lo": 65.0,
-        "hi": 66.0
-      }
+        "lo": 66.0,
+        "hi": null
+      },
+      "grade_symmetric": "F",
+      "floor": 63.0
     },
     "maj_white": {
       "label": "Majority-White Districts",

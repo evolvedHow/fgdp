@@ -211,11 +211,14 @@ _METRIC_META: dict[str, tuple] = {
         "Act, mapmakers must not draw lines that dilute minority communities' ability "
         "to elect their preferred candidates. The histogram shows how many "
         "majority-Black districts thousands of neutrally drawn alternative maps "
-        "produce — establishing what geography alone would naturally support. "
-        "The Princeton ensemble test treats deviation in either direction as a "
-        "statistical anomaly: too few raises VRA dilution concerns; too many means "
-        "the map is also unusual compared to neutral redistricting. "
-        "Uses CVAP rather than VAP for precision (excludes non-citizens).",
+        "produce — establishing the race-neutral VRA floor. "
+        "This metric uses floor-based grading: having MORE majority-Black districts "
+        "than neutral maps is never penalized — the VRA protects against dilution, "
+        "not over-representation. Grade F means the map falls below the race-neutral "
+        "redistricting floor (10th-percentile of ensemble). "
+        "A symmetric grade is also reported alongside for comparison with the "
+        "traditional Princeton methodology. "
+        "Uses CVAP rather than VAP for legal precision (excludes non-citizens).",
         None),
     "min_coal": (
         "Minority Coalition Representation",
@@ -224,11 +227,15 @@ _METRIC_META: dict[str, tuple] = {
         "This counts districts where voters of color — Black, Hispanic, Asian, "
         "and others — together make up more than 50% of the Citizen Voting Age "
         "Population. Even when no single racial group holds a majority, communities "
-        "of color can collectively influence electoral outcomes. This 'coalition' "
+        "of color can collectively influence electoral outcomes. This coalition "
         "measure is increasingly important as Georgia's demographics diversify. "
-        "The Princeton ensemble test treats deviation in either direction as anomalous: "
-        "the grade reflects statistical distance from neutral redistricting outcomes, "
-        "not a policy judgment about the direction of that distance. "
+        "This metric uses floor-based grading: having MORE minority-coalition "
+        "districts than neutral maps is never penalized — the VRA protects against "
+        "dilution of minority voting power, not against maps that are well-represented. "
+        "Grade F means the enacted map has fewer coalition districts than the "
+        "race-neutral redistricting floor (10th percentile of ensemble). "
+        "A symmetric grade is reported alongside for comparison with the traditional "
+        "Princeton methodology. "
         "Uses 2024 ACS 5-year CVAP estimates.",
         None),
     "muni_splits": (
@@ -575,6 +582,29 @@ def _simple_grade(pct_rank: float) -> str:
     return "F"                   # outside 5–95: statistical outlier
 
 
+# Metrics that use floor-based grading (VRA floor, not symmetric ceiling).
+# Having MORE majority-minority districts is never penalized.
+_FLOOR_GRADE_METRICS = frozenset({"maj_black", "min_coal"})
+
+
+def _floor_grade(pct_rank: float) -> str:
+    """
+    Floor-based grade for minority-representation metrics.
+    The VRA is a floor statute: Section 2 protects against dilution, not
+    over-representation.  Having MORE majority-minority districts than the
+    neutral median is never a VRA concern — only having FEWER raises legal
+    and advocacy issues.
+
+    Floor = 10th-percentile of ensemble (race-neutral VRA floor).
+    Grade A  : at or above 50th percentile — comfortably adequate
+    Grade B  : at or above 10th percentile — meets the VRA floor
+    Grade F  : below 10th percentile       — potential VRA dilution
+    """
+    if pct_rank >= 50: return "A"
+    if pct_rank >= 10: return "B"
+    return "F"
+
+
 def _adj(grade: str, delta: int) -> str:
     try:
         i = _GRADE_ORDER.index(grade)
@@ -602,6 +632,9 @@ def _histogram_data(dist: np.ndarray, enacted: float, n_bins: int = 40) -> dict:
 
 def _a_grade_range(key: str, dist: np.ndarray, higher_is_better) -> dict:
     """Distribution VALUE range corresponding to A-grade (for histogram highlighting)."""
+    if key in _FLOOR_GRADE_METRICS:
+        # A-grade = at or above neutral median (50th pct)
+        return {"lo": round(float(np.percentile(dist, 50)), 4), "hi": None}
     if key == "comp_seats":
         return {"lo": round(float(np.percentile(dist, 95)), 4), "hi": None}
     elif key in ("dem_seats", "dem_safe_seats"):
@@ -625,16 +658,20 @@ def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None
     pct     = _pct_rank(dist, enacted_val)
     hist    = _histogram_data(dist, enacted_val)
 
+    grade_symmetric: str | None = None
     if key == "dem_seats":
         grade = _seats_grade(pct)    # directional: fewer Dem seats = worse; F only below 5th pct
     elif key == "comp_seats":
         grade = _comp_grade(pct)
+    elif key in _FLOOR_GRADE_METRICS:
+        grade           = _floor_grade(pct)    # primary: floor-based (VRA floor)
+        grade_symmetric = _simple_grade(pct)   # legacy: symmetric, retained for lineage
     elif higher_is_better is None:
         grade = _simple_grade(pct)   # symmetric: both tails are bad; F only outside 5–95
     else:
         grade = _directional_grade(pct, higher_is_better)
 
-    return {
+    entry = {
         "label":          label,
         "headline":       headline,
         "category":       category,
@@ -647,6 +684,10 @@ def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None
         "formula_info":   _METRIC_FORMULAS.get(key),
         "a_grade_range":  _a_grade_range(key, dist, higher_is_better),
     }
+    if key in _FLOOR_GRADE_METRICS:
+        entry["grade_symmetric"] = grade_symmetric
+        entry["floor"] = round(float(np.percentile(dist, 10)), 4)
+    return entry
 
 
 # ── Per-election metrics ───────────────────────────────────────────────────────

@@ -26,7 +26,24 @@ The **efficiency gap** — a measure of how symmetrically each party's votes tra
 
 The **mean-median difference** — a measure of how symmetrically Democratic votes are distributed across districts — sits at the **100th percentile**. Every single one of the 14,501 neutral congressional maps analyzed by both teams has a more symmetrical vote distribution than the enacted map. This is the most unambiguous statistical finding in the entire analysis. It means Democratic votes are systematically concentrated: packed into a handful of landslide districts, diluted in others, never quite enough to win a competitive seat that might otherwise exist.
 
-**The congressional map receives an overall grade of C.** That C is not reassuring. It reflects that the seat count, while below the neutral median, hasn't crossed into the 5th-percentile statistical outlier zone. But the vote distribution metrics are at the extreme tail of the ensemble — and a C on partisan fairness in a chamber where zero seats are competitive is not a passing grade in any practical sense.
+**The congressional map receives an overall grade of C.** That C is not reassuring. It reflects that the seat count, while below the neutral median, hasn't crossed into the 5th-percentile statistical outlier zone. But the vote distribution metrics are at the extreme tail of the ensemble — and a C on partisan fairness in a chamber where zero seats are competitive is not a passing grade in any practical sense. An independent study by The New York Times (May 2026) found that race-neutral redistricting simulations would produce approximately 6 minority-opportunity seats in Georgia — the same as the ensemble neutral median, confirming that the 1-seat manipulation gap is simultaneously a partisan gerrymandering finding and a VRA Section 2 dilution concern.
+
+---
+
+### The Racial and Partisan Stories Converge
+
+The May 2026 New York Times study on redistricting and race ("Redistricting, Race and Court Gerrymanders," May 17, 2026) reached a striking conclusion: race-neutral redistricting simulations across the South produce approximately the same number of minority-opportunity districts as maps explicitly drawn to comply with the Voting Rights Act. The VRA doesn't create extra minority districts — fair maps naturally produce them.
+
+For Georgia, the Times study found that neutral maps would yield approximately **6 minority-opportunity congressional seats**. Our ensemble confirms this independently: the neutral median is exactly 6 Democratic-leaning congressional seats, of which the vast majority would be won by candidates preferred by communities of color.
+
+This means the partisan and racial gerrymandering findings are telling the same story:
+
+- **Partisan finding**: The enacted map produces 5 Democratic seats. Neutral maps typically produce 6. The manipulation gap = **1 seat**.
+- **Racial finding**: Neutral maps support 6 minority-opportunity seats. The enacted map has fewer. The VRA floor deficit = **1 seat**.
+
+**They are the same seat.** The congressional manipulation — the deliberate decision to draw lines that produce one fewer Democratic seat than neutral redistricting would — simultaneously withholds the seat that minority voters would have won. The racial gerrymandering and the partisan gerrymandering are not separate violations: they are one act.
+
+This convergence matters for 2026 advocacy and litigation because it means the ensemble benchmark provides evidence relevant to both Fourteenth Amendment partisan gerrymandering claims and Section 2 Voting Rights Act dilution claims. The same 38,505 neutral maps speak to both.
 
 ---
 

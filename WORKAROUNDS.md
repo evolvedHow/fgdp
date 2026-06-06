@@ -6,7 +6,16 @@ This document catalogs every known data anomaly, approximation, limitation, and 
 in the ensemble benchmark pipeline. Entries are organized by pipeline stage. For each item: the
 issue, the workaround applied, and the impact on downstream interpretation.
 
-Last updated: 2026-06-06
+Last updated: 2026-06-07
+
+---
+
+## Architecture Note (2026-06-07)
+Supabase has been ELIMINATED. The pipeline is now fully Parquet + DuckDB in-process. Historical Supabase references in this file are archive-only.
+
+## Dead Code Removed (2026-06-07)
+- EvaluateTab.svelte: orphaned component (zero imports in App.svelte or any other component). Deleted.
+- PlanUploader.svelte: only used by the now-deleted EvaluateTab. Deleted.
 
 ---
 
@@ -485,40 +494,45 @@ letter grade assignments in most cases — grade transitions occur at coarse thr
 
 ### 5.2 comp_seats competitive margin inconsistency between benchmark build and score endpoint
 
-**Issue:** Two different competitive-seat definitions are used in different code paths:
+**[RESOLVED 2026-06-07] Fixed: changed 0.45/0.55 hardcode to use half_margin_score = COMPETITIVE_MARGIN/2.0**
+
+**Issue (archived):** Two different competitive-seat definitions were used in different code paths:
 - `build_draw_stats.py` and `compute_metrics()`: `|dem_2pv - 0.5| <= COMPETITIVE_MARGIN/2`
   where `COMPETITIVE_MARGIN = 0.07` (default), giving a ±3.5pp window (seats between 46.5% and
   53.5% dem_2pv are competitive).
-- `_score_geojson()` (line 1546 in `fdensemble/main.py`): hardcodes `[0.45, 0.55]` (±5pp window).
+- `_score_geojson()` (line 1546 in `fdensemble/main.py`): hardcoded `[0.45, 0.55]` (±5pp window).
 
-**Impact:** When `COMPETITIVE_MARGIN = 0.10` (which equals a ±5pp window), the two definitions
-agree. At the current default of `COMPETITIVE_MARGIN = 0.07`, `_score_geojson` uses a wider
-window than the benchmark. A district at 46.8% dem_2pv would be counted as competitive by the
-scoring endpoint but not by the benchmark builder, producing a score discrepancy for uploaded
-plans. This bug does not affect the pre-computed benchmark scorecards, only interactive scoring of
-user-uploaded plans.
+**Impact (archived):** When `COMPETITIVE_MARGIN = 0.10` (which equals a ±5pp window), the two definitions
+agreed. At the default of `COMPETITIVE_MARGIN = 0.07`, `_score_geojson` used a wider window than
+the benchmark. A district at 46.8% dem_2pv would be counted as competitive by the scoring endpoint
+but not by the benchmark builder, producing a score discrepancy for uploaded plans. This bug did
+not affect the pre-computed benchmark scorecards, only interactive scoring of user-uploaded plans.
 
 **Severity:** Moderate. For Georgia congressional (14 districts), the difference between the two
-definitions typically affects 0–1 district in practice. The grade thresholds are coarse enough
-that this rarely changes the letter grade, but it can shift percentile rank.
+definitions typically affected 0–1 district in practice.
 
 ---
 
 ### 5.3 maj_black grading inconsistency between compute_princeton_grades and _score_geojson
 
-**Issue:** Two grading paths apply different logic to `maj_black` (majority-Black districts):
-- `compute_princeton_grades()` (line 938): takes the `higher_is_better is None` branch, applying
+**[RESOLVED 2026-06-07] Fixed: floor-based grading implemented. grade_symmetric retained alongside grade for lineage.**
+
+**Issue (archived):** Two grading paths applied different logic to `maj_black` (majority-Black districts):
+- `compute_princeton_grades()` (line 938): took the `higher_is_better is None` branch, applying
   symmetric `_simple_grade` (center of the distribution is best; both too-few and too-many are
   anomalous).
-- `_rank_and_grade()` in `_score_geojson` (line 1583): lists `maj_black` as "higher is better"
+- `_rank_and_grade()` in `_score_geojson` (line 1583): listed `maj_black` as "higher is better"
   (directional), applying `_comp_grade` thresholds.
 
-**Impact:** For the same plan, the standalone `maj_black` card shown in the benchmark scorecard
-could receive a different letter grade than the `maj_black` card shown in the interactive
+**Impact (archived):** For the same plan, the standalone `maj_black` card shown in the benchmark
+scorecard could receive a different letter grade than the `maj_black` card shown in the interactive
 GeoJSON scorer. For Georgia, the enacted congressional map has 4 majority-Black districts at the
-100th percentile of the ensemble (pct_rank = 100). Under symmetric grading this is F; under
-"higher is better" grading this would be A. This is a significant discrepancy that could mislead
-users comparing the two views.
+100th percentile of the ensemble (pct_rank = 100). Under symmetric grading this was F; under
+"higher is better" grading this would be A. This was a significant discrepancy.
+
+**Resolution details:** Floor-based grading is now applied to `maj_black` and `min_coal` across
+`build_scorecard.py`, `build_alarm_scorecard.py`, and `fdensemble/main.py`. The `grade_symmetric`
+field is retained in scorecard JSON alongside `grade` for lineage/audit purposes.
 
 ---
 

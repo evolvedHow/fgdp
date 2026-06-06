@@ -226,13 +226,37 @@
         </div>
       {:else}
         <!-- Default: enacted grades -->
-        <div style="display:flex;align-items:center;gap:.4rem;">
-          <span style="display:inline-flex;align-items:center;justify-content:center;
-                       width:1.7rem;height:1.7rem;border-radius:50%;
-                       background:{gradeColor[metric.grade] ?? '#888'};
-                       color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
+        {#if (metric as any).grade_symmetric !== undefined && (metric as any).grade_symmetric !== metric.grade}
+          <!-- Dual grade: VRA floor + symmetric side by side -->
+          <div style="display:flex;align-items:center;gap:.5rem;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;">
+              <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+                           color:{gradeColor[metric.grade] ?? '#888'};">VRA Floor</span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;
+                           width:1.7rem;height:1.7rem;border-radius:50%;
+                           background:{gradeColor[metric.grade] ?? '#888'};
+                           color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;opacity:.55;">
+              <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+                           color:var(--gray);">Symmetric</span>
+              <span style="display:inline-flex;align-items:center;justify-content:center;
+                           width:1.7rem;height:1.7rem;border-radius:50%;
+                           background:{gradeColor[(metric as any).grade_symmetric] ?? '#888'};
+                           color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{(metric as any).grade_symmetric}</span>
+            </div>
+          </div>
           <span style="font-size:.7rem;color:var(--gray);">{metric.pct_rank}th percentile</span>
-        </div>
+        {:else}
+          <!-- Single grade (no grade_symmetric, or both grades match) -->
+          <div style="display:flex;align-items:center;gap:.4rem;">
+            <span style="display:inline-flex;align-items:center;justify-content:center;
+                         width:1.7rem;height:1.7rem;border-radius:50%;
+                         background:{gradeColor[metric.grade] ?? '#888'};
+                         color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
+            <span style="font-size:.7rem;color:var(--gray);">{metric.pct_rank}th percentile</span>
+          </div>
+        {/if}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
           <div>
             <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Enacted</div>
@@ -253,6 +277,14 @@
           </div>
           {/if}
         </div>
+        {#if !planMetric && (metric as any).grade_symmetric !== undefined}
+          <div style="font-size:.62rem;color:var(--gray);margin-top:.4rem;padding:.3rem .5rem;
+                      background:#f8f4ff;border-radius:4px;border-left:2.5px solid #8e44ad;line-height:1.45;">
+            <b style="color:#8e44ad;">VRA Floor Grade</b>: Minority representation uses a one-sided test —
+            having more minority-opportunity districts than neutral maps is never penalized.
+            Grade F = below the race-neutral VRA floor (10th pct). Symmetric grade shown for reference.
+          </div>
+        {/if}
       {/if}
     </div>
 
