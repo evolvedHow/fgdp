@@ -32,11 +32,122 @@ DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main/ensemble"
 # VTD → municipality lookup (built from ALARM RDS via scripts/build_alarm_scorecard.py)
 _VTD_MUNI_PATH = _REPO_ROOT / "fdensemble" / "data" / "vtd_muni.parquet"
 
-MAJORITY_THRESHOLD = 0.50
+MAJORITY_THRESHOLD            = 0.50
+BVAP_MAJORITY_THRESHOLD       = 0.50   # threshold for majority-Black (CVAP)
 COMPETITIVE_THRESHOLD_DEFAULT = 0.05
+INFLUENCE_MIN_THRESHOLD       = 0.37   # minority influence band lower bound (FDGA standard)
+INFLUENCE_MAX_THRESHOLD       = 0.50   # minority influence band upper bound
 
 # Princeton grading constants (mirrors fdensemble/main.py)
 _GRADE_ORDER = ["A", "B", "C", "F"]
+
+# ── Formula metadata — displayed in info tooltips in fdensemble UI ────────────
+# Every entry: formula (plain text), data_source, config_keys (names of
+# configurable threshold params shown alongside the formula).
+_METRIC_FORMULAS: dict[str, dict] = {
+    "dem_seats": {
+        "formula":       "count(d : dem_2pv_d ≥ 0.50)",
+        "detail":        "dem_2pv_d = Σ dem_votes_vtd / Σ (dem_votes_vtd + rep_votes_vtd) for all VTDs in district d",
+        "data_source":   "VTD composite — 2018–2024 five-election average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov+Senate avg, 2024 Pres)",
+        "config_keys":   [],
+    },
+    "efficiency_gap": {
+        "formula":       "(Σ wasted_dem − Σ wasted_rep) / Σ total_votes  across all districts",
+        "detail":        "wasted_dem = excess Dem votes beyond 50%+1 in Dem wins + all Dem votes in Dem losses; symmetric for Rep",
+        "data_source":   "VTD composite — 2018–2024 composite",
+        "config_keys":   [],
+    },
+    "mean_median": {
+        "formula":       "mean(dem_2pv_d) − median(dem_2pv_d)  across all d",
+        "detail":        "Positive → Dem votes distributed less efficiently across districts (Republican structural advantage). Negative → reverse.",
+        "data_source":   "VTD composite — 2018–2024 composite",
+        "config_keys":   [],
+    },
+    "comp_seats": {
+        "formula":       "count(d : |dem_2pv_d − 0.50| ≤ competitive_margin)",
+        "detail":        "A district is competitive if the two-party Democratic share falls within ±competitive_margin of 50%",
+        "data_source":   "VTD composite — 2018–2024 composite",
+        "config_keys":   ["competitive_margin"],
+    },
+    "partisan_bias": {
+        "formula":       "seats_R(vote=50%) − seats_D(vote=50%)",
+        "detail":        "Princeton cube-law normative test: how many more seats one party would win if both parties received exactly 50% of the statewide vote",
+        "data_source":   "VTD composite — 2018–2024 composite",
+        "config_keys":   [],
+    },
+    "polsby_popper": {
+        "formula":       "mean_d(4π × area_d / perimeter_d²)",
+        "detail":        "Per-district Polsby-Popper score averaged across all districts. 1 = perfect circle; lower = more irregular",
+        "data_source":   "2020 Census VTD geometries (TIGER/Line)",
+        "config_keys":   [],
+    },
+    "county_splits": {
+        "formula":       "count(counties c : ∃ VTDs v1, v2 ∈ c assigned to different districts)",
+        "detail":        "A county is 'split' when at least two of its VTDs are assigned to different congressional/legislative districts",
+        "data_source":   "2020 Census county–VTD geographic assignment",
+        "config_keys":   [],
+    },
+    "muni_splits": {
+        "formula":       "count(municipalities m : ∃ VTDs v1, v2 ∈ m assigned to different districts)",
+        "detail":        "An incorporated municipality (city, town) is 'split' when at least two of its VTDs are assigned to different districts. Urban cracking indicator.",
+        "data_source":   "2020 Census VTD-to-municipality mapping (COUSUBFP)",
+        "config_keys":   [],
+    },
+    "maj_black": {
+        "formula":       "count(d : black_CVAP_d / total_CVAP_d ≥ bvap_majority_threshold)",
+        "detail":        "Uses Citizen Voting Age Population (CVAP, excludes non-citizens) for legal precision under Section 2 VRA. GerryChain: 2024 ACS 5-yr CVAP. ALARM: 2020 Census VAP.",
+        "data_source":   "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys":   ["bvap_majority_threshold"],
+    },
+    "maj_hisp": {
+        "formula":       "count(d : hispanic_CVAP_d / total_CVAP_d ≥ majority_threshold)",
+        "detail":        "Hispanic or Latino Citizen VAP share per district",
+        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys":   ["majority_threshold"],
+    },
+    "maj_aian": {
+        "formula":       "count(d : AIAN_CVAP_d / total_CVAP_d ≥ majority_threshold)",
+        "detail":        "American Indian and Alaska Native Citizen VAP share per district",
+        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys":   ["majority_threshold"],
+    },
+    "maj_asian": {
+        "formula":       "count(d : asian_CVAP_d / total_CVAP_d ≥ majority_threshold)",
+        "detail":        "Asian American Citizen VAP share per district",
+        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys":   ["majority_threshold"],
+    },
+    "min_coal": {
+        "formula":       "count(d : (1 − white_CVAP_d / total_CVAP_d) ≥ majority_threshold)",
+        "detail":        "Combined non-white Citizen VAP share. A minority-coalition district is majority non-white but may include multiple racial groups, none individually a majority.",
+        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys":   ["majority_threshold"],
+    },
+    "maj_white": {
+        "formula":       "count(d : white_CVAP_d / total_CVAP_d ≥ majority_threshold)",
+        "detail":        "Districts where non-Hispanic white citizens are a majority of eligible voters. Shown alongside minority metrics to complete the demographic picture.",
+        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys":   ["majority_threshold"],
+    },
+    "min_influence": {
+        "formula":       "count(d : influence_min ≤ (1 − white_CVAP_d / total_CVAP_d) < influence_max)",
+        "detail":        "Districts where communities of color have meaningful electoral influence but do not constitute a majority. Below the majority threshold for direct VRA Section 2 protection, but above the FDGA influence floor where minority voters can meaningfully affect outcomes.",
+        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys":   ["influence_min_threshold", "influence_max_threshold"],
+    },
+    "dem_safe_seats": {
+        "formula":       "count(d : dem_2pv_d > 0.50 + competitive_margin)",
+        "detail":        "Democratic-leaning districts outside the competitive zone — margin exceeds threshold on the Democratic side",
+        "data_source":   "VTD composite — 2018–2024 composite",
+        "config_keys":   ["competitive_margin"],
+    },
+    "rep_safe_seats": {
+        "formula":       "count(d : dem_2pv_d < 0.50 − competitive_margin)",
+        "detail":        "Republican-leaning districts outside the competitive zone — margin exceeds threshold on the Republican side",
+        "data_source":   "VTD composite — 2018–2024 composite",
+        "config_keys":   ["competitive_margin"],
+    },
+}
 
 _METRIC_META: dict[str, tuple] = {
     # key: (label, headline, category, description, higher_is_better)
@@ -132,6 +243,54 @@ _METRIC_META: dict[str, tuple] = {
         "ensemble shows how many splits geography-driven redistricting would typically "
         "produce; the enacted map is compared against this baseline.",
         False),
+    "maj_white": (
+        "Majority-White Districts",
+        "How many districts have a white-citizen majority of eligible voters?",
+        "minority",
+        "Counts districts where non-Hispanic white citizens make up more than "
+        f"{MAJORITY_THRESHOLD*100:.0f}% of the Citizen Voting Age Population. "
+        "Shown alongside minority representation metrics to complete the full demographic "
+        "picture of how the map distributes political power across racial groups. "
+        "The Princeton ensemble test grades statistical distance from neutral redistricting "
+        "outcomes symmetrically — unusually high or low counts compared to neutral maps "
+        "both indicate the map departs from geography-driven redistricting.",
+        None),
+    "min_influence": (
+        "Minority Influence Districts",
+        "How many districts give communities of color meaningful electoral influence without a majority?",
+        "minority",
+        "Counts districts where communities of color collectively hold between the FDGA influence "
+        f"floor ({INFLUENCE_MIN_THRESHOLD*100:.0f}%) and the majority threshold "
+        f"({INFLUENCE_MAX_THRESHOLD*100:.0f}%) of the Citizen Voting Age Population. "
+        "These districts are below the threshold for direct Section 2 Voting Rights Act protection "
+        "but above the level at which minority voters can meaningfully influence electoral outcomes "
+        "and hold candidates accountable. More influence districts indicates broader minority "
+        "electoral participation. Both thresholds are configurable.",
+        True),
+    "dem_safe_seats": (
+        "Safe Democratic Seats",
+        "How many districts lean solidly Democratic — beyond the competitive margin?",
+        "competitive",
+        f"Counts districts where the Democratic two-party vote share exceeds "
+        f"50% + {COMPETITIVE_THRESHOLD_DEFAULT*100:.0f}pp — the outer boundary of the competitive zone. "
+        "These seats are reliably Democratic and not meaningfully contested. "
+        "Together with safe Republican seats and competitive seats, this completes the "
+        "three-bucket political balance picture from the scorecard. "
+        "An unusually high or low count signals packing or cracking of Democratic voters "
+        "relative to what neutral geography-driven redistricting would produce.",
+        None),
+    "rep_safe_seats": (
+        "Safe Republican Seats",
+        "How many districts lean solidly Republican — beyond the competitive margin?",
+        "competitive",
+        f"Counts districts where the Republican two-party vote share exceeds "
+        f"50% + {COMPETITIVE_THRESHOLD_DEFAULT*100:.0f}pp — the outer boundary of the competitive zone. "
+        "These seats are reliably Republican and not meaningfully contested. "
+        "Together with safe Democratic seats and competitive seats, this completes the "
+        "three-bucket political balance picture from the scorecard. "
+        "An unusually high or low count signals packing or cracking of Republican voters "
+        "relative to what neutral geography-driven redistricting would produce.",
+        None),
 }
 
 
@@ -298,6 +457,57 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
                 f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f})."
             )
 
+    elif key == "maj_white":
+        if pct_rank >= 95:
+            return (
+                f"The enacted map has {enacted:.0f} majority-white districts — "
+                f"more than {pct_rank:.0f}% of neutral maps "
+                f"(typical range: {p5:.0f}–{p95:.0f}). "
+                f"This is statistically unusual and may indicate minority vote dilution "
+                f"or cracking of diverse communities."
+            )
+        elif pct_rank <= 5:
+            return (
+                f"The enacted map has {enacted:.0f} majority-white districts — "
+                f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                f"(typical range: {p5:.0f}–{p95:.0f}). "
+                f"This is a statistical outlier below the normal range."
+            )
+        else:
+            return (
+                f"The enacted map has {enacted:.0f} majority-white district(s), "
+                f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f})."
+            )
+
+    elif key == "min_influence":
+        if pct_rank < 5:
+            return (
+                f"The enacted map has {enacted:.0f} minority influence district(s) — "
+                f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                f"(typical range: {p5:.0f}–{p95:.0f}). "
+                f"Communities of color have fewer districts where they can meaningfully "
+                f"influence electoral outcomes than neutral redistricting would typically produce."
+            )
+        elif pct_rank >= 95:
+            return (
+                f"The enacted map has {enacted:.0f} minority influence district(s) — "
+                f"more than {pct_rank:.0f}% of neutral maps "
+                f"(typical range: {p5:.0f}–{p95:.0f}). "
+                f"This is statistically unusual — more districts fall in the influence band "
+                f"than geography alone would typically produce."
+            )
+        elif pct_rank >= 50:
+            return (
+                f"The enacted map has {enacted:.0f} minority influence district(s) — "
+                f"at the {pct_rank:.0f}th percentile, above the neutral median of {p50:.0f}. "
+                f"Communities of color have influence in more districts than typical neutral maps."
+            )
+        else:
+            return (
+                f"The enacted map has {enacted:.0f} minority influence district(s), "
+                f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f})."
+            )
+
     else:
         # Generic fallback
         outlier = _outlier_phrase(pct_rank)
@@ -380,10 +590,32 @@ def _histogram_data(dist: np.ndarray, enacted: float, n_bins: int = 40) -> dict:
         "counts":  counts.tolist(),
         "enacted": round(float(enacted), 4),
         "p5":      round(float(np.percentile(dist, 5)),  4),
+        "p25":     round(float(np.percentile(dist, 25)), 4),
+        "p40":     round(float(np.percentile(dist, 40)), 4),
         "p50":     round(float(np.percentile(dist, 50)), 4),
+        "p60":     round(float(np.percentile(dist, 60)), 4),
+        "p75":     round(float(np.percentile(dist, 75)), 4),
         "p95":     round(float(np.percentile(dist, 95)), 4),
         "mean":    round(float(np.mean(dist)), 4),
     }
+
+
+def _a_grade_range(key: str, dist: np.ndarray, higher_is_better) -> dict:
+    """Distribution VALUE range corresponding to A-grade (for histogram highlighting)."""
+    if key == "comp_seats":
+        return {"lo": round(float(np.percentile(dist, 95)), 4), "hi": None}
+    elif key in ("dem_seats", "dem_safe_seats"):
+        return {"lo": round(float(np.percentile(dist, 50)), 4), "hi": None}
+    elif key == "rep_safe_seats":
+        return {"lo": round(float(np.percentile(dist, 40)), 4),
+                "hi": round(float(np.percentile(dist, 60)), 4)}
+    elif higher_is_better is None:
+        return {"lo": round(float(np.percentile(dist, 40)), 4),
+                "hi": round(float(np.percentile(dist, 60)), 4)}
+    elif higher_is_better:
+        return {"lo": round(float(np.percentile(dist, 95)), 4), "hi": None}
+    else:
+        return {"lo": None, "hi": round(float(np.percentile(dist, 5)), 4)}
 
 
 def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None:
@@ -403,15 +635,17 @@ def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None
         grade = _directional_grade(pct, higher_is_better)
 
     return {
-        "label":       label,
-        "headline":    headline,
-        "category":    category,
-        "description": desc,
-        "takeaway":    _generate_takeaway(key, enacted_val, pct, hist),
-        "grade":       grade,
-        "enacted":     round(float(enacted_val), 4),
-        "pct_rank":    round(pct, 1),
-        "histogram":   hist,
+        "label":          label,
+        "headline":       headline,
+        "category":       category,
+        "description":    desc,
+        "takeaway":       _generate_takeaway(key, enacted_val, pct, hist),
+        "grade":          grade,
+        "enacted":        round(float(enacted_val), 4),
+        "pct_rank":       round(pct, 1),
+        "histogram":      hist,
+        "formula_info":   _METRIC_FORMULAS.get(key),
+        "a_grade_range":  _a_grade_range(key, dist, higher_is_better),
     }
 
 
@@ -474,6 +708,31 @@ def _build_election_metrics(
                 if entry:
                     entry["threshold"] = competitive_threshold
                     metrics["comp_seats"] = entry
+
+    # Safe seats — computed from district-level scores parquet
+    scores_file = data_dir / f"{run_name}_scores.parquet"
+    if scores_file.exists():
+        safe = conn.execute("""
+            SELECT draw,
+                   SUM(CASE WHEN dem_2pv > 0.5 + ? THEN 1 ELSE 0 END) AS dem_safe,
+                   SUM(CASE WHEN dem_2pv < 0.5 - ? THEN 1 ELSE 0 END) AS rep_safe
+            FROM read_parquet(?)
+            WHERE year=? AND election_type=? AND office=?
+            GROUP BY draw
+            ORDER BY draw
+        """, [competitive_threshold, competitive_threshold,
+              str(scores_file), year, election_type, office]).df()
+
+        if len(safe) > 0:
+            sim_safe     = safe[safe["draw"] > 1]
+            enacted_safe = safe[safe["draw"] == 1]
+            if len(enacted_safe) > 0:
+                for key, col in [("dem_safe_seats", "dem_safe"), ("rep_safe_seats", "rep_safe")]:
+                    dist = sim_safe[col].to_numpy(dtype=float)
+                    entry = _metric_entry(key, dist, float(enacted_safe[col].iloc[0]))
+                    if entry:
+                        entry["threshold"] = competitive_threshold
+                        metrics[key] = entry
 
     # partisan_bias is null for GerryChain (we don't compute it)
     metrics["partisan_bias"] = None
@@ -552,6 +811,9 @@ def _build_demographics(
     run_name: str,
     data_dir: Path,
     conn: duckdb.DuckDBPyConnection,
+    influence_min: float = INFLUENCE_MIN_THRESHOLD,
+    influence_max: float = INFLUENCE_MAX_THRESHOLD,
+    majority_threshold: float = MAJORITY_THRESHOLD,
 ) -> dict | None:
     demo_file = data_dir / f"{run_name}_demographics.parquet"
     if not demo_file.exists():
@@ -560,11 +822,15 @@ def _build_demographics(
     dd = conn.execute("""
         SELECT draw,
                SUM(CAST(majority_black AS INTEGER))              AS n_maj_black,
-               SUM(CAST(majority_minority_coalition AS INTEGER)) AS n_maj_coal
+               SUM(CAST(majority_minority_coalition AS INTEGER)) AS n_maj_coal,
+               SUM(CAST(majority_white AS INTEGER))              AS n_maj_white,
+               SUM(CAST(
+                   pct_minority_coalition >= ? AND pct_minority_coalition < ?
+               AS INTEGER))                                      AS n_min_influence
         FROM read_parquet(?)
         GROUP BY draw
         ORDER BY draw
-    """, [str(demo_file)]).df()
+    """, [influence_min, influence_max, str(demo_file)]).df()
 
     sim     = dd[dd["draw"] > 1]
     enacted = dd[dd["draw"] == 1]
@@ -574,7 +840,12 @@ def _build_demographics(
     enacted_row = enacted.iloc[0]
     metrics: dict = {}
 
-    for key, col in [("maj_black", "n_maj_black"), ("min_coal", "n_maj_coal")]:
+    for key, col in [
+        ("maj_black",     "n_maj_black"),
+        ("min_coal",      "n_maj_coal"),
+        ("maj_white",     "n_maj_white"),
+        ("min_influence", "n_min_influence"),
+    ]:
         dist = sim[col].astype(float).to_numpy()
         entry = _metric_entry(key, dist, float(enacted_row[col]))
         if entry:
@@ -608,13 +879,26 @@ def _build_composite_grades(
         if ds is None:
             continue
 
-        e_pass = _ensemble_pass(ds["pct_rank"])
+        # All three partisan metrics must pass the ensemble test.
+        # Checking only dem_seats under-reports gerrymandering when geographic
+        # self-sorting already creates a structural baseline.
+        elec_metrics = metrics
+        pm_pcts = {m: elec_metrics[m]["pct_rank"]
+                   for m in ("dem_seats", "efficiency_gap", "mean_median")
+                   if elec_metrics.get(m)}
+        pm_failed = {m: r for m, r in pm_pcts.items() if not _ensemble_pass(r)}
+        e_pass = len(pm_failed) == 0
         if first_e_pass is None:
             first_e_pass = e_pass
 
         # No partisan_bias for GerryChain → normative test skipped (conservative: n_pass=True)
         n_pass = True
         g = "A" if (e_pass and n_pass) else "B" if (not e_pass and n_pass) else "C"
+
+        # Severity downgrade: vote-efficiency metric at extreme tail (>97th or <3rd pctile)
+        if not e_pass and any(r > 97 or r < 3 for m, r in pm_failed.items()
+                              if m in ("efficiency_gap", "mean_median")):
+            g = _adj(g, -1)   # B→C, C→D
 
         # Competitiveness adjustment
         comp = metrics.get("comp_seats")
@@ -805,17 +1089,17 @@ def _build_muni_splits(
     run_name: str,
     data_dir: Path,
     conn: duckdb.DuckDBPyConnection,
-) -> dict | None:
+) -> tuple[dict | None, pd.DataFrame | None]:
     """
     Compute municipal splits per plan from the GerryChain plans parquet + VTD→muni mapping.
 
     A municipality is "split" when its VTDs are assigned to 2+ different districts.
-    Returns a metric_entry dict (label, grade, enacted, pct_rank, histogram…) or None
-    if the plans parquet or vtd_muni lookup is unavailable.
+    Returns (metric_entry_dict, full_draws_df) where full_draws_df has columns (draw, muni_splits)
+    including draw=1 (enacted).  Returns (None, None) if data is unavailable.
     """
     if not _VTD_MUNI_PATH.exists():
         print(f"    [muni_splits] vtd_muni.parquet not found at {_VTD_MUNI_PATH} — skipping")
-        return None
+        return None, None
 
     # Plans parquet may be the composite run or the underlying base run
     plans_file = data_dir / f"{run_name}_plans.parquet"
@@ -824,7 +1108,7 @@ def _build_muni_splits(
         plans_file = data_dir / f"{base}_plans.parquet"
     if not plans_file.exists():
         print(f"    [muni_splits] plans parquet not found for {run_name} — skipping")
-        return None
+        return None, None
 
     # DuckDB join: for each (draw, muni), count distinct districts
     result = conn.execute("""
@@ -846,17 +1130,143 @@ def _build_muni_splits(
     """, [str(plans_file), str(_VTD_MUNI_PATH)]).df()
 
     if result.empty:
-        return None
+        return None, None
 
     # draw=1 is the enacted plan in GerryChain parquets
     enacted_row = result[result["draw"] == 1]
     sampled = result[result["draw"] != 1]["muni_splits"].values
 
     if len(sampled) < 10 or enacted_row.empty:
-        return None
+        return None, None
 
     enacted_val = float(enacted_row["muni_splits"].iloc[0])
-    return _metric_entry("muni_splits", sampled, enacted_val)
+    return _metric_entry("muni_splits", sampled, enacted_val), result[["draw", "muni_splits"]]
+
+
+def _build_correlations(
+    run_name: str,
+    data_dir: Path,
+    year: int,
+    election_type: str,
+    office: str,
+    competitive_threshold: float,
+    conn: duckdb.DuckDBPyConnection,
+    muni_splits_df: pd.DataFrame | None = None,
+    n_scatter: int = 300,
+) -> dict | None:
+    """
+    Compute cross-metric correlation matrix + downsampled scatter pairs for the
+    urban-cracking / partisan-bias correlation story.
+
+    Returns { "matrix": {...}, "scatter": {...} } or None if insufficient data.
+    The scatter dict uses keys like "muni_splits_vs_dem_seats" with:
+        { x[], y[], enacted_x, enacted_y, r }.
+    """
+    ds_file = data_dir / f"{run_name}_draw_stats.parquet"
+    if not ds_file.exists():
+        return None
+
+    # Load sim draws for dem_seats, efficiency_gap, mean_median (aligned by draw)
+    sim_df = conn.execute("""
+        SELECT draw, dem_seats, efficiency_gap, mean_median
+        FROM read_parquet(?)
+        WHERE year=? AND election_type=? AND office=? AND draw > 1
+        ORDER BY draw
+    """, [str(ds_file), year, election_type, office]).df()
+
+    if len(sim_df) < 50:
+        return None
+
+    enacted_df = conn.execute("""
+        SELECT dem_seats, efficiency_gap, mean_median
+        FROM read_parquet(?)
+        WHERE year=? AND election_type=? AND office=? AND draw = 1
+    """, [str(ds_file), year, election_type, office]).df()
+
+    base = sim_df[["draw", "dem_seats", "efficiency_gap", "mean_median"]].copy()
+    enacted_vals: dict = {}
+    if len(enacted_df) > 0:
+        er = enacted_df.iloc[0]
+        enacted_vals = {
+            "dem_seats":      float(er["dem_seats"]),
+            "efficiency_gap": float(er["efficiency_gap"]),
+            "mean_median":    float(er["mean_median"]),
+        }
+
+    # Join competitive seats by draw
+    cc_file = data_dir / f"{run_name}_competitive_counts.parquet"
+    if cc_file.exists():
+        try:
+            cc_sim = conn.execute("""
+                SELECT draw, n_competitive
+                FROM read_parquet(?)
+                WHERE year=? AND election_type=? AND office=? AND threshold=? AND draw > 1
+            """, [str(cc_file), year, election_type, office, competitive_threshold]).df()
+            cc_enacted = conn.execute("""
+                SELECT n_competitive FROM read_parquet(?)
+                WHERE year=? AND election_type=? AND office=? AND threshold=? AND draw = 1
+            """, [str(cc_file), year, election_type, office, competitive_threshold]).df()
+            if len(cc_sim) > 0:
+                base = base.merge(
+                    cc_sim[["draw", "n_competitive"]].rename(columns={"n_competitive": "comp_seats"}),
+                    on="draw", how="inner",
+                )
+            if len(cc_enacted) > 0:
+                enacted_vals["comp_seats"] = float(cc_enacted["n_competitive"].iloc[0])
+        except Exception:
+            pass
+
+    # Join muni splits by draw (pre-computed to avoid re-running the expensive query)
+    if muni_splits_df is not None and not muni_splits_df.empty:
+        sim_muni = muni_splits_df[muni_splits_df["draw"] != 1][["draw", "muni_splits"]]
+        enacted_muni = muni_splits_df[muni_splits_df["draw"] == 1]
+        if not sim_muni.empty:
+            base = base.merge(sim_muni, on="draw", how="inner")
+        if not enacted_muni.empty:
+            enacted_vals["muni_splits"] = float(enacted_muni["muni_splits"].iloc[0])
+
+    keys = [c for c in base.columns if c != "draw"]
+    if len(keys) < 2:
+        return None
+
+    arrays = {k: base[k].to_numpy(dtype=float) for k in keys}
+
+    # Pearson correlation matrix
+    matrix: dict = {}
+    for k1 in keys:
+        matrix[k1] = {}
+        for k2 in keys:
+            if k1 == k2:
+                matrix[k1][k2] = 1.0
+            else:
+                r = float(np.corrcoef(arrays[k1], arrays[k2])[0, 1])
+                matrix[k1][k2] = round(r, 4) if not np.isnan(r) else None
+
+    # Key scatter pairs for urban-crack story
+    scatter_pairs = [
+        ("muni_splits",   "dem_seats"),
+        ("muni_splits",   "efficiency_gap"),
+        ("muni_splits",   "comp_seats"),
+        ("dem_seats",     "efficiency_gap"),
+    ]
+
+    scatter: dict = {}
+    rng = np.random.default_rng(42)
+    n = len(next(iter(arrays.values())))
+    for x_key, y_key in scatter_pairs:
+        if x_key not in arrays or y_key not in arrays:
+            continue
+        idx = np.sort(rng.choice(n, min(n_scatter, n), replace=False))
+        r_val = matrix.get(x_key, {}).get(y_key)
+        scatter[f"{x_key}_vs_{y_key}"] = {
+            "x":         [round(float(v), 4) for v in arrays[x_key][idx]],
+            "y":         [round(float(v), 4) for v in arrays[y_key][idx]],
+            "enacted_x": round(float(enacted_vals[x_key]), 4) if x_key in enacted_vals else None,
+            "enacted_y": round(float(enacted_vals[y_key]), 4) if y_key in enacted_vals else None,
+            "r":         r_val,
+        }
+
+    return {"matrix": matrix, "scatter": scatter}
 
 
 def build_scorecard(
@@ -865,6 +1275,10 @@ def build_scorecard(
     chamber: str | None = None,
     competitive_threshold: float = COMPETITIVE_THRESHOLD_DEFAULT,
     base_run_name: str | None = None,
+    influence_min: float = INFLUENCE_MIN_THRESHOLD,
+    influence_max: float = INFLUENCE_MAX_THRESHOLD,
+    majority_threshold: float = MAJORITY_THRESHOLD,
+    bvap_majority_threshold: float = BVAP_MAJORITY_THRESHOLD,
 ) -> dict:
     """
     Build the canonical scorecard JSON for a GerryChain scored run.
@@ -942,21 +1356,47 @@ def build_scorecard(
         base = run_name.removesuffix("_composite")
         if (data_dir / f"{base}_demographics.parquet").exists():
             demo_run = base
-    demographics = _build_demographics(demo_run, data_dir, conn)
+    demographics = _build_demographics(
+        demo_run, data_dir, conn,
+        influence_min=influence_min,
+        influence_max=influence_max,
+        majority_threshold=majority_threshold,
+    )
     if demographics:
         demographics["year"] = 2024  # CVAP 2024 vintage (from ACS 2020–2024 5yr)
     print(" done")
 
     # Municipal splits
     print("  Municipal splits…", end="", flush=True)
-    muni_splits_entry = _build_muni_splits(run_name, data_dir, conn)
+    muni_splits_entry, muni_splits_df = _build_muni_splits(run_name, data_dir, conn)
     print(f" {muni_splits_entry['enacted']:.0f} splits (grade {muni_splits_entry['grade']})" if muni_splits_entry else " n/a")
 
-    # Composite grades (includes _partisan_fairness, _overall)
-    composite = _build_composite_grades(elections, demographics, n_districts)
+    # Correlations — cross-metric scatter and Pearson r matrix for urban-crack story
+    print("  Correlations…", end="", flush=True)
+    correlations: dict | None = None
+    if elections:
+        corr_elec = next((e for e in elections if e["office"] == "composite"), elections[0])
+        try:
+            correlations = _build_correlations(
+                run_name, data_dir,
+                corr_elec["year"], corr_elec["election_type"], corr_elec["office"],
+                competitive_threshold, conn,
+                muni_splits_df=muni_splits_df,
+            )
+        except Exception as exc:
+            print(f" WARNING: {exc}", end="")
+    n_pairs = len(correlations["scatter"]) if correlations else 0
+    print(f" {n_pairs} scatter pairs" if correlations else " n/a")
 
-    # Add demographics metrics + geographic metrics to grades
-    grades = {**composite}
+    # Composite grades (_partisan_fairness, _overall) are intentionally NOT stored
+    # in the scorecard JSON.  They are derived interpretation, not raw data.
+    # fdensemble always recomputes them at serve time via _compute_composite_grades()
+    # so there is exactly one implementation of grading logic.
+    # _build_composite_grades() is called here only for the build-time summary print.
+    composite_display = _build_composite_grades(elections, demographics, n_districts)
+
+    # grades dict: demographics metrics + geographic metrics only (no composites)
+    grades: dict = {}
     if demographics:
         grades.update(demographics["metrics"])
     if muni_splits_entry:
@@ -982,14 +1422,17 @@ def build_scorecard(
         "id":       "enacted",
         "label":    f"Enacted {chamber.title() if chamber else ''} Map",
         "source":   "catalog",
-        "grades":   {k: v for k, v in grades.items() if k.startswith("_")},
+        # Composite grades (_partisan_fairness, _overall) intentionally omitted —
+        # fdensemble recomputes them at serve time via _compute_composite_grades().
+        "grades":   {},
         "metrics":  {
             key: {
                 "value":    elections[0]["metrics"][key]["enacted"],
                 "pct_rank": elections[0]["metrics"][key]["pct_rank"],
                 "grade":    elections[0]["metrics"][key]["grade"],
             }
-            for key in ["dem_seats", "efficiency_gap", "mean_median", "comp_seats"]
+            for key in ["dem_seats", "efficiency_gap", "mean_median", "comp_seats",
+                        "dem_safe_seats", "rep_safe_seats"]
             if elections and key in elections[0].get("metrics", {})
                and elections[0]["metrics"][key] is not None
         },
@@ -1018,6 +1461,14 @@ def build_scorecard(
                  "office": e["office"], "label": e["label"]}
                 for e in elections
             ],
+            # Configurable threshold values used — surfaced in UI info tooltips
+            "config": {
+                "competitive_margin":       competitive_threshold,
+                "majority_threshold":       majority_threshold,
+                "bvap_majority_threshold":  bvap_majority_threshold,
+                "influence_min_threshold":  influence_min,
+                "influence_max_threshold":  influence_max,
+            },
         },
         "elections":    elections,
         "demographics": demographics,
@@ -1025,6 +1476,7 @@ def build_scorecard(
                          "muni_splits": muni_splits_entry},
         "grades":       grades,
         "plans":        plans,
+        "correlations": correlations,
     }
 
     return scorecard
@@ -1050,6 +1502,12 @@ def main() -> None:
                     help="Chamber name — auto-detected from n_districts if omitted")
     ap.add_argument("--competitive-threshold", type=float, default=COMPETITIVE_THRESHOLD_DEFAULT,
                     help=f"Win-margin threshold for competitive seats (default: {COMPETITIVE_THRESHOLD_DEFAULT})")
+    ap.add_argument("--influence-min", type=float, default=INFLUENCE_MIN_THRESHOLD,
+                    help=f"Minority influence district lower bound (default: {INFLUENCE_MIN_THRESHOLD} = {INFLUENCE_MIN_THRESHOLD*100:.0f}%%)")
+    ap.add_argument("--influence-max", type=float, default=INFLUENCE_MAX_THRESHOLD,
+                    help=f"Minority influence district upper bound (default: {INFLUENCE_MAX_THRESHOLD} = {INFLUENCE_MAX_THRESHOLD*100:.0f}%%)")
+    ap.add_argument("--majority-threshold", type=float, default=MAJORITY_THRESHOLD,
+                    help=f"Majority-minority threshold (default: {MAJORITY_THRESHOLD} = {MAJORITY_THRESHOLD*100:.0f}%%)")
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir) if args.data_dir else DEFAULT_DATA_DIR
@@ -1058,7 +1516,10 @@ def main() -> None:
     print(f"Building scorecard: {args.run_name}")
     scorecard = build_scorecard(
         args.run_name, data_dir, args.chamber, args.competitive_threshold,
-        base_run_name=args.base_run_name
+        base_run_name=args.base_run_name,
+        influence_min=args.influence_min,
+        influence_max=args.influence_max,
+        majority_threshold=args.majority_threshold,
     )
 
     out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -1067,7 +1528,11 @@ def main() -> None:
 
     n_elec = len(scorecard["elections"])
     print(f"\n✓ {out_file.name}  ({size_kb:.0f} KB)")
-    print(f"  Overall grade: {scorecard['grades'].get('_overall', {}).get('grade', 'N/A')}")
+    _cd = _build_composite_grades(
+        scorecard["elections"], scorecard.get("demographics"),
+        scorecard["run"]["n_districts"],
+    )
+    print(f"  Overall grade (build-time estimate): {_cd.get('_overall', {}).get('grade', 'N/A')}")
     print(f"\nCopy scorecard to fdensemble/input_data/ to make it available in the UI:")
     print(f"  cp {out_file} fdensemble/input_data/")
 

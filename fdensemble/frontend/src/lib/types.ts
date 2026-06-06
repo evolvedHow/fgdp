@@ -44,7 +44,11 @@ export interface Histogram {
   counts: number[];
   enacted: number | null;
   p5: number;
+  p25: number;
+  p40: number;
   p50: number;
+  p60: number;
+  p75: number;
   p95: number;
   mean: number;
 }
@@ -59,6 +63,7 @@ export interface MetricGrade {
   enacted: number;
   pct_rank: number;
   histogram: Histogram;
+  a_grade_range?: { lo: number | null; hi: number | null };
 }
 
 export interface CompositeGrade {
@@ -82,6 +87,20 @@ export interface ScoredPlan {
   districts: DistrictResult[];
   vtd_assignments?: Record<string, number>;
   vtd_details?: Record<string, VtdDetail>;
+}
+
+export interface ScatterPair {
+  x: number[];
+  y: number[];
+  enacted_x: number | null;
+  enacted_y: number | null;
+  r: number | null;
+}
+
+export interface CorrelationData {
+  available: boolean;
+  matrix?: Record<string, Record<string, number | null>>;
+  scatter?: Record<string, ScatterPair>;
 }
 
 export interface RunMeta {
@@ -121,8 +140,30 @@ export interface RiverData {
   enacted_district_ids?: number[] | null;
 }
 
+export interface ProportionalityGap {
+  /** VAP-weighted statewide composite Dem two-party vote share (e.g. 0.482) */
+  statewide_dem_2pv:   number;
+  /** statewide_dem_2pv × n_districts — what proportional representation would deliver */
+  proportional_target: number;
+  /** Neutral ensemble median dem_seats (p50 of histogram) */
+  ensemble_median:     number;
+  ensemble_p5:         number;
+  ensemble_p95:        number;
+  /** Enacted map dem_seats value */
+  enacted_seats:       number;
+  /** ensemble_median − proportional_target (negative = neutral maps fall short of proportionality) */
+  structural_gap:      number;
+  /** enacted_seats − ensemble_median (negative = enacted below neutral) */
+  manipulation_gap:    number;
+  /** enacted_seats − proportional_target (full gap from strict proportionality) */
+  total_gap:           number;
+  n_districts:         number;
+  elections_used:      string[];
+}
+
 export interface Analysis {
   summary: Summary;
   grades: Grades;
   river: RiverData | null;
+  proportionality?: ProportionalityGap | null;
 }

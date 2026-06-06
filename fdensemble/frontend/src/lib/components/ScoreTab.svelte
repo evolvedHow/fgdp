@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Analysis, ElectionOption, MetricGrade, Grades, ScoredPlan, MapMeta } from '../types.js';
-  import GradePanel   from './GradePanel.svelte';
-  import MetricCard   from './MetricCard.svelte';
-  import RiverChart   from './RiverChart.svelte';
-  import MapUploader  from './MapUploader.svelte';
+  import GradePanel              from './GradePanel.svelte';
+  import MetricCard              from './MetricCard.svelte';
+  import RiverChart              from './RiverChart.svelte';
+  import MapUploader             from './MapUploader.svelte';
   import BenchmarkComparisonTable from './BenchmarkComparisonTable.svelte';
+  import MultiMapScorecard       from './MultiMapScorecard.svelte';
+  import UrbanCrackPanel         from './UrbanCrackPanel.svelte';
+  import ProportionalityGapPanel from './ProportionalityGapPanel.svelte';
 
   interface Props {
     analysis: Analysis;
@@ -33,11 +36,23 @@
 
   // Metric display constants
   const PARTISAN_KEYS    = ['dem_seats', 'partisan_bias', 'efficiency_gap', 'mean_median'];
-  const COMPETITIVE_KEYS = ['comp_seats'];
+  const COMPETITIVE_KEYS = ['comp_seats', 'rep_safe_seats', 'dem_safe_seats'];
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];  // muni_splits = Split Cities
   const MINORITY_KEYS    = ['maj_black', 'maj_hisp', 'maj_aian', 'maj_asian', 'min_coal'];
   const ALL_METRIC_GROUPS = [PARTISAN_KEYS, COMPETITIVE_KEYS, GEOGRAPHIC_KEYS, MINORITY_KEYS];
-  const GROUP_LABELS = ['Partisan Fairness', 'Competitiveness', 'Geographic', 'Minority Representation'];
+  const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Minority Representation'];
+
+  // Multi-map comparison
+  let comparisonPlans: ScoredPlan[] = $state([]);
+
+  function pinPlan(plan: ScoredPlan) {
+    if (!comparisonPlans.some(p => p.id === plan.id)) {
+      comparisonPlans = [...comparisonPlans, plan];
+    }
+  }
+  function unpinPlan(planId: string) {
+    comparisonPlans = comparisonPlans.filter(p => p.id !== planId);
+  }
 
   function allMetrics(keys: string[]): {key: string; metric: MetricGrade}[] {
     return keys
@@ -282,18 +297,31 @@
   {#if scoredPlan && !scoring}
     <div style="background:var(--light);border:1.5px solid var(--border);border-radius:8px;
                 padding:.55rem 1rem;margin-bottom:.8rem;font-size:.78rem;
-                display:flex;align-items:center;gap:.6rem;">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--blue)"
-           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 8 12 12 14 14"/>
-      </svg>
-      <span>
-        Showing <b>{scoredPlan.label}</b>
-        <span style="color:var(--gray);margin-left:.4rem;">
-          — {scoredPlan.districts.length} districts · scored against {summary?.n_plans?.toLocaleString()} neutral alternatives
+                display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:.6rem;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--blue)"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 8 12 12 14 14"/>
+        </svg>
+        <span>
+          Showing <b>{scoredPlan.label}</b>
+          <span style="color:var(--gray);margin-left:.4rem;">
+            — {scoredPlan.districts.length} districts · scored against {summary?.n_plans?.toLocaleString()} neutral alternatives
+          </span>
         </span>
-      </span>
+      </div>
+      <button
+        onclick={() => scoredPlan && pinPlan(scoredPlan)}
+        disabled={comparisonPlans.some(p => p.id === scoredPlan?.id)}
+        style="padding:.25rem .6rem;border:1.5px solid var(--blue);border-radius:4px;
+               background:{comparisonPlans.some(p => p.id === scoredPlan?.id) ? 'var(--blue)' : 'transparent'};
+               color:{comparisonPlans.some(p => p.id === scoredPlan?.id) ? '#fff' : 'var(--blue)'};
+               cursor:{comparisonPlans.some(p => p.id === scoredPlan?.id) ? 'default' : 'pointer'};
+               font-size:.72rem;font-weight:600;white-space:nowrap;"
+      >
+        {comparisonPlans.some(p => p.id === scoredPlan?.id) ? '✓ Pinned' : '+ Pin to scorecard'}
+      </button>
     </div>
   {:else if !selectedMapId}
     <div style="background:var(--light);border:1.5px solid var(--border);border-radius:8px;
@@ -328,11 +356,31 @@
     {/if}
   {/each}
 
+  <!-- Proportionality gap panel — shows the "GIGO" baseline problem -->
+  {#if analysis.proportionality}
+    <ProportionalityGapPanel
+      data={analysis.proportionality}
+      nDistricts={analysis.summary?.n_districts ?? 14}
+    />
+  {/if}
+
+  <!-- Urban Crack correlation panel -->
+  <UrbanCrackPanel runId={selectedRunId} />
+
   <!-- River chart -->
   {#if river}
     <div style="margin:.8rem 0 .4rem;">
       <RiverChart {river} enactedShares={null} />
     </div>
+  {/if}
+
+  <!-- Multi-map scorecard -->
+  {#if comparisonPlans.length > 0}
+    <MultiMapScorecard
+      {analysis}
+      plans={comparisonPlans}
+      onRemovePlan={unpinPlan}
+    />
   {/if}
 
   <!-- Proposed vs Enacted delta table -->
@@ -344,6 +392,8 @@
       { key: 'dem_seats',      label: 'Dem-Lean Districts',   isInt: true  },
       { key: '_rep_seats',     label: 'Rep-Lean Districts',   isInt: true  },
       { key: 'comp_seats',     label: 'Competitive Districts',isInt: true  },
+      { key: 'rep_safe_seats', label: 'Rep Safe Seats',       isInt: true  },
+      { key: 'dem_safe_seats', label: 'Dem Safe Seats',       isInt: true  },
       { key: 'efficiency_gap', label: 'Efficiency Gap',       isInt: false },
       { key: 'mean_median',    label: 'Mean–Median',          isInt: false },
       { key: 'muni_splits',    label: 'City Splits',          isInt: true  },

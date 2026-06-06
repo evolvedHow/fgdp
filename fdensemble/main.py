@@ -45,6 +45,8 @@ MAPS_DIR                = Path(os.getenv('MAPS_DIR', 'uploaded_maps'))
 COMPETITIVE_MARGIN      = float(os.getenv('COMPETITIVE_MARGIN_MAIN', '0.07'))
 BVAP_THRESHOLD          = float(os.getenv('BVAP_MAJORITY_THRESHOLD', '0.50'))
 MINORITY_THRESHOLD      = float(os.getenv('MAJORITY_THRESHOLD', '0.50'))
+INFLUENCE_MIN_THRESHOLD = float(os.getenv('INFLUENCE_MIN_THRESHOLD', '0.37'))
+INFLUENCE_MAX_THRESHOLD = float(os.getenv('INFLUENCE_MAX_THRESHOLD', '0.50'))
 DEM_COLOR               = os.getenv('DEM_COLOR', '#3D77BB')
 FIG_DPI                 = int(os.getenv('FIG_DPI', '120'))
 
@@ -172,7 +174,11 @@ def _histogram_data(dist: np.ndarray, enacted, n_bins: int = 40) -> dict:
         'counts':  counts.tolist(),
         'enacted': round(float(enacted), 4) if enacted is not None else None,
         'p5':      round(float(np.percentile(dist, 5)),  4),
+        'p25':     round(float(np.percentile(dist, 25)), 4),
+        'p40':     round(float(np.percentile(dist, 40)), 4),
         'p50':     round(float(np.percentile(dist, 50)), 4),
+        'p60':     round(float(np.percentile(dist, 60)), 4),
+        'p75':     round(float(np.percentile(dist, 75)), 4),
         'p95':     round(float(np.percentile(dist, 95)), 4),
         'mean':    round(float(np.mean(dist)), 4),
     }
@@ -372,11 +378,59 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s), "
                     f"within the typical range ({p5:.0f}–{p95:.0f}) for neutral maps.")
 
+    elif key == 'dem_safe_seats':
+        if pct_rank < 5:
+            return (f"The enacted map has {enacted:.0f} safely Democratic districts — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps (typical: {p5:.0f}–{p95:.0f}). "
+                    f"Democratic voters appear to be dispersed across more marginal districts, "
+                    f"giving Republicans a structural advantage.")
+        elif pct_rank > 95:
+            return (f"The enacted map has {enacted:.0f} safely Democratic districts — "
+                    f"more than {pct_rank:.0f}% of neutral maps (typical: {p5:.0f}–{p95:.0f}). "
+                    f"Democratic voters appear concentrated into fewer, safer districts — a sign of packing.")
+        else:
+            return (f"The enacted map has {enacted:.0f} safely Democratic districts, "
+                    f"within the typical range for neutral maps (median: {p50:.0f}, range: {p5:.0f}–{p95:.0f}).")
+
+    elif key == 'rep_safe_seats':
+        if pct_rank > 95:
+            return (f"The enacted map has {enacted:.0f} safely Republican districts — "
+                    f"more than {pct_rank:.0f}% of neutral maps (typical: {p5:.0f}–{p95:.0f}). "
+                    f"Republican voters are packed into more safe seats than geography alone would produce.")
+        elif pct_rank < 5:
+            return (f"The enacted map has {enacted:.0f} safely Republican districts — "
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps (typical: {p5:.0f}–{p95:.0f}). "
+                    f"Republican voters are spread more thinly than neutral maps would produce.")
+        else:
+            return (f"The enacted map has {enacted:.0f} safely Republican districts, "
+                    f"within the typical range for neutral maps (median: {p50:.0f}, range: {p5:.0f}–{p95:.0f}).")
+
     else:
         return (f"Enacted: {enacted:.3f}. Neutral median: {p50:.3f} "
                 f"(range: {p5:.3f}–{p95:.3f}). "
                 f"Percentile rank: {pct_rank:.0f}th — {_outlier_phrase(pct_rank)}.")
 
+
+# ── Formula metadata — displayed in info tooltips in the UI ──────────────────
+_METRIC_FORMULAS: dict = {
+    'dem_seats':      {'formula': 'count(d : dem_2pv_d ≥ 0.50)', 'detail': 'dem_2pv_d = Σ dem_votes_vtd / Σ (dem+rep votes) for all VTDs in district d', 'data_source': 'VTD composite — 2018–2024 five-election average', 'config_keys': []},
+    'efficiency_gap': {'formula': '(Σ wasted_dem − Σ wasted_rep) / Σ total_votes', 'detail': 'wasted_dem = excess Dem votes beyond 50%+1 in wins + all Dem votes in losses; symmetric for Rep', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': []},
+    'mean_median':    {'formula': 'mean(dem_2pv_d) − median(dem_2pv_d)', 'detail': 'Positive → Dem votes less efficiently distributed; negative → Rep votes less efficient', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': []},
+    'comp_seats':     {'formula': 'count(d : |dem_2pv_d − 0.50| ≤ competitive_margin)', 'detail': 'A district is competitive if within ±competitive_margin of 50/50', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': ['competitive_margin']},
+    'partisan_bias':  {'formula': 'seats_R(vote=50%) − seats_D(vote=50%)', 'detail': 'Princeton cube-law normative test: seat advantage at exactly equal vote shares', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': []},
+    'polsby_popper':  {'formula': 'mean_d(4π × area_d / perimeter_d²)', 'detail': '1 = perfect circle; lower = more irregular shape', 'data_source': '2020 Census VTD geometries', 'config_keys': []},
+    'county_splits':  {'formula': 'count(counties c : ∃ VTDs v1, v2 ∈ c assigned to different districts)', 'detail': 'A county is split when at least two of its VTDs land in different districts', 'data_source': '2020 Census county–VTD assignment', 'config_keys': []},
+    'muni_splits':    {'formula': 'count(municipalities m : ∃ VTDs v1, v2 ∈ m in different districts)', 'detail': 'An incorporated municipality is split when any two of its VTDs are in different districts — urban cracking indicator', 'data_source': '2020 Census VTD-to-municipality mapping', 'config_keys': []},
+    'maj_black':      {'formula': 'count(d : black_CVAP_d / total_CVAP_d ≥ bvap_majority_threshold)', 'detail': 'Uses Citizen VAP (excludes non-citizens) for legal precision under Section 2 VRA', 'data_source': '2024 ACS 5-yr CVAP (GerryChain) / 2020 Census VAP (ALARM)', 'config_keys': ['bvap_majority_threshold']},
+    'maj_hisp':       {'formula': 'count(d : hispanic_CVAP_d / total_CVAP_d ≥ majority_threshold)', 'detail': 'Hispanic or Latino Citizen VAP share per district', 'data_source': '2024 ACS 5-yr CVAP / 2020 Census VAP', 'config_keys': ['majority_threshold']},
+    'maj_aian':       {'formula': 'count(d : AIAN_CVAP_d / total_CVAP_d ≥ majority_threshold)', 'detail': 'American Indian and Alaska Native Citizen VAP share per district', 'data_source': '2024 ACS 5-yr CVAP / 2020 Census VAP', 'config_keys': ['majority_threshold']},
+    'maj_asian':      {'formula': 'count(d : asian_CVAP_d / total_CVAP_d ≥ majority_threshold)', 'detail': 'Asian American Citizen VAP share per district', 'data_source': '2024 ACS 5-yr CVAP / 2020 Census VAP', 'config_keys': ['majority_threshold']},
+    'min_coal':       {'formula': 'count(d : (1 − white_CVAP_d / total_CVAP_d) ≥ majority_threshold)', 'detail': 'Combined non-white Citizen VAP. A coalition district is majority non-white but may include multiple groups, none individually a majority.', 'data_source': '2024 ACS 5-yr CVAP / 2020 Census VAP', 'config_keys': ['majority_threshold']},
+    'maj_white':      {'formula': 'count(d : white_CVAP_d / total_CVAP_d ≥ majority_threshold)', 'detail': 'Districts where non-Hispanic white citizens are a majority of eligible voters', 'data_source': '2024 ACS 5-yr CVAP / 2020 Census VAP', 'config_keys': ['majority_threshold']},
+    'min_influence':  {'formula': 'count(d : influence_min ≤ (1 − white_CVAP_d/total_CVAP_d) < influence_max)', 'detail': 'Minority communities have meaningful electoral influence without a majority. Below VRA Section 2 majority protection threshold but above FDGA influence floor.', 'data_source': '2024 ACS 5-yr CVAP / 2020 Census VAP', 'config_keys': ['influence_min_threshold', 'influence_max_threshold']},
+    'dem_safe_seats': {'formula': f'count(d : dem_2pv_d > 0.50 + competitive_margin)', 'detail': 'Democratic-leaning districts outside the competitive zone — the margin exceeds the threshold on the Democratic side', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': ['competitive_margin']},
+    'rep_safe_seats': {'formula': f'count(d : dem_2pv_d < 0.50 − competitive_margin)', 'detail': 'Republican-leaning districts outside the competitive zone — the margin exceeds the threshold on the Republican side', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': ['competitive_margin']},
+}
 
 _METRIC_META = {
     # key: (label, headline, category, description, higher_is_better)
@@ -531,6 +585,52 @@ _METRIC_META = {
         'redistricting outcomes in either direction — the grade reflects how anomalous '
         'the enacted map is, not a policy judgment about the direction of that distance.',
         None),
+    'maj_white': (
+        'Majority-White Districts',
+        'How many districts have a white-citizen majority of eligible voters?',
+        'minority',
+        f'Counts districts where non-Hispanic white citizens make up more than '
+        f'{MINORITY_THRESHOLD*100:.0f}% of the Voting Age Population. Shown alongside '
+        f'minority representation metrics to complete the full demographic picture. '
+        f'The Princeton ensemble test grades statistical distance from neutral redistricting '
+        f'outcomes symmetrically — unusually high or low counts both indicate the map '
+        f'departs from geography-driven redistricting.',
+        None),
+    'min_influence': (
+        'Minority Influence Districts',
+        'How many districts give communities of color meaningful electoral influence without a majority?',
+        'minority',
+        f'Counts districts where communities of color collectively hold between '
+        f'{INFLUENCE_MIN_THRESHOLD*100:.0f}% and {INFLUENCE_MAX_THRESHOLD*100:.0f}% of the '
+        f'Voting Age Population — above the FDGA influence floor but below the majority threshold. '
+        f'These districts are below the threshold for direct VRA Section 2 protection '
+        f'but above the level at which minority voters can meaningfully influence outcomes. '
+        f'Both thresholds are configurable via env vars INFLUENCE_MIN_THRESHOLD and INFLUENCE_MAX_THRESHOLD.',
+        True),
+    'dem_safe_seats': (
+        'Safe Democratic Seats',
+        'How many districts lean solidly Democratic — beyond the competitive margin?',
+        'competitive',
+        f'Counts districts where the Democratic two-party vote share exceeds '
+        f'50% + {COMPETITIVE_MARGIN*100:.0f}pp — the outer boundary of the competitive zone. '
+        f'These seats are reliably Democratic and not meaningfully contested. '
+        f'Together with safe Republican seats and competitive seats, this completes the '
+        f'three-bucket political balance picture. Compared to the neutral ensemble, an '
+        f'unusually high or low count signals that the map may be packing or diluting '
+        f'Democratic voters relative to what geography alone would produce.',
+        None),
+    'rep_safe_seats': (
+        'Safe Republican Seats',
+        'How many districts lean solidly Republican — beyond the competitive margin?',
+        'competitive',
+        f'Counts districts where the Republican two-party vote share exceeds '
+        f'50% + {COMPETITIVE_MARGIN*100:.0f}pp — the outer boundary of the competitive zone. '
+        f'These seats are reliably Republican and not meaningfully contested. '
+        f'Together with safe Democratic seats and competitive seats, this completes the '
+        f'three-bucket political balance picture. Compared to the neutral ensemble, an '
+        f'unusually high or low count signals that the map may be packing or cracking '
+        f'Republican voters relative to what geography alone would produce.',
+        None),
 }
 
 
@@ -592,7 +692,8 @@ def _vap_shares(df: pd.DataFrame, mapping: dict) -> pd.DataFrame:
             df[f'{key}_share'] = v / tv
     white = df.get('vap_white')
     if white is not None:
-        df['min_coal_share'] = 1.0 - white / tv
+        df['min_coal_share']  = 1.0 - white / tv
+        df['vap_white_share'] = white / tv
     return df
 
 
@@ -641,6 +742,20 @@ def compute_metrics(sampled: pd.DataFrame, enacted: pd.DataFrame, mapping: dict)
             s.groupby('draw')['_comp'].sum().to_numpy(dtype=float),
             float(e['_comp'].sum()) if len(e) else None,
         )
+        # Safe Democratic seats (D-lean, outside competitive zone)
+        s['_dem_safe'] = s[share_col] > 0.5 + half_margin
+        e['_dem_safe'] = e[share_col] > 0.5 + half_margin
+        raw['dem_safe_seats'] = (
+            s.groupby('draw')['_dem_safe'].sum().to_numpy(dtype=float),
+            float(e['_dem_safe'].sum()) if len(e) else None,
+        )
+        # Safe Republican seats (R-lean, outside competitive zone)
+        s['_rep_safe'] = s[share_col] < 0.5 - half_margin
+        e['_rep_safe'] = e[share_col] < 0.5 - half_margin
+        raw['rep_safe_seats'] = (
+            s.groupby('draw')['_rep_safe'].sum().to_numpy(dtype=float),
+            float(e['_rep_safe'].sum()) if len(e) else None,
+        )
         # Mean-median difference
         def _mm(x): return x.mean() - x.median()
         raw['mean_median'] = (
@@ -655,6 +770,7 @@ def compute_metrics(sampled: pd.DataFrame, enacted: pd.DataFrame, mapping: dict)
         ('maj_aian',  'vap_aian_share',  MINORITY_THRESHOLD),
         ('maj_asian', 'vap_asian_share', MINORITY_THRESHOLD),
         ('min_coal',  'min_coal_share',  MINORITY_THRESHOLD),
+        ('maj_white', 'vap_white_share', MINORITY_THRESHOLD),
     ]:
         if share_col_name not in s.columns:
             continue
@@ -665,7 +781,134 @@ def compute_metrics(sampled: pd.DataFrame, enacted: pd.DataFrame, mapping: dict)
             float(e[f'_{mkey}'].sum()) if len(e) else None,
         )
 
+    # Minority influence: districts in the influence band [INFLUENCE_MIN, INFLUENCE_MAX)
+    if 'min_coal_share' in s.columns:
+        s['_min_influence'] = (
+            (s['min_coal_share'] >= INFLUENCE_MIN_THRESHOLD) &
+            (s['min_coal_share'] <  INFLUENCE_MAX_THRESHOLD)
+        )
+        e['_min_influence'] = (
+            (e['min_coal_share'] >= INFLUENCE_MIN_THRESHOLD) &
+            (e['min_coal_share'] <  INFLUENCE_MAX_THRESHOLD)
+        ) if 'min_coal_share' in e.columns else pd.Series(False)
+        raw['min_influence'] = (
+            s.groupby('draw')['_min_influence'].sum().to_numpy(dtype=float),
+            float(e['_min_influence'].sum()) if len(e) else None,
+        )
+
     return raw
+
+
+def _compute_composite_grades(metric_grades: dict, n_districts: int) -> dict:
+    """
+    Single authoritative source for all Princeton composite grades.
+
+    Takes already-computed per-metric grade dicts — each must have at minimum
+    'pct_rank' and 'grade' keys — and returns composite grades:
+      _partisan_fairness, _geographic (when Polsby-Popper + county splits present),
+      _overall.
+
+    Called from compute_princeton_grades(), _build_run_from_scorecard(), and
+    _score_geojson().  No other code path should compute composites.
+
+    Design note: composite grades are derived interpretation, not raw data.
+    Scorecards store only per-metric data; this function is always called at
+    serve time so that the grading logic has exactly one implementation.
+    """
+    result: dict = {}
+    if 'dem_seats' not in metric_grades:
+        return result
+
+    # ── Partisan Fairness ─────────────────────────────────────────────────────
+    # All three partisan metrics must pass the 5th–95th percentile ensemble test.
+    # Using only dem_seats under-reports gerrymandering: geographic self-sorting
+    # creates a structural baseline where a map can pass on seats while its
+    # vote-efficiency scores (efficiency_gap, mean_median) are extreme outliers.
+    _PM = {
+        'dem_seats':      'Seat count',
+        'efficiency_gap': 'Efficiency gap',
+        'mean_median':    'Mean-median',
+    }
+    pm_pcts   = {m: metric_grades[m]['pct_rank'] for m in _PM if metric_grades.get(m)}
+    pm_failed = {m: r for m, r in pm_pcts.items() if not _ensemble_pass(r)}
+    e_pass    = len(pm_failed) == 0
+
+    # Normative: use partisan_bias enacted value when available, else conservative True
+    pbias  = (metric_grades.get('partisan_bias') or {}).get('enacted')
+    n_pass = _normative_pass(pbias, n_districts) if pbias is not None else True
+
+    pf = _partisan_grade(e_pass, n_pass)
+
+    # Severity downgrade: vote-efficiency metric at extreme tail (>97th or <3rd pctile)
+    # signals that the structural skew is severe, not merely borderline.
+    if not e_pass and any(r > 97 or r < 3 for m, r in pm_failed.items()
+                          if m in ('efficiency_gap', 'mean_median')):
+        pf = _adj(pf, -1)   # B→C, C→D
+
+    comp_g = (metric_grades.get('comp_seats') or {}).get('grade', '')
+    if comp_g == 'A': pf = _adj(pf, +1)
+    if comp_g == 'F': pf = _adj(pf, -1)
+
+    pm_detail  = ', '.join(
+        f'{_PM[m]} ({"✓" if _ensemble_pass(r) else "✗"} {r:.0f}th pctile)'
+        for m, r in pm_pcts.items()
+    )
+    fail_names = ', '.join(pm_failed) if pm_failed else 'none'
+
+    result['_partisan_fairness'] = {
+        'label':          'Partisan Fairness',
+        'grade':          pf,
+        'ensemble_pass':  e_pass,
+        'normative_pass': n_pass,
+        'description': (
+            'Assessed using the Princeton Gerrymandering Project\'s dual test. '
+            'The ENSEMBLE test checks whether the enacted map falls within the '
+            'normal range (5th–95th percentile) of outcomes for thousands of '
+            'randomly drawn alternative maps — maps drawn without partisan intent. '
+            'The NORMATIVE test uses the cube-law of elections to check vote-to-seat '
+            'conversion symmetry. All three partisan metrics must pass the ensemble '
+            'test (seat count, efficiency gap, mean-median). '
+            f'Ensemble: {"✓ PASS — all partisan metrics within normal range" if e_pass else f"✗ FAIL — outside normal range: {fail_names}"}. '
+            f'Normative: {"✓ PASS" if n_pass else "✗ FAIL — map systematically advantages one party"}. '
+            f'Metric detail: {pm_detail}.'
+        ),
+    }
+
+    # ── Geographic ────────────────────────────────────────────────────────────
+    pp_g  = (metric_grades.get('polsby_popper') or {}).get('grade')
+    cs_g  = (metric_grades.get('county_splits') or {}).get('grade')
+    geo_g = None
+    if pp_g and cs_g:
+        geo_g = _geo_grade(pp_g, cs_g)
+        result['_geographic'] = {
+            'label': 'Geographic',
+            'grade': geo_g,
+            'description': 'Combines compactness (Polsby-Popper) and county splits.',
+        }
+
+    # ── Overall ───────────────────────────────────────────────────────────────
+    overall = pf
+    if geo_g  == 'F': overall = _adj(overall, -1)
+    if comp_g == 'A': overall = _adj(overall, +1)
+    if comp_g == 'F': overall = _adj(overall, -1)
+
+    result['_overall'] = {
+        'label': 'Overall',
+        'grade': overall,
+        'description': (
+            'The Overall grade summarizes how the enacted map compares to '
+            'thousands of alternative maps drawn without partisan intent. '
+            'It starts from the Partisan Fairness grade and adjusts upward '
+            'if the map is unusually competitive, or downward if it has zero '
+            'competitive districts or poor geographic quality (compactness, '
+            'county splits). An A means the enacted map performs as well as '
+            'or better than neutral alternatives on all dimensions. An F means '
+            'the map produces outcomes highly unlikely to occur by chance in '
+            'a fair redistricting process.'
+        ),
+    }
+
+    return result
 
 
 def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
@@ -698,87 +941,48 @@ def compute_princeton_grades(raw_metrics: dict, n_districts: int) -> dict:
             grade = _directional_grade(pct, higher_is_better)
 
         result[key] = {
-            'label':       label,
-            'headline':    headline,
-            'category':    category,
-            'description': desc,
-            'takeaway':    _generate_takeaway(key, float(e_val), pct, hist),
-            'grade':       grade,
-            'enacted':     round(float(e_val), 4),
-            'pct_rank':    round(pct, 1),
-            'histogram':   hist,
+            'label':          label,
+            'headline':       headline,
+            'category':       category,
+            'description':    desc,
+            'takeaway':       _generate_takeaway(key, float(e_val), pct, hist),
+            'grade':          grade,
+            'enacted':        round(float(e_val), 4),
+            'pct_rank':       round(pct, 1),
+            'histogram':      hist,
+            'formula_info':   _METRIC_FORMULAS.get(key),
+            'a_grade_range':  _a_grade_range(key, dist, higher_is_better),
         }
 
     # ── Princeton composite grades ──────────────────────────────────────────
+    # Partisan_bias enacted value (from raw tuple) must be surfaced into the
+    # result dict before calling _compute_composite_grades so the normative
+    # test can use it when available.
+    if 'partisan_bias' in raw_metrics:
+        pbias_e = raw_metrics['partisan_bias'][1]
+        if pbias_e is not None and 'partisan_bias' not in result:
+            result['partisan_bias'] = {'enacted': float(pbias_e)}
 
-    # Competitiveness
-    comp_g = result.get('comp_seats', {}).get('grade')
-
-    # Partisan fairness (dual test)
-    partisan_g = None
-    if 'dem_seats' in result:
-        pbias_val = raw_metrics.get('partisan_bias', (None, None))[1]
-        e_pass = _ensemble_pass(result['dem_seats']['pct_rank'])
-        n_pass = _normative_pass(pbias_val, n_districts) if pbias_val is not None else True
-        partisan_g = _partisan_grade(e_pass, n_pass)
-        if comp_g == 'A': partisan_g = _adj(partisan_g, +1)
-        if comp_g == 'F': partisan_g = _adj(partisan_g, -1)
-        result['_partisan_fairness'] = {
-            'label':          'Partisan Fairness',
-            'grade':          partisan_g,
-            'ensemble_pass':  e_pass,
-            'normative_pass': n_pass,
-            'description':    (
-                'Assessed using the Princeton Gerrymandering Project\'s dual test. '
-                'The ENSEMBLE test checks whether the enacted map falls within the '
-                'normal range (5th–95th percentile) of outcomes for thousands of '
-                'randomly drawn alternative maps — maps that follow all legal '
-                'requirements but were drawn without partisan intent. '
-                'The NORMATIVE test uses the mathematical "cube law" of elections '
-                'to check whether both parties convert votes into seats at '
-                'roughly the same rate (symmetry). A map must pass both tests '
-                'for an A grade. '
-                f'Ensemble: {"✓ PASS — the enacted map is within the normal range" if e_pass else "✗ FAIL — the enacted map produces unusually partisan outcomes compared to neutral alternatives"}, '
-                f'Normative: {"✓ PASS" if n_pass else "✗ FAIL — the map systematically advantages one party at equal vote shares"}.'
-            ),
-        }
-
-    # Geographic (compactness + county splits)
-    comp_pp_g = result.get('polsby_popper', {}).get('grade')
-    splits_g  = result.get('county_splits', {}).get('grade')
-    geo_g = None
-    if comp_pp_g and splits_g:
-        geo_g = _geo_grade(comp_pp_g, splits_g)
-        result['_geographic'] = {
-            'label': 'Geographic',
-            'grade': geo_g,
-            'description': 'Combines compactness (Polsby-Popper) and county splits.',
-        }
-
-    # Overall
-    if partisan_g:
-        overall = partisan_g
-        if geo_g == 'F':   overall = _adj(overall, -1)
-        if comp_g == 'A':  overall = _adj(overall, +1)
-        if comp_g == 'F':  overall = _adj(overall, -1)
-        result['_overall'] = {
-            'label': 'Overall',
-            'grade': overall,
-            'description': (
-                'The Overall grade summarizes how the enacted map compares to '
-                'thousands of alternative maps drawn without partisan intent. '
-                'It starts from the Partisan Fairness grade and adjusts upward '
-                'if the map is unusually competitive (more competitive districts '
-                'than typical), or downward if it has zero competitive districts '
-                'or poor geographic quality (irregular shapes, many county splits). '
-                'An A means the enacted map performs as well as or better than '
-                'neutral alternatives on all dimensions — it does not stand out '
-                'as gerrymandered. An F means the map produces outcomes that are '
-                'highly unlikely to occur by chance in a fair process.'
-            ),
-        }
-
+    result.update(_compute_composite_grades(result, n_districts))
     return result
+
+
+def _a_grade_range(key: str, dist: np.ndarray, higher_is_better) -> dict:
+    """Distribution VALUE range corresponding to A-grade (for histogram highlighting)."""
+    if key == 'comp_seats':
+        return {'lo': round(float(np.percentile(dist, 95)), 4), 'hi': None}
+    elif key in ('dem_seats', 'dem_safe_seats'):
+        return {'lo': round(float(np.percentile(dist, 50)), 4), 'hi': None}
+    elif key == 'rep_safe_seats':
+        return {'lo': round(float(np.percentile(dist, 40)), 4),
+                'hi': round(float(np.percentile(dist, 60)), 4)}
+    elif higher_is_better is None:
+        return {'lo': round(float(np.percentile(dist, 40)), 4),
+                'hi': round(float(np.percentile(dist, 60)), 4)}
+    elif higher_is_better:
+        return {'lo': round(float(np.percentile(dist, 95)), 4), 'hi': None}
+    else:
+        return {'lo': None, 'hi': round(float(np.percentile(dist, 5)), 4)}
 
 
 def _simple_grade(pct_rank: float) -> str:
@@ -830,8 +1034,9 @@ def _build_analysis(run: dict) -> dict:
             'story_html':    meta.get('story_html', None),
             'run':           {k: v for k, v in meta.items() if k != 'columns'},
         },
-        'grades':  run['grades'],
-        'river':   run['river'],
+        'grades':          run['grades'],
+        'river':           run['river'],
+        'proportionality': run.get('proportionality'),  # three-level gap: proportional→neutral→enacted
     }
 
 
@@ -856,6 +1061,133 @@ def _build_run(run_id: str, csv_path: Path, meta_file: Path) -> dict:
         'grades':  grades,
         'river':   river,
         'raw':     raw,
+    }
+
+
+# ── VTD composite spatial index (lazy-loaded on first /api/score-plan request) ─
+# Primary: bundled alongside the app (committed to fdensemble/data/, copied by Dockerfile)
+# Fallback: local dev path relative to the fdp sibling directory
+_VTD_COMPOSITE_PATH  = Path('data/vtd_composite.parquet')
+_VTD_MUNI_PATH       = Path('data/vtd_muni.parquet')
+_VTD_DEMO_PATH       = Path('data/vtd_demographics.parquet')
+_vtd_df: pd.DataFrame | None = None
+_vtd_tree: STRtree | None = None
+_vtd_points: list | None = None  # parallel list of shapely Points
+_vtd_muni_df:  pd.DataFrame | None = None  # GEOID → muni_id for municipal split scoring
+_vtd_demo_df:  pd.DataFrame | None = None  # GEOID → racial/pop demographics
+_statewide_dem_2pv: float | None = None   # VAP-weighted statewide composite Dem 2pv (cached)
+
+
+def _vtd_composite_path() -> Path | None:
+    """Resolve the vtd_composite.parquet path using the same fallback chain as _load_vtd_composite."""
+    path = _VTD_COMPOSITE_PATH
+    if path.exists():
+        return path
+    for candidate in [
+        Path('fdp/data/repos/main/vtd/vtd_composite.parquet'),
+        Path('../fdp/data/repos/main/vtd/vtd_composite.parquet'),
+        Path('fdensemble/data/vtd_composite.parquet'),
+    ]:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _get_statewide_dem_2pv() -> float | None:
+    """
+    Compute the VAP-weighted statewide composite Dem two-party vote share (cached).
+
+    Uses synthetic vote totals: composite_dem_pct * VAP_MOD per VTD — the same
+    weighting used when injecting composite election rows into election_results_vtd.
+    This means the proportional target is consistent with the scoring pipeline.
+
+    Result is the same for all four runs (congress/senate/house GerryChain + ALARM)
+    because they share the same Georgia VTD composite elections.
+    """
+    global _statewide_dem_2pv
+    if _statewide_dem_2pv is not None:
+        return _statewide_dem_2pv
+
+    path = _vtd_composite_path()
+    if path is None:
+        return None
+
+    try:
+        df = pd.read_parquet(path, columns=['composite_dem_pct', 'composite_rep_pct', 'VAP_MOD'])
+        df = df[df['VAP_MOD'] > 0]
+        total_dem = float((df['composite_dem_pct'] * df['VAP_MOD']).sum())
+        total_rep = float((df['composite_rep_pct'] * df['VAP_MOD']).sum())
+        _statewide_dem_2pv = total_dem / (total_dem + total_rep)
+        print(f'  Statewide composite Dem 2pv (VAP-weighted): {_statewide_dem_2pv:.4f}')
+    except Exception as exc:
+        print(f'  WARNING: could not compute statewide Dem 2pv: {exc}')
+        return None
+
+    return _statewide_dem_2pv
+
+
+def _build_proportionality_gap(grades: dict, n_districts: int) -> dict | None:
+    """
+    Compute the proportionality gap: how far the enacted map and the neutral
+    ensemble median fall from what statewide vote shares would predict.
+
+    Three reference points:
+      1. Proportional target  = statewide_dem_2pv × n_districts
+         What strict proportional representation would deliver.
+      2. Neutral ensemble median  = p50 of the dem_seats histogram
+         What neutral redistricting (no partisan intent) typically produces.
+         Already falls short of (1) due to Democratic voter self-sorting into
+         dense urban areas — the structural geographic baseline.
+      3. Enacted seats  = dem_seats enacted value
+         What the actual enacted map produces.
+
+    The gap from (1)→(2) is the structural geographic gap: even fair maps fall
+    short of proportionality because of population clustering. This is the
+    "garbage in" baseline — the ensemble comparison cannot see past this floor.
+
+    The gap from (2)→(3) is the manipulation gap: the enacted map's additional
+    shortfall beyond what neutral redistricting would produce. This is what the
+    Princeton ensemble test grades.
+
+    Returns None if vtd_composite is unavailable or dem_seats grade is missing.
+    """
+    ds = grades.get('dem_seats')
+    if not ds or 'histogram' not in ds:
+        return None
+
+    statewide_dem_2pv = _get_statewide_dem_2pv()
+    if statewide_dem_2pv is None:
+        return None
+
+    hist             = ds['histogram']
+    ensemble_median  = float(hist.get('p50', 0))
+    ensemble_p5      = float(hist.get('p5',  0))
+    ensemble_p95     = float(hist.get('p95', 0))
+    enacted_seats    = float(ds.get('enacted', 0))
+
+    proportional_target = statewide_dem_2pv * n_districts
+    structural_gap      = ensemble_median - proportional_target  # negative = neutral maps fall short
+    manipulation_gap    = enacted_seats - ensemble_median         # negative = enacted below neutral
+    total_gap           = enacted_seats - proportional_target
+
+    return {
+        'statewide_dem_2pv':   round(statewide_dem_2pv, 4),
+        'proportional_target': round(proportional_target, 3),
+        'ensemble_median':     ensemble_median,
+        'ensemble_p5':         ensemble_p5,
+        'ensemble_p95':        ensemble_p95,
+        'enacted_seats':       enacted_seats,
+        'structural_gap':      round(structural_gap, 3),
+        'manipulation_gap':    round(manipulation_gap, 3),
+        'total_gap':           round(total_gap, 3),
+        'n_districts':         n_districts,
+        'elections_used': [
+            '2018 Governor (Kemp/Abrams)',
+            '2020 President (Trump/Biden)',
+            '2021 Warnock Senate Runoff (Warnock/Loeffler)',
+            '2022 Governor + Senate composite (Kemp/Abrams + Walker/Warnock)',
+            '2024 President (Trump/Harris)',
+        ],
     }
 
 
@@ -888,10 +1220,17 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0, plan_
             if val is not None:
                 grades[key] = val
 
-    # Merge in cross-election grades (composites, demographics)
+    # Merge in cross-election grades from the scorecard (demographics, geographic
+    # metrics, muni_splits, etc.).  Skip any pre-computed composite grades
+    # (keys starting with '_') — those are always recomputed below so the grading
+    # logic has exactly one implementation: _compute_composite_grades().
     for key, val in sc.get('grades', {}).items():
-        if val is not None:
+        if val is not None and not key.startswith('_'):
             grades[key] = val
+
+    # Compute composite grades (_partisan_fairness, _geographic, _overall) from
+    # the now-complete per-metric grades dict.
+    grades.update(_compute_composite_grades(grades, N_DISTRICTS))
 
     # River for selected election
     river = None
@@ -934,10 +1273,17 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0, plan_
         'story_html':  sc.get('story_html', None),
     }
 
+    # Proportionality gap — how far the enacted map and neutral ensemble fall from
+    # strict proportional representation.  Computed at serve time so all four runs
+    # (GerryChain congress/senate/house + ALARM) share the same statewide baseline.
+    proportionality = _build_proportionality_gap(grades, run_info.get('n_districts', N_DISTRICTS))
+
     return {
-        'meta':    meta,
-        'grades':  grades,
-        'river':   river,
+        'meta':            meta,
+        'grades':          grades,
+        'river':           river,
+        'correlations':    sc.get('correlations'),  # cross-metric scatter + Pearson r matrix
+        'proportionality': proportionality,          # three-level gap: proportional→neutral→enacted
         # These are unused by fdensemble render paths but kept for compat
         'sampled': None,
         'enacted': None,
@@ -999,19 +1345,6 @@ def _save_maps_catalog(maps: list):
 
 _maps_catalog: list = _load_maps_catalog()
 print(f'Map library: {len(_maps_catalog)} map(s) in {MAPS_DIR}')
-
-# ── VTD composite spatial index (lazy-loaded on first /api/score-plan request) ─
-# Primary: bundled alongside the app (committed to fdensemble/data/, copied by Dockerfile)
-# Fallback: local dev path relative to the fdp sibling directory
-_VTD_COMPOSITE_PATH  = Path('data/vtd_composite.parquet')
-_VTD_MUNI_PATH       = Path('data/vtd_muni.parquet')
-_VTD_DEMO_PATH       = Path('data/vtd_demographics.parquet')
-_vtd_df: pd.DataFrame | None = None
-_vtd_tree: STRtree | None = None
-_vtd_points: list | None = None  # parallel list of shapely Points
-_vtd_muni_df:  pd.DataFrame | None = None  # GEOID → muni_id for municipal split scoring
-_vtd_demo_df:  pd.DataFrame | None = None  # GEOID → racial/pop demographics
-
 
 def _load_vtd_composite():
     global _vtd_df, _vtd_tree, _vtd_points
@@ -1177,6 +1510,9 @@ def _score_geojson(features: list, run_id: str) -> dict:
 
     # Partisan metrics
     dem_seats    = int((district_dem_2pvs >= 0.5).sum())
+    half_margin_score = COMPETITIVE_MARGIN / 2.0
+    dem_safe_seats_val = int((district_dem_2pvs > 0.5 + half_margin_score).sum())
+    rep_safe_seats_val = int((district_dem_2pvs < 0.5 - half_margin_score).sum())
     mean_val     = float(np.mean(district_dem_2pvs))
     median_val   = float(np.median(district_dem_2pvs))
     mean_median  = round(mean_val - median_val, 4)
@@ -1226,11 +1562,17 @@ def _score_geojson(features: list, run_id: str) -> dict:
             elif pct >= 5: grd = 'C'
             else: grd = 'F'
         elif metric_key in ('muni_splits', 'county_splits'):
-            # lower is better: rank = distance from low end
-            rank = 100 - pct
+            rank = 100 - pct   # lower is better
             if rank >= 95: grd = 'A'
             elif rank >= 64: grd = 'B'
-            elif rank >= 5: grd = 'C'
+            elif rank >= 5:  grd = 'C'
+            else: grd = 'F'
+        elif metric_key in ('min_influence', 'polsby_popper',
+                            'maj_black', 'maj_hisp', 'maj_aian', 'maj_asian'):
+            # higher is better: directional
+            if pct >= 95: grd = 'A'
+            elif pct >= 64: grd = 'B'
+            elif pct >= 5:  grd = 'C'
             else: grd = 'F'
         else:
             d = abs(pct - 50.0)
@@ -1238,32 +1580,34 @@ def _score_geojson(features: list, run_id: str) -> dict:
             elif d <= 30: grd = 'B'
             elif d <= 45: grd = 'C'
             else: grd = 'F'
-        return {'value': round(val, 4), 'pct_rank': round(pct, 1), 'grade': grd}
+        # Pass through a_grade_range from the stored benchmark metric
+        a_gr = g.get('a_grade_range')
+        return {'value': round(val, 4), 'pct_rank': round(pct, 1), 'grade': grd,
+                'a_grade_range': a_gr}
 
     metrics = {
         'dem_seats':      _rank_and_grade('dem_seats',      float(dem_seats)),
         'efficiency_gap': _rank_and_grade('efficiency_gap', efficiency_gap),
         'mean_median':    _rank_and_grade('mean_median',    mean_median),
         'comp_seats':     _rank_and_grade('comp_seats',     float(comp_seats)),
+        'dem_safe_seats': _rank_and_grade('dem_safe_seats', float(dem_safe_seats_val)),
+        'rep_safe_seats': _rank_and_grade('rep_safe_seats', float(rep_safe_seats_val)),
     }
     if muni_splits_val is not None:
         metrics['muni_splits'] = _rank_and_grade('muni_splits', float(muni_splits_val))
 
-    # Partisan fairness composite grade
-    e_pass = 5.0 <= metrics['dem_seats']['pct_rank'] <= 95.0
-    pf_grade = 'A' if e_pass else 'B'
-    if metrics['comp_seats']['grade'] == 'F': pf_grade = _adj(pf_grade, -1)
-    if metrics['comp_seats']['grade'] == 'A': pf_grade = _adj(pf_grade, +1)
-    overall = pf_grade
+    # Minority demographic metrics from vtd_demographics (if available)
+    if demo_by_dist:
+        d_vals = list(demo_by_dist.values())
+        maj_white_count = sum(1 for d in d_vals if d.get('pct_white', 0) >= MINORITY_THRESHOLD)
+        min_influence_count = sum(
+            1 for d in d_vals
+            if INFLUENCE_MIN_THRESHOLD <= d.get('pct_minority', 0) < INFLUENCE_MAX_THRESHOLD
+        )
+        metrics['maj_white']     = _rank_and_grade('maj_white',     float(maj_white_count))
+        metrics['min_influence'] = _rank_and_grade('min_influence', float(min_influence_count))
 
-    plan_grades = {
-        '_partisan_fairness': {
-            'label': 'Partisan Fairness', 'grade': pf_grade,
-            'ensemble_pass': e_pass, 'normative_pass': True,
-            'description': f'Ensemble: {"✓ PASS" if e_pass else "✗ FAIL"}',
-        },
-        '_overall': {'label': 'Overall', 'grade': overall, 'description': ''},
-    }
+    plan_grades = _compute_composite_grades(metrics, N_DISTRICTS)
 
     # Build per-district list sorted by partisan lean (ascending)
     dist_rows = []
@@ -1443,6 +1787,20 @@ def get_analysis(
                 run_data = _build_run_from_scorecard(sc_path, election_idx=election, plan_id=plan)
 
     return _build_analysis(run_data)
+
+
+@app.get('/api/analysis/correlations')
+def get_correlations(run: str = Query(default=None)):
+    """
+    Return cross-metric correlation data for a run.
+    Used by the Urban Crack Panel to surface the geographic-splitting / partisan-bias story.
+    Returns { available: false } when correlations have not been computed (re-run build_scorecard.py).
+    """
+    run_data = _get_run(run)
+    corr = run_data.get('correlations')
+    if not corr:
+        return {'available': False}
+    return {'available': True, **corr}
 
 
 def _find_scorecard_path(run_id: str) -> Path | None:

@@ -67,6 +67,8 @@
     const labels  = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
     const col     = categoryColor[snap.category] ?? '#888';
 
+    const aRange = snap.a_grade_range ?? null;
+
     chart = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -98,6 +100,23 @@
         },
       },
       plugins: [{
+        id: 'a-grade-band',
+        beforeDatasetsDraw(ch: any) {
+          if (!aRange) return;
+          const { lo, hi } = aRange;
+          if (lo == null && hi == null) return;
+          const xScale = ch.scales.x;
+          const { ctx, chartArea: { top, bottom, left, right } } = ch;
+          const bw = edges.length > 2 ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) : 10;
+          const edgesArr = Array.from(h.edges);
+          const xLeft  = lo != null ? xScale.getPixelForValue(binIndex(edgesArr, lo)) - bw / 2 : left;
+          const xRight = hi != null ? xScale.getPixelForValue(binIndex(edgesArr, hi)) + bw / 2 : right;
+          ctx.save();
+          ctx.fillStyle = 'rgba(39, 174, 96, 0.13)';
+          ctx.fillRect(xLeft, top, xRight - xLeft, bottom - top);
+          ctx.restore();
+        },
+      }, {
         id: 'value-lines',
         afterDraw(ch: any) {
           const xScale = ch.scales.x;
@@ -198,6 +217,12 @@
             <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">5th–95th range</div>
             <div style="font-size:.78rem;font-weight:600;">{metric.histogram.p5.toFixed(2)} – {metric.histogram.p95.toFixed(2)}</div>
           </div>
+          {#if metric.histogram.p25 != null && metric.histogram.p75 != null}
+          <div style="grid-column:span 2;">
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:#27ae60;">Most representative (25th–75th)</div>
+            <div style="font-size:.78rem;font-weight:600;color:#27ae60;">{metric.histogram.p25.toFixed(2)} – {metric.histogram.p75.toFixed(2)}</div>
+          </div>
+          {/if}
         </div>
       {:else}
         <!-- Default: enacted grades -->
@@ -221,6 +246,12 @@
             <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Neutral 5th–95th range</div>
             <div style="font-size:.78rem;font-weight:600;">{metric.histogram.p5.toFixed(2)} – {metric.histogram.p95.toFixed(2)}</div>
           </div>
+          {#if metric.histogram.p25 != null && metric.histogram.p75 != null}
+          <div style="grid-column:span 2;">
+            <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:#27ae60;">Most representative (25th–75th)</div>
+            <div style="font-size:.78rem;font-weight:600;color:#27ae60;">{metric.histogram.p25.toFixed(2)} – {metric.histogram.p75.toFixed(2)}</div>
+          </div>
+          {/if}
         </div>
       {/if}
     </div>
@@ -236,6 +267,9 @@
           <span style="color:#111;">‒‒</span> enacted &nbsp;|&nbsp; {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
         {:else}
           ‒‒ enacted &nbsp;|&nbsp; distribution of {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
+        {/if}
+        {#if metric.a_grade_range}
+          &nbsp;|&nbsp; <span style="color:#27ae60;">█</span> A zone
         {/if}
       </div>
     </div>

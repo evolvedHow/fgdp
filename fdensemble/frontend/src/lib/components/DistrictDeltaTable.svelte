@@ -82,6 +82,23 @@
   const leanFlipCount = $derived(rows.filter(r => r.leanFlip).length);
   const distChangedCount = $derived(rows.filter(r => r.demDelta != null && Math.abs(r.demDelta * 100) >= 3).length);
 
+  // Displaced voters: VTDs that changed district assignment
+  const distChangedBoundaryCount = $derived(rows.filter(r => r.vtdsMoved > 0).length);
+  const votersMovedVap = $derived.by(() => {
+    if (!hasVtdData || !planA.vtd_details || !planA.vtd_assignments || !planB.vtd_assignments) return null;
+    let total = 0;
+    for (const [geoid, distA] of Object.entries(planA.vtd_assignments)) {
+      if (planB.vtd_assignments[geoid] !== distA) {
+        total += planA.vtd_details[geoid]?.total_vap ?? 0;
+      }
+    }
+    return total;
+  });
+  const totalVap = $derived.by(() => {
+    if (!planA.vtd_details) return null;
+    return Object.values(planA.vtd_details).reduce((s, d) => s + d.total_vap, 0);
+  });
+
   function pp(v: number | null, decimals = 1) {
     if (v == null) return '—';
     const s = v > 0 ? '+' : '';
@@ -120,6 +137,22 @@
       {#if sub}<div style="font-size:.68rem;color:var(--gray);">{sub}</div>{/if}
     </div>
   {/each}
+  {#if hasVtdData}
+    <div style="background:var(--card);border:1.5px solid var(--blue);border-radius:8px;padding:.6rem .8rem;">
+      <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);margin-bottom:.2rem;">Districts Changed</div>
+      <div style="font-weight:700;font-size:1rem;">{distChangedBoundaryCount}</div>
+      <div style="font-size:.68rem;color:var(--gray);">boundary changes vs Map A</div>
+    </div>
+    <div style="background:var(--card);border:1.5px solid var(--blue);border-radius:8px;padding:.6rem .8rem;">
+      <div style="font-size:.62rem;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);margin-bottom:.2rem;">Voters Moved</div>
+      <div style="font-weight:700;font-size:1rem;">
+        {votersMovedVap != null ? votersMovedVap.toLocaleString() : '—'}
+      </div>
+      {#if votersMovedVap != null && totalVap != null}
+        <div style="font-size:.68rem;color:var(--gray);">{((votersMovedVap / totalVap) * 100).toFixed(1)}% of state VAP</div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <!-- Table -->

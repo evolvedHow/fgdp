@@ -128,9 +128,23 @@
             ],
             "enacted": 5.0,
             "p5": 5.0,
+            "p25": 5.0,
+            "p40": 6.0,
             "p50": 6.0,
+            "p60": 6.0,
+            "p75": 6.0,
             "p95": 7.0,
             "mean": 5.9236
+          },
+          "formula_info": {
+            "formula": "count(d : dem_2pv_d \u2265 0.50)",
+            "detail": "dem_2pv_d = \u03a3 dem_votes_vtd / \u03a3 (dem_votes_vtd + rep_votes_vtd) for all VTDs in district d",
+            "data_source": "VTD composite \u2014 2018\u20132024 five-election average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov+Senate avg, 2024 Pres)",
+            "config_keys": []
+          },
+          "a_grade_range": {
+            "lo": 6.0,
+            "hi": null
           }
         },
         "efficiency_gap": {
@@ -230,9 +244,23 @@
             ],
             "enacted": 0.1737,
             "p5": 0.0275,
+            "p25": 0.0984,
+            "p40": 0.1005,
             "p50": 0.1011,
+            "p60": 0.1018,
+            "p75": 0.1711,
             "p95": 0.1731,
             "mean": 0.106
+          },
+          "formula_info": {
+            "formula": "(\u03a3 wasted_dem \u2212 \u03a3 wasted_rep) / \u03a3 total_votes  across all districts",
+            "detail": "wasted_dem = excess Dem votes beyond 50%+1 in Dem wins + all Dem votes in Dem losses; symmetric for Rep",
+            "data_source": "VTD composite \u2014 2018\u20132024 composite",
+            "config_keys": []
+          },
+          "a_grade_range": {
+            "lo": 0.1005,
+            "hi": 0.1018
           }
         },
         "mean_median": {
@@ -332,9 +360,23 @@
             ],
             "enacted": 0.0687,
             "p5": 0.0091,
+            "p25": 0.0272,
+            "p40": 0.0354,
             "p50": 0.0392,
+            "p60": 0.0433,
+            "p75": 0.0499,
             "p95": 0.0597,
             "mean": 0.0379
+          },
+          "formula_info": {
+            "formula": "mean(dem_2pv_d) \u2212 median(dem_2pv_d)  across all d",
+            "detail": "Positive \u2192 Dem votes distributed less efficiently across districts (Republican structural advantage). Negative \u2192 reverse.",
+            "data_source": "VTD composite \u2014 2018\u20132024 composite",
+            "config_keys": []
+          },
+          "a_grade_range": {
+            "lo": 0.0354,
+            "hi": 0.0433
           }
         },
         "comp_seats": {
@@ -434,9 +476,25 @@
             ],
             "enacted": 2.0,
             "p5": 2.0,
+            "p25": 3.0,
+            "p40": 3.0,
             "p50": 4.0,
+            "p60": 4.0,
+            "p75": 5.0,
             "p95": 6.0,
             "mean": 3.798
+          },
+          "formula_info": {
+            "formula": "count(d : |dem_2pv_d \u2212 0.50| \u2264 competitive_margin)",
+            "detail": "A district is competitive if the two-party Democratic share falls within \u00b1competitive_margin of 50%",
+            "data_source": "VTD composite \u2014 2018\u20132024 composite",
+            "config_keys": [
+              "competitive_margin"
+            ]
+          },
+          "a_grade_range": {
+            "lo": 6.0,
+            "hi": null
           }
         }
       },
@@ -627,9 +685,25 @@
           ],
           "enacted": 2.0,
           "p5": 2.0,
+          "p25": 2.0,
+          "p40": 3.0,
           "p50": 3.0,
+          "p60": 3.0,
+          "p75": 3.0,
           "p95": 3.0,
           "mean": 2.6908
+        },
+        "formula_info": {
+          "formula": "count(d : black_CVAP_d / total_CVAP_d \u2265 bvap_majority_threshold)",
+          "detail": "Uses Citizen Voting Age Population (CVAP, excludes non-citizens) for legal precision under Section 2 VRA. GerryChain: 2024 ACS 5-yr CVAP. ALARM: 2020 Census VAP.",
+          "data_source": "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
+          "config_keys": [
+            "bvap_majority_threshold"
+          ]
+        },
+        "a_grade_range": {
+          "lo": 3.0,
+          "hi": 3.0
         }
       },
       "min_coal": {
@@ -729,9 +803,25 @@
           ],
           "enacted": 5.0,
           "p5": 4.0,
+          "p25": 4.0,
+          "p40": 4.0,
           "p50": 4.0,
+          "p60": 5.0,
+          "p75": 5.0,
           "p95": 6.0,
           "mean": 4.4884
+        },
+        "formula_info": {
+          "formula": "count(d : (1 \u2212 white_CVAP_d / total_CVAP_d) \u2265 majority_threshold)",
+          "detail": "Combined non-white Citizen VAP share. A minority-coalition district is majority non-white but may include multiple racial groups, none individually a majority.",
+          "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+          "config_keys": [
+            "majority_threshold"
+          ]
+        },
+        "a_grade_range": {
+          "lo": 4.0,
+          "hi": 5.0
         }
       }
     }
@@ -834,7 +924,11 @@
         ],
         "enacted": 0.2494,
         "p5": 0.1939,
+        "p25": 0.2174,
+        "p40": 0.2252,
         "p50": 0.2314,
+        "p60": 0.2373,
+        "p75": 0.2473,
         "p95": 0.2766,
         "mean": 0.2337
       }
@@ -936,7 +1030,11 @@
         ],
         "enacted": 15.0,
         "p5": 7.0,
+        "p25": 8.0,
+        "p40": 9.0,
         "p50": 10.0,
+        "p60": 10.0,
+        "p75": 11.0,
         "p95": 12.0,
         "mean": 9.7632
       }
@@ -1038,7 +1136,11 @@
         ],
         "enacted": 16.0,
         "p5": 3.0,
+        "p25": 5.0,
+        "p40": 6.0,
         "p50": 6.0,
+        "p60": 7.0,
+        "p75": 8.0,
         "p95": 11.0,
         "mean": 6.5244
       }
@@ -1047,14 +1149,14 @@
   "grades": {
     "_partisan_fairness": {
       "label": "Partisan Fairness",
-      "grade": "A",
-      "ensemble_pass": true,
+      "grade": "C",
+      "ensemble_pass": false,
       "normative_pass": true,
-      "description": "Assessed using the Princeton Gerrymandering Project's ensemble test against a composite partisan benchmark averaging 5 elections: 2018 Governor, 2020 President, 2021 Warnock Senate Runoff, 2022 Governor + Senate (averaged), and 2024 President. Third-party candidates are excluded (2-party vote shares only). The ENSEMBLE test checks whether the enacted map falls within the normal range (5th\u201395th percentile) of outcomes for thousands of randomly drawn alternative maps drawn without partisan intent. Ensemble: \u2713 PASS \u2014 the enacted map is within the normal range. Note: The normative (cube-law symmetry) test requires a partisan bias metric not available in GerryChain runs \u2014 it is conservatively set to Pass."
+      "description": "Assessed using the Princeton Gerrymandering Project's ensemble test against a composite partisan benchmark averaging 5 elections: 2018 Governor, 2020 President, 2021 Warnock Senate Runoff, 2022 Governor + Senate (averaged), and 2024 President. Third-party candidates are excluded (2-party vote shares only). The ENSEMBLE test checks whether the enacted map falls within the normal range (5th\u201395th percentile) of outcomes for thousands of randomly drawn alternative maps drawn without partisan intent. Ensemble: \u2717 FAIL \u2014 the enacted map produces unusually partisan outcomes compared to neutral alternatives. Note: The normative (cube-law symmetry) test requires a partisan bias metric not available in GerryChain runs \u2014 it is conservatively set to Pass."
     },
     "_overall": {
       "label": "Overall",
-      "grade": "A",
+      "grade": "C",
       "description": "The Overall grade summarizes how the enacted map compares to thousands of alternative maps drawn without partisan intent. It starts from the Partisan Fairness grade and adjusts upward if the map is unusually competitive (more competitive districts than typical), or downward if it has zero competitive districts. Geographic quality (compactness, county splits) is not yet available for GerryChain runs. An A means the enacted map performs as well as or better than neutral alternatives \u2014 it does not stand out as gerrymandered. An F means the map produces outcomes that are highly unlikely to occur by chance in a fair redistricting process."
     },
     "maj_black": {
@@ -1154,9 +1256,25 @@
         ],
         "enacted": 2.0,
         "p5": 2.0,
+        "p25": 2.0,
+        "p40": 3.0,
         "p50": 3.0,
+        "p60": 3.0,
+        "p75": 3.0,
         "p95": 3.0,
         "mean": 2.6908
+      },
+      "formula_info": {
+        "formula": "count(d : black_CVAP_d / total_CVAP_d \u2265 bvap_majority_threshold)",
+        "detail": "Uses Citizen Voting Age Population (CVAP, excludes non-citizens) for legal precision under Section 2 VRA. GerryChain: 2024 ACS 5-yr CVAP. ALARM: 2020 Census VAP.",
+        "data_source": "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys": [
+          "bvap_majority_threshold"
+        ]
+      },
+      "a_grade_range": {
+        "lo": 3.0,
+        "hi": 3.0
       }
     },
     "min_coal": {
@@ -1256,9 +1374,25 @@
         ],
         "enacted": 5.0,
         "p5": 4.0,
+        "p25": 4.0,
+        "p40": 4.0,
         "p50": 4.0,
+        "p60": 5.0,
+        "p75": 5.0,
         "p95": 6.0,
         "mean": 4.4884
+      },
+      "formula_info": {
+        "formula": "count(d : (1 \u2212 white_CVAP_d / total_CVAP_d) \u2265 majority_threshold)",
+        "detail": "Combined non-white Citizen VAP share. A minority-coalition district is majority non-white but may include multiple racial groups, none individually a majority.",
+        "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "config_keys": [
+          "majority_threshold"
+        ]
+      },
+      "a_grade_range": {
+        "lo": 4.0,
+        "hi": 5.0
       }
     },
     "polsby_popper": {
@@ -1358,7 +1492,11 @@
         ],
         "enacted": 0.2494,
         "p5": 0.1939,
+        "p25": 0.2174,
+        "p40": 0.2252,
         "p50": 0.2314,
+        "p60": 0.2373,
+        "p75": 0.2473,
         "p95": 0.2766,
         "mean": 0.2337
       }
@@ -1460,7 +1598,11 @@
         ],
         "enacted": 15.0,
         "p5": 7.0,
+        "p25": 8.0,
+        "p40": 9.0,
         "p50": 10.0,
+        "p60": 10.0,
+        "p75": 11.0,
         "p95": 12.0,
         "mean": 9.7632
       }
@@ -1562,7 +1704,11 @@
         ],
         "enacted": 16.0,
         "p5": 3.0,
+        "p25": 5.0,
+        "p40": 6.0,
         "p50": 6.0,
+        "p60": 7.0,
+        "p75": 8.0,
         "p95": 11.0,
         "mean": 6.5244
       }
@@ -1576,14 +1722,14 @@
       "grades": {
         "_partisan_fairness": {
           "label": "Partisan Fairness",
-          "grade": "A",
-          "ensemble_pass": true,
+          "grade": "C",
+          "ensemble_pass": false,
           "normative_pass": true,
-          "description": "Assessed using the Princeton Gerrymandering Project's ensemble test against a composite partisan benchmark averaging 5 elections: 2018 Governor, 2020 President, 2021 Warnock Senate Runoff, 2022 Governor + Senate (averaged), and 2024 President. Third-party candidates are excluded (2-party vote shares only). The ENSEMBLE test checks whether the enacted map falls within the normal range (5th\u201395th percentile) of outcomes for thousands of randomly drawn alternative maps drawn without partisan intent. Ensemble: \u2713 PASS \u2014 the enacted map is within the normal range. Note: The normative (cube-law symmetry) test requires a partisan bias metric not available in GerryChain runs \u2014 it is conservatively set to Pass."
+          "description": "Assessed using the Princeton Gerrymandering Project's ensemble test against a composite partisan benchmark averaging 5 elections: 2018 Governor, 2020 President, 2021 Warnock Senate Runoff, 2022 Governor + Senate (averaged), and 2024 President. Third-party candidates are excluded (2-party vote shares only). The ENSEMBLE test checks whether the enacted map falls within the normal range (5th\u201395th percentile) of outcomes for thousands of randomly drawn alternative maps drawn without partisan intent. Ensemble: \u2717 FAIL \u2014 the enacted map produces unusually partisan outcomes compared to neutral alternatives. Note: The normative (cube-law symmetry) test requires a partisan bias metric not available in GerryChain runs \u2014 it is conservatively set to Pass."
         },
         "_overall": {
           "label": "Overall",
-          "grade": "A",
+          "grade": "C",
           "description": "The Overall grade summarizes how the enacted map compares to thousands of alternative maps drawn without partisan intent. It starts from the Partisan Fairness grade and adjusts upward if the map is unusually competitive (more competitive districts than typical), or downward if it has zero competitive districts. Geographic quality (compactness, county splits) is not yet available for GerryChain runs. An A means the enacted map performs as well as or better than neutral alternatives \u2014 it does not stand out as gerrymandered. An F means the map produces outcomes that are highly unlikely to occur by chance in a fair redistricting process."
         }
       },
