@@ -351,7 +351,78 @@ def grade_all_metrics(
     return grades
 
 
-# ── Step 5: build river data ──────────────────────────────────────────────────
+# ── Step 5: build correlations ───────────────────────────────────────────────
+
+def build_alarm_correlations(
+    sampled_partisan: pd.DataFrame,
+    enacted_partisan: pd.DataFrame,
+    sampled_geo: pd.DataFrame,
+    enacted_geo: pd.DataFrame,
+    n_scatter: int = 300,
+) -> dict | None:
+    """
+    Compute cross-metric Pearson correlation matrix and downsampled scatter pairs
+    for the urban-cracking / partisan-bias story.  Uses in-memory DataFrames
+    (no DuckDB/parquet needed — ALARM data is already computed).
+
+    Returns { "matrix": {...}, "scatter": {...} } matching the GerryChain format.
+    """
+    # Merge partisan + geo on draw index
+    base = sampled_partisan[["dem_seats", "efficiency_gap", "mean_median", "comp_seats"]].copy()
+    if "muni_splits" in sampled_geo.columns:
+        base = base.join(sampled_geo[["muni_splits"]], how="inner")
+
+    metrics = [c for c in ["dem_seats", "efficiency_gap", "mean_median", "comp_seats", "muni_splits"]
+               if c in base.columns]
+    if len(base) < 50 or len(metrics) < 2:
+        return None
+
+    # Pearson correlation matrix
+    corr_df = base[metrics].corr(method="pearson")
+    matrix = {
+        row: {col: round(float(corr_df.loc[row, col]), 4) for col in metrics}
+        for row in metrics
+    }
+
+    # Enacted values
+    enacted_vals: dict = {}
+    for key in ["dem_seats", "efficiency_gap", "mean_median", "comp_seats"]:
+        if key in enacted_partisan.columns:
+            enacted_vals[key] = float(enacted_partisan[key].iloc[0])
+    if "muni_splits" in enacted_geo.columns:
+        enacted_vals["muni_splits"] = float(enacted_geo["muni_splits"].iloc[0])
+
+    # Downsampled scatter pairs
+    rng = np.random.default_rng(42)
+    n = len(base)
+    idx = np.sort(rng.choice(n, min(n_scatter, n), replace=False))
+
+    scatter_pairs = [
+        ("muni_splits",   "dem_seats"),
+        ("muni_splits",   "efficiency_gap"),
+        ("muni_splits",   "comp_seats"),
+        ("dem_seats",     "efficiency_gap"),
+    ]
+
+    scatter: dict = {}
+    for x_key, y_key in scatter_pairs:
+        if x_key not in base.columns or y_key not in base.columns:
+            continue
+        x_vals = base[x_key].values[idx]
+        y_vals = base[y_key].values[idx]
+        r = float(np.corrcoef(base[x_key].values, base[y_key].values)[0, 1])
+        scatter[f"{x_key}_vs_{y_key}"] = {
+            "x":        [round(float(v), 4) for v in x_vals],
+            "y":        [round(float(v), 4) for v in y_vals],
+            "enacted_x": round(enacted_vals.get(x_key, 0.0), 4),
+            "enacted_y": round(enacted_vals.get(y_key, 0.0), 4),
+            "r":         round(r, 4),
+        }
+
+    return {"matrix": matrix, "scatter": scatter}
+
+
+# ── Step 6: build river data ──────────────────────────────────────────────────
 
 def build_river(
     sampled_partisan: pd.DataFrame,
@@ -555,8 +626,20 @@ def build_alarm_scorecard(
     print(f"  Overall: {top_grades.get('_overall', {}).get('grade', '?')}  "
           f"Partisan: {top_grades.get('_partisan_fairness', {}).get('grade', '?')}")
 
+    # ── Correlations ──
+    print("\n[5/7] Computing correlation matrix + scatter pairs…")
+    correlations = build_alarm_correlations(
+        sampled_partisan, enacted_partisan, sampled_geo, enacted_geo
+    )
+    if correlations:
+        muni_row = correlations["matrix"].get("muni_splits", {})
+        print(f"  muni_splits ↔ dem_seats: r={muni_row.get('dem_seats', '?')}")
+        print(f"  muni_splits ↔ efficiency_gap: r={muni_row.get('efficiency_gap', '?')}")
+    else:
+        print("  WARNING: correlations could not be computed (insufficient data)")
+
     # ── River data ──
-    print("\n[5/6] Building river chart data (500-plan sample)…")
+    print("\n[6/7] Building river chart data (500-plan sample)…")
     river = build_river(
         sampled_partisan, enacted_partisan,
         plans_matrix, geoids, vtd_composite,
@@ -564,7 +647,7 @@ def build_alarm_scorecard(
     election_entry["river"] = river
 
     # ── Enacted districts ──
-    print("\n[6/6] Building enacted district breakdown…")
+    print("\n[7/7] Building enacted district breakdown…")
     enacted_districts = build_enacted_districts(plans_matrix, geoids, vtd_composite)
 
     # Enacted plan grades + metrics for plans section
@@ -619,6 +702,7 @@ def build_alarm_scorecard(
             k: metric_grades.get(k)
             for k in ["polsby_popper", "county_splits", "muni_splits"]
         },
+        "correlations": correlations,
         "grades": top_grades,
         "plans": [
             {
