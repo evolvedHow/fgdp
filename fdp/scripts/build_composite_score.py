@@ -2,12 +2,16 @@
 """
 build_composite_score.py — Build a single composite partisan score per VTD.
 
-For each census block, compute the average Dem/Rep/Other vote share across 5 elections:
+For each census block, compute the average Dem/Rep/Other vote share across 6 elections:
   1. 2018 Governor          (VTD-level from election_results_vtd.parquet)
-  2. 2020 President         (block-level from ga_2020_gen_2020_blocks_csv.zip)
-  3. 2021 Warnock Runoff    (block-level from ga_2020_gen_2020_blocks_csv.zip)
-  4. 2022 Gov + USS avg     (block-level from ga-2022-general-election-block.parquet)
-  5. 2024 President         (block-level from ga-2024-general-election-block.parquet)
+  2. 2020 President         (block-level from ga_2020gen_2021runoff_2020blocks_csv.zip)
+  3. 2021 Warnock Runoff    (block-level from ga_2020gen_2021runoff_2020blocks_csv.zip)
+  4. 2022 Governor          (block-level from ga-2022-general-election-block.parquet)
+  5. 2022 US Senate         (block-level from ga-2022-general-election-block.parquet)
+  6. 2024 President         (block-level from ga-2024-general-election-block.parquet)
+
+2022 Governor and 2022 US Senate are treated as separate elections (not averaged together),
+giving each equal 1/6 weight in the composite alongside the other four.
 
 The per-block composite is then aggregated to VTD using total-votes weighting.
 
@@ -15,7 +19,8 @@ Outputs:
   fdp/data/repos/main/vtd/vtd_composite.parquet
     GEOID20, composite_dem_pct, composite_rep_pct, composite_other_pct,
     composite_dem_2pv, dem_pct_2018_gov, dem_pct_2020_pres,
-    dem_pct_2021_war_runoff, dem_pct_2022_composite, dem_pct_2024_pres, VAP_MOD
+    dem_pct_2021_war_runoff, dem_pct_2022_gov, dem_pct_2022_uss,
+    dem_pct_2024_pres, VAP_MOD
 
   Synthetic rows appended to election_results_vtd.parquet (year=0, office='composite')
 
@@ -41,7 +46,7 @@ _INPUT_DIR    = Path(__file__).resolve().parents[2] / "fdensemble/input_data"
 
 # Source files
 _VTD_SHP          = _INPUT_DIR / "ga_pl2020_vtd.zip"
-_CSV_ZIP_2020     = _INPUT_DIR / "ga_2020_gen_2020_blocks_csv.zip"
+_CSV_ZIP_2020     = _INPUT_DIR / "ga_2020gen_2021runoff_2020blocks_csv.zip"
 _PARQUET_2022     = _BLOCK_DIR / "ga-2022-general-election-block.parquet"
 _PARQUET_2024     = _BLOCK_DIR / "ga-2024-general-election-block.parquet"
 _ELECTION_VTD     = _DATA_DIR / "election_results_vtd.parquet"
@@ -97,12 +102,13 @@ def _load_2020_pres_and_2021_war(csv_zip: Path) -> pd.DataFrame:
 
 def _load_2022(parquet: Path) -> pd.DataFrame:
     """
-    Load 2022 Governor and US Senate vote shares, averaged together at block
-    level so 2022 counts as one of the five composite inputs.
+    Load 2022 Governor and US Senate vote shares as two separate elections.
+    Each is treated as an independent input (1/6 weight each) in the composite.
 
     Returns DataFrame with columns:
-      GEOID20, dem_pct_2022_composite, rep_pct_2022_composite,
-      total_2022_gov, total_2022_uss
+      GEOID20, VAP_MOD,
+      dem_pct_2022_gov, rep_pct_2022_gov, total_gov22,
+      dem_pct_2022_uss, rep_pct_2022_uss, total_uss22
     """
     print(f"  Loading 2022 Gov + USS from {parquet.name} …")
     needed = ["GEOID20", "VAP_MOD",
@@ -114,34 +120,24 @@ def _load_2022(parquet: Path) -> pd.DataFrame:
     # Governor: 2-party only (ignore Hazel L ~1%)
     df["total_gov22"] = df["G22GOVDABR"] + df["G22GOVRKEM"]
     with np.errstate(invalid="ignore", divide="ignore"):
-        gov_dem = np.where(df["total_gov22"] > 0,
-                           df["G22GOVDABR"] / df["total_gov22"], np.nan)
-        gov_rep = np.where(df["total_gov22"] > 0,
-                           df["G22GOVRKEM"] / df["total_gov22"], np.nan)
+        df["dem_pct_2022_gov"] = np.where(df["total_gov22"] > 0,
+                                           df["G22GOVDABR"] / df["total_gov22"], np.nan)
+        df["rep_pct_2022_gov"] = np.where(df["total_gov22"] > 0,
+                                           df["G22GOVRKEM"] / df["total_gov22"], np.nan)
 
     # US Senate: 2-party only (ignore Oliver L ~2.1% that forced the runoff)
     df["total_uss22"] = df["G22USSDWAR"] + df["G22USSRWAL"]
     with np.errstate(invalid="ignore", divide="ignore"):
-        uss_dem = np.where(df["total_uss22"] > 0,
-                           df["G22USSDWAR"] / df["total_uss22"], np.nan)
-        uss_rep = np.where(df["total_uss22"] > 0,
-                           df["G22USSRWAL"] / df["total_uss22"], np.nan)
-
-    # Average Gov + USS → one 2022 composite per block (NaN-safe)
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        df["dem_pct_2022_composite"] = np.nanmean(np.stack([gov_dem, uss_dem], axis=1), axis=1)
-        df["rep_pct_2022_composite"] = np.nanmean(np.stack([gov_rep, uss_rep], axis=1), axis=1)
-
-    # Where BOTH races had zero turnout, set to NaN
-    both_zero = (df["total_gov22"] == 0) & (df["total_uss22"] == 0)
-    df.loc[both_zero, ["dem_pct_2022_composite", "rep_pct_2022_composite"]] = np.nan
+        df["dem_pct_2022_uss"] = np.where(df["total_uss22"] > 0,
+                                           df["G22USSDWAR"] / df["total_uss22"], np.nan)
+        df["rep_pct_2022_uss"] = np.where(df["total_uss22"] > 0,
+                                           df["G22USSRWAL"] / df["total_uss22"], np.nan)
 
     keep = ["GEOID20", "VAP_MOD",
-            "dem_pct_2022_composite", "rep_pct_2022_composite",
-            "total_gov22", "total_uss22"]
-    print(f"    {len(df):,} blocks, 2022 Gov turnout sum: {df['total_gov22'].sum():,.0f}")
+            "dem_pct_2022_gov", "rep_pct_2022_gov", "total_gov22",
+            "dem_pct_2022_uss", "rep_pct_2022_uss", "total_uss22"]
+    print(f"    {len(df):,} blocks, 2022 Gov turnout: {df['total_gov22'].sum():,.0f}  "
+          f"USS turnout: {df['total_uss22'].sum():,.0f}")
     return df[keep].copy()
 
 
@@ -229,8 +225,8 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
     # 2022 also carries VAP_MOD for all blocks — merge first to get it
     blocks = blocks.merge(
         df_2022[["GEOID20", "VAP_MOD",
-                 "dem_pct_2022_composite", "rep_pct_2022_composite",
-                 "total_gov22", "total_uss22"]],
+                 "dem_pct_2022_gov", "rep_pct_2022_gov", "total_gov22",
+                 "dem_pct_2022_uss", "rep_pct_2022_uss", "total_uss22"]],
         left_on="block_GEOID20", right_on="GEOID20", how="left"
     ).drop(columns="GEOID20")
 
@@ -255,20 +251,22 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
 
     print(f"  Combined block table: {len(blocks):,} rows")
 
-    print("\n=== Step 5: Per-block composite (NaN-safe average of 5 elections) ===")
+    print("\n=== Step 5: Per-block composite (NaN-safe average of 6 elections) ===")
     dem_stack = np.stack([
         blocks["dem_pct_2018_gov"].values,
         blocks["dem_pct_2020_pres"].values,
         blocks["dem_pct_2021_war_runoff"].values,
-        blocks["dem_pct_2022_composite"].values,
+        blocks["dem_pct_2022_gov"].values,
+        blocks["dem_pct_2022_uss"].values,
         blocks["dem_pct_2024_pres"].values,
-    ], axis=1)  # (n_blocks, 5)
+    ], axis=1)  # (n_blocks, 6)
 
     rep_stack = np.stack([
         blocks["rep_pct_2018_gov"].values,
         blocks["rep_pct_2020_pres"].values,
         blocks["rep_pct_2021_war_runoff"].values,
-        blocks["rep_pct_2022_composite"].values,
+        blocks["rep_pct_2022_gov"].values,
+        blocks["rep_pct_2022_uss"].values,
         blocks["rep_pct_2024_pres"].values,
     ], axis=1)
 
@@ -278,16 +276,15 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
         blocks["avg_dem_pct"] = np.nanmean(dem_stack, axis=1)
         blocks["avg_rep_pct"] = np.nanmean(rep_stack, axis=1)
 
-    # Weight for VTD aggregation: average total votes across block-level elections
-    # (2022 contributes average of gov+uss; overall average keeps weights balanced)
-    total_2022_avg = (blocks["total_gov22"].fillna(0) +
-                      blocks["total_uss22"].fillna(0)) / 2.0
+    # Weight for VTD aggregation: average total votes across the 5 block-level elections
+    # (2018 Gov is VTD-level, contributes via dem_pct_2018_gov first-value; not in weight sum)
     blocks["weight"] = (
         blocks["total_2020"].fillna(0) +
         blocks["total_2021"].fillna(0) +
-        total_2022_avg +
+        blocks["total_gov22"].fillna(0) +
+        blocks["total_uss22"].fillna(0) +
         blocks["total_2024"].fillna(0)
-    ) / 4.0
+    ) / 5.0
 
     # Blocks with no participation across any election get zero weight → excluded
     blocks["weight"] = blocks["weight"].clip(lower=0)
@@ -304,13 +301,15 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
     # Per-election transparency weighted products
     t20  = blocks["total_2020"].fillna(0)
     t21  = blocks["total_2021"].fillna(0)
+    tg22 = blocks["total_gov22"].fillna(0)
+    tu22 = blocks["total_uss22"].fillna(0)
     t24  = blocks["total_2024"].fillna(0)
-    wt   = blocks["weight"]
 
-    blocks["w_dem_2020"]  = blocks["dem_pct_2020_pres"].fillna(0) * t20
-    blocks["w_dem_2021"]  = blocks["dem_pct_2021_war_runoff"].fillna(0) * t21
-    blocks["w_dem_2022"]  = blocks["dem_pct_2022_composite"].fillna(0) * wt
-    blocks["w_dem_2024"]  = blocks["dem_pct_2024_pres"].fillna(0) * t24
+    blocks["w_dem_2020"]     = blocks["dem_pct_2020_pres"].fillna(0) * t20
+    blocks["w_dem_2021"]     = blocks["dem_pct_2021_war_runoff"].fillna(0) * t21
+    blocks["w_dem_2022_gov"] = blocks["dem_pct_2022_gov"].fillna(0) * tg22
+    blocks["w_dem_2022_uss"] = blocks["dem_pct_2022_uss"].fillna(0) * tu22
+    blocks["w_dem_2024"]     = blocks["dem_pct_2024_pres"].fillna(0) * t24
 
     vtd = blocks.groupby("vtd_GEOID20").agg(
         sum_weighted_dem=("weighted_dem", "sum"),
@@ -319,21 +318,24 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
         VAP_MOD=("weighted_vap", "sum"),
         dem_pct_2018_gov=("dem_pct_2018_gov", "first"),  # same value for every block in VTD
         # Transparency: per-election weighted numerators + denominators
-        wn_2020=("w_dem_2020", "sum"), wd_2020=("total_2020", "sum"),
-        wn_2021=("w_dem_2021", "sum"), wd_2021=("total_2021", "sum"),
-        wn_2022=("w_dem_2022", "sum"), wd_2022=("weight",     "sum"),
-        wn_2024=("w_dem_2024", "sum"), wd_2024=("total_2024", "sum"),
+        wn_2020=("w_dem_2020",     "sum"), wd_2020=("total_2020",   "sum"),
+        wn_2021=("w_dem_2021",     "sum"), wd_2021=("total_2021",   "sum"),
+        wn_g22 =("w_dem_2022_gov", "sum"), wd_g22 =("total_gov22",  "sum"),
+        wn_u22 =("w_dem_2022_uss", "sum"), wd_u22 =("total_uss22",  "sum"),
+        wn_2024=("w_dem_2024",     "sum"), wd_2024=("total_2024",   "sum"),
     ).reset_index().rename(columns={"vtd_GEOID20": "GEOID20"})
 
     # Derive per-election VTD shares
     def _safe_div(n, d): return np.where(d > 0, n / d, np.nan)
 
-    vtd["dem_pct_2020_pres"]        = _safe_div(vtd["wn_2020"], vtd["wd_2020"])
-    vtd["dem_pct_2021_war_runoff"]  = _safe_div(vtd["wn_2021"], vtd["wd_2021"])
-    vtd["dem_pct_2022_composite"]   = _safe_div(vtd["wn_2022"], vtd["wd_2022"])
-    vtd["dem_pct_2024_pres"]        = _safe_div(vtd["wn_2024"], vtd["wd_2024"])
+    vtd["dem_pct_2020_pres"]       = _safe_div(vtd["wn_2020"], vtd["wd_2020"])
+    vtd["dem_pct_2021_war_runoff"] = _safe_div(vtd["wn_2021"], vtd["wd_2021"])
+    vtd["dem_pct_2022_gov"]        = _safe_div(vtd["wn_g22"],  vtd["wd_g22"])
+    vtd["dem_pct_2022_uss"]        = _safe_div(vtd["wn_u22"],  vtd["wd_u22"])
+    vtd["dem_pct_2024_pres"]       = _safe_div(vtd["wn_2024"], vtd["wd_2024"])
     vtd = vtd.drop(columns=["wn_2020","wd_2020","wn_2021","wd_2021",
-                              "wn_2022","wd_2022","wn_2024","wd_2024"])
+                              "wn_g22","wd_g22","wn_u22","wd_u22",
+                              "wn_2024","wd_2024"])
 
     with np.errstate(invalid="ignore", divide="ignore"):
         vtd["composite_dem_pct"] = np.where(vtd["sum_weight"] > 0,
@@ -392,7 +394,7 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
     # Round for readability
     for col in ["composite_dem_pct", "composite_rep_pct", "composite_other_pct",
                 "composite_dem_2pv", "dem_pct_2020_pres", "dem_pct_2021_war_runoff",
-                "dem_pct_2022_composite", "dem_pct_2024_pres"]:
+                "dem_pct_2022_gov", "dem_pct_2022_uss", "dem_pct_2024_pres"]:
         if col in vtd.columns:
             vtd[col] = vtd[col].round(6)
     vtd["VAP_MOD"] = vtd["VAP_MOD"].round(0).astype(int)
@@ -406,7 +408,7 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
         "GEOID20", "composite_dem_pct", "composite_rep_pct",
         "composite_other_pct", "composite_dem_2pv",
         "dem_pct_2018_gov", "dem_pct_2020_pres",
-        "dem_pct_2021_war_runoff", "dem_pct_2022_composite",
+        "dem_pct_2021_war_runoff", "dem_pct_2022_gov", "dem_pct_2022_uss",
         "dem_pct_2024_pres", "VAP_MOD",
         "centroid_lat", "centroid_lon",
     ]

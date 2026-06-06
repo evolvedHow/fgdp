@@ -26,7 +26,7 @@ Input files required (in --input-dir):
   Copy of ga_2022_gen_2020_blocks.zip  — 2022 general (block shapefile)
   Copy of ga_2024_gen_2020_blocks.zip  — 2024 general (block shapefile)
   ga_cvap_2024_2020_b_csv.zip          — 2024 ACS CVAP (block CSV)
-  ga_2020_gen_2020_blocks_csv.zip      — 2020 gen + 2021 runoffs (block CSV, RDH)
+  ga_2020gen_2021runoff_2020blocks_csv.zip — 2020 gen + 2021 runoffs (block CSV, RDH)
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ CVAP_CSV = "ga_cvap_2024_2020_b.csv"
 
 # 2021 January 5 Senate runoffs + 2020 General — same CSV file
 # The file contains both G20* (2020 general) and R21* (2021 runoffs).
-RUNOFF_2021_ZIP = "ga_2020_gen_2020_blocks_csv.zip"
+RUNOFF_2021_ZIP = "ga_2020gen_2021runoff_2020blocks_csv.zip"
 RUNOFF_2021_CSV = "ga_2020_gen_2020_blocks.csv"
 
 # ── Column lists ───────────────────────────────────────────────────────────────
