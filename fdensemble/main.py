@@ -1414,6 +1414,18 @@ def _load_vtd_demo():
     print(f'  VTD demographics loaded: {len(_vtd_demo_df):,} VTDs')
 
 
+def _sanitize_for_json(obj):
+    """Recursively replace NaN/Inf floats with None so JSON serialization never fails."""
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, float):
+        import math
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    return obj
+
+
 def _score_geojson(features: list, run_id: str) -> dict:
     """
     Score a list of GeoJSON district polygon features against the composite benchmark.
@@ -1641,7 +1653,7 @@ def _score_geojson(features: list, run_id: str) -> dict:
         )
     }
 
-    return {
+    return _sanitize_for_json({
         'id':              str(uuid.uuid4()),
         'label':           '',   # filled by caller
         'source':          'upload',
@@ -1651,7 +1663,7 @@ def _score_geojson(features: list, run_id: str) -> dict:
         'districts':       dist_rows,
         'vtd_assignments': vtd_assignments,
         'vtd_details':     vtd_details,
-    }
+    })
 
 
 def _get_run(run_id: str | None) -> dict:
