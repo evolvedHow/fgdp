@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { CorrelationData } from '../types.js';
   import CrossMetricScatter from './CrossMetricScatter.svelte';
-  import CorrelationHeatmap from './CorrelationHeatmap.svelte';
   import { apiGet } from '../api.js';
 
   interface Props {
@@ -12,29 +11,56 @@
   let data:      CorrelationData | null = $state(null);
   let loading    = $state(false);
   let expanded   = $state(false);
-  let activePair = $state<string | null>(null);  // selected scatter pair key
+  let activePair = $state<string | null>(null);
 
-  // Friendly labels for each scatter pair key
-  const PAIR_META: Record<string, { xlabel: string; ylabel: string; title: string; color: string }> = {
-    'muni_splits_vs_dem_seats':      { xlabel: 'City Splits',   ylabel: 'Dem-Lean Seats',  title: 'City Splits → Dem Seat Count',           color: '#3D77BB' },
-    'muni_splits_vs_efficiency_gap': { xlabel: 'City Splits',   ylabel: 'Efficiency Gap',  title: 'City Splits → Wasted-Vote Imbalance',    color: '#17a589' },
-    'muni_splits_vs_comp_seats':     { xlabel: 'City Splits',   ylabel: 'Competitive Seats', title: 'City Splits → Competitive Seat Count', color: '#8e44ad' },
-    'dem_seats_vs_efficiency_gap':   { xlabel: 'Dem-Lean Seats', ylabel: 'Efficiency Gap', title: 'Dem Seats vs. Vote-Waste Imbalance',     color: '#3D77BB' },
+  // The 4 scatter pairs — order determines the summary table order
+  const PAIR_META: Record<string, { xlabel: string; ylabel: string; title: string; color: string; question: string }> = {
+    'muni_splits_vs_dem_seats':      {
+      xlabel: 'City Splits', ylabel: 'Dem-Lean Seats',
+      title:  'City splits → Dem seats',
+      color:  '#3D77BB',
+      question: 'Does cracking cities produce fewer Dem-leaning seats?',
+    },
+    'muni_splits_vs_efficiency_gap': {
+      xlabel: 'City Splits', ylabel: 'Efficiency Gap',
+      title:  'City splits → Vote waste',
+      color:  '#17a589',
+      question: 'Does cracking cities waste more Democratic votes?',
+    },
+    'muni_splits_vs_comp_seats':     {
+      xlabel: 'City Splits', ylabel: 'Competitive Seats',
+      title:  'City splits → Competitive seats',
+      color:  '#8e44ad',
+      question: 'Does cracking cities eliminate competitive races?',
+    },
+    'dem_seats_vs_efficiency_gap':   {
+      xlabel: 'Dem-Lean Seats', ylabel: 'Efficiency Gap',
+      title:  'Dem seats vs. vote waste',
+      color:  '#c0392b',
+      question: 'Are seat count and vote waste measuring the same thing?',
+    },
   };
 
   const availablePairKeys = $derived(
     data?.scatter ? Object.keys(data.scatter).filter(k => k in PAIR_META) : []
   );
 
+  function rStrength(r: number | null): { label: string; color: string } {
+    if (r == null) return { label: 'No data', color: '#999' };
+    const abs = Math.abs(r);
+    if (abs < 0.15) return { label: 'Near zero — independent', color: '#27ae60' };
+    if (abs < 0.4)  return { label: 'Weak association',        color: '#d68910' };
+    if (abs < 0.7)  return { label: 'Moderate correlation',    color: '#e67e22' };
+    return               { label: 'Strong correlation',         color: '#c0392b' };
+  }
+
   async function load() {
     if (loading || data) return;
     loading = true;
     try {
       data = await apiGet<CorrelationData>('/analysis/correlations', { run: runId });
-      // Auto-select first scatter pair
       if (data.available && data.scatter) {
-        const firstKey = Object.keys(data.scatter).find(k => k in PAIR_META) ?? null;
-        activePair = firstKey;
+        activePair = Object.keys(data.scatter).find(k => k in PAIR_META) ?? null;
       }
     } catch {
       data = { available: false };
@@ -135,8 +161,8 @@
           </div>
         {/if}
 
-        <!-- Active scatter + heatmap side by side -->
-        <div style="display:grid;grid-template-columns:1fr 280px;gap:.8rem;align-items:start;">
+        <!-- Layout: scatter left, summary table right -->
+        <div style="display:grid;grid-template-columns:1fr 300px;gap:1rem;align-items:start;">
 
           <!-- Scatter chart -->
           <div>
@@ -149,136 +175,86 @@
                 color={meta.color}
                 title={meta.title}
               />
-            {:else}
-              <div style="background:var(--light);border:1.5px dashed var(--border);border-radius:8px;
-                          height:200px;display:flex;align-items:center;justify-content:center;
-                          font-size:.76rem;color:var(--gray);">
-                Select a pair above to see the scatter
-              </div>
-            {/if}
-
-            <!-- Interpretation callout for selected pair -->
-            {#if activePair && data.scatter?.[activePair]}
-              {@const sp = data.scatter[activePair]}
-              {@const r = sp.r ?? 0}
-              {@const r2 = r * r}
-              {@const nearZero = Math.abs(r) < 0.2}
-              {@const ex = sp.enacted_x}
-              {@const ey = sp.enacted_y}
-              <div style="margin-top:.5rem;font-size:.72rem;color:#333;line-height:1.6;
-                          background:#f8f9fb;border-radius:4px;padding:.5rem .7rem;">
-                {#if activePair === 'muni_splits_vs_dem_seats'}
-                  {#if !nearZero && r < 0}
-                    Plans with more city splits produce <b>fewer Democratic-leaning seats</b>
-                    (r = {r.toFixed(2)}, R² = {r2.toFixed(2)}).
-                    City-split count explains {(r2*100).toFixed(0)}% of Dem-seat variation across
-                    {sp.x.length} ensemble draws.
+              <!-- Plain-English takeaway for the active pair -->
+              {#if data.scatter[activePair].r != null}
+                {@const r  = data.scatter[activePair].r ?? 0}
+                {@const ex = data.scatter[activePair].enacted_x}
+                {@const ey = data.scatter[activePair].enacted_y}
+                {@const nearZero = Math.abs(r) < 0.2}
+                <div style="margin-top:.5rem;font-size:.73rem;color:#333;line-height:1.65;
+                            background:#f8f9fb;border-radius:4px;padding:.55rem .75rem;
+                            border-left:3px solid {PAIR_META[activePair].color};">
+                  {#if nearZero}
+                    Each dot in the chart above is one neutral map. The flat orange trend line
+                    (r = {r.toFixed(2)}) shows that across thousands of random maps, city-split count
+                    has <b>almost no effect</b> on this outcome.
                     {#if ex != null && ey != null}
-                      The enacted map ({ex} splits → {ey} seats) confirms the pattern.
+                      The <b style="color:#e74c3c;">enacted map (red marker)</b> is labelled directly
+                      on the chart — notice where it sits relative to the blue cloud.
                     {/if}
-                  {:else if nearZero}
-                    r ≈ {r.toFixed(2)} — city splits and Dem seat count vary <b>independently</b>
-                    in the neutral ensemble.
-                    {#if ex != null && ey != null}
-                      <b>Key insight (red star):</b> the enacted map uses only <b>{ex} city splits</b>
-                      — fewer than nearly all neutral plans — yet still delivers only <b>{ey} Dem-leaning seats</b>,
-                      sitting below the neutral median. The partisan skew exists without visible city-boundary cracking,
-                      suggesting sub-municipal or county-level manipulation instead.
-                    {/if}
+                  {:else if Math.abs(r) > 0.8}
+                    r = {r.toFixed(2)} — these two metrics are <b>nearly identical in what they measure</b>.
+                    They both capture the same underlying partisan tilt, just calculated differently.
+                    The tight diagonal line of dots shows they move in near-perfect lockstep across all neutral maps.
                   {:else}
-                    r = {r.toFixed(2)} — weak positive association in this ensemble.
-                    {#if ex != null && ey != null}The enacted map: {ex} splits, {ey} Dem seats (red star).{/if}
-                  {/if}
-
-                {:else if activePair === 'muni_splits_vs_efficiency_gap'}
-                  {#if !nearZero && r > 0}
-                    Plans with more city splits produce a <b>higher efficiency gap</b>
-                    (r = {r.toFixed(2)}) — Democratic votes are wasted at a greater rate when cities are cracked.
-                    City-split count explains {(r2*100).toFixed(0)}% of vote-waste variation across {sp.x.length} draws.
+                    r = {r.toFixed(2)} — a {Math.abs(r) < 0.4 ? 'weak' : 'moderate'} association
+                    across neutral maps. The orange trend line shows the general direction.
                     {#if ex != null && ey != null}
-                      Enacted: {ex} splits, efficiency gap {ey?.toFixed ? ey.toFixed(3) : ey}.
-                    {/if}
-                  {:else if nearZero}
-                    r ≈ {r.toFixed(2)} — city splits and efficiency gap are largely independent here.
-                    {#if ex != null && ey != null}
-                      <b>Enacted (red star):</b> {ex} city splits with efficiency gap {ey?.toFixed ? ey.toFixed(3) : ey}.
-                      Despite low city splits, check whether the efficiency gap sits within or outside the neutral cloud.
-                    {/if}
-                  {:else}
-                    r = {r.toFixed(2)} — {r < 0 ? 'fewer city splits correlate with lower efficiency gap' : 'weak association'} in this ensemble.
-                  {/if}
-
-                {:else if activePair === 'muni_splits_vs_comp_seats'}
-                  {#if !nearZero && r < 0}
-                    More city splits → <b>fewer competitive seats</b> (r = {r.toFixed(2)}).
-                    Cracking converts competitive urban precincts into diluted, safe-partisan districts.
-                    {#if ex != null && ey != null}
-                      Enacted (red star): {ex} city splits, {ey} competitive seats.
-                    {/if}
-                  {:else if nearZero}
-                    r ≈ {r.toFixed(2)} — city splits and competitive seat count are largely independent in this ensemble.
-                    {#if ex != null && ey != null}
-                      {#if ey === 0}
-                        <b style="color:#c0392b;">Enacted (red star): 0 competitive seats</b>
-                        — every district is a safe seat for one party, with only {ex} city splits.
-                        The neutral ensemble typically produces 2–4 competitive seats; the enacted map sits at the extreme low end.
-                      {:else}
-                        Enacted (red star): {ex} city splits, {ey} competitive seats.
-                      {/if}
-                    {/if}
-                  {:else}
-                    r = {r.toFixed(2)} — weak association between city splits and competitive seat count.
-                    {#if ex != null && ey != null}Enacted: {ex} splits, {ey} competitive seats.{/if}
-                  {/if}
-
-                {:else if activePair === 'dem_seats_vs_efficiency_gap'}
-                  {#if Math.abs(r) > 0.5}
-                    r = {r.toFixed(2)} — near-perfect relationship between seat count and vote-waste imbalance.
-                    More Dem seats → lower efficiency gap (fewer Democratic votes wasted relative to Republican votes).
-                    This tight line is expected: both metrics measure the same underlying partisan tilt.
-                    {#if ex != null && ey != null}
-                      <b>Enacted (red star):</b> {ex} Dem-leaning seats with an efficiency gap of
-                      <b>{ey?.toFixed ? ey.toFixed(3) : ey}</b>
-                      ({ey > 0 ? 'positive = Democratic votes wasted at higher rate' : 'negative = Republican votes wasted at higher rate'}).
-                      Compare its position to the neutral ensemble cloud to see where it falls on the fairness spectrum.
-                    {/if}
-                  {:else}
-                    r = {r.toFixed(2)} between Dem seats and efficiency gap.
-                    {#if ex != null && ey != null}
-                      Enacted: {ex} Dem seats, efficiency gap {ey?.toFixed ? ey.toFixed(3) : ey}.
+                      Find the <b style="color:#e74c3c;">enacted map (red)</b> on the chart to see
+                      where it falls relative to the neutral cloud.
                     {/if}
                   {/if}
-
-                {:else}
-                  r = {r.toFixed(2)}, R² = {r2.toFixed(2)} across {sp.x.length} sample draws.
-                  {#if ex != null && ey != null}Enacted (red star): ({ex}, {ey?.toFixed ? ey.toFixed(3) : ey}).{/if}
-                {/if}
-              </div>
+                </div>
+              {/if}
             {/if}
           </div>
 
-          <!-- Correlation matrix -->
+          <!-- Simple correlation summary table (replaces heatmap) -->
           <div>
-            <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-                        color:var(--gray);margin-bottom:.35rem;">Correlation Matrix</div>
-            {#if data.matrix}
-              <CorrelationHeatmap
-                matrix={data.matrix}
-                onCellClick={(x, y) => {
-                  const k = `${x}_vs_${y}`;
-                  const k2 = `${y}_vs_${x}`;
-                  if (data?.scatter?.[k]) activePair = k;
-                  else if (data?.scatter?.[k2]) activePair = k2;
-                }}
-              />
-            {/if}
-            <div style="margin-top:.7rem;font-size:.62rem;color:var(--gray);line-height:1.5;">
-              <b>Reading the heatmap:</b><br>
-              Green = positive r (both metrics rise together).<br>
-              Red = negative r (as one rises, the other falls).<br>
-              Click a cell to view its scatter plot.
+            <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;
+                        letter-spacing:.05em;color:var(--gray);margin-bottom:.5rem;">
+              Click a row to see the scatter →
+            </div>
+            <div style="display:flex;flex-direction:column;gap:.35rem;">
+              {#each availablePairKeys as k}
+                {@const meta = PAIR_META[k]}
+                {@const sp   = data.scatter?.[k]}
+                {@const r    = sp?.r ?? null}
+                {@const str  = rStrength(r)}
+                {@const isActive = activePair === k}
+                <button
+                  onclick={() => activePair = k}
+                  style="text-align:left;border:1.5px solid {isActive ? meta.color : 'var(--border)'};
+                         border-radius:6px;padding:.5rem .65rem;cursor:pointer;
+                         background:{isActive ? meta.color + '12' : 'var(--card)'};
+                         transition:border-color .15s, background .15s;"
+                >
+                  <div style="font-size:.72rem;font-weight:700;color:{isActive ? meta.color : '#333'};
+                              margin-bottom:.15rem;">
+                    {meta.title}
+                  </div>
+                  <div style="font-size:.67rem;color:var(--gray);margin-bottom:.25rem;line-height:1.4;">
+                    {meta.question}
+                  </div>
+                  <div style="display:flex;align-items:center;gap:.5rem;">
+                    <span style="font-family:monospace;font-size:.8rem;font-weight:800;color:#333;">
+                      r = {r != null ? r.toFixed(2) : '—'}
+                    </span>
+                    <span style="font-size:.65rem;font-weight:600;color:{str.color};">
+                      {str.label}
+                    </span>
+                  </div>
+                </button>
+              {/each}
+            </div>
+            <div style="margin-top:.6rem;font-size:.64rem;color:var(--gray);line-height:1.5;
+                        padding:.4rem .5rem;background:var(--light);border-radius:4px;">
+              <b>r (Pearson correlation)</b> measures how two metrics move together
+              across all neutral ensemble plans. Near zero = independent.
+              ±1 = perfectly linked. Each button above selects a scatter plot.
             </div>
           </div>
+
         </div>
       {/if}
     </div>
