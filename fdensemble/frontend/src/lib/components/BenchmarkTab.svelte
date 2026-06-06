@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { Analysis, ElectionOption, MetricGrade } from '../types.js';
-  import GradePanel        from './GradePanel.svelte';
-  import MetricCard        from './MetricCard.svelte';
-  import RiverChart        from './RiverChart.svelte';
+  import GradePanel           from './GradePanel.svelte';
+  import MetricCard           from './MetricCard.svelte';
+  import RiverChart           from './RiverChart.svelte';
   import BenchmarkMethodology from './BenchmarkMethodology.svelte';
+  import MetricsGlossary      from './MetricsGlossary.svelte';
 
   interface Props {
     analysis: Analysis;
@@ -35,6 +36,9 @@
   {#if summary?.run}
     <BenchmarkMethodology run={summary.run} />
   {/if}
+
+  <!-- Metrics glossary accordion -->
+  <MetricsGlossary {analysis} />
 
   <!-- Run info strip -->
   <div style="background:var(--card);border-radius:8px;padding:.6rem 1rem;box-shadow:var(--shadow);

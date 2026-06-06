@@ -495,12 +495,24 @@ letter grade assignments in most cases — grade transitions occur at coarse thr
 ### 5.2 comp_seats competitive margin inconsistency between benchmark build and score endpoint
 
 **[RESOLVED 2026-06-07] Fixed: changed 0.45/0.55 hardcode to use half_margin_score = COMPETITIVE_MARGIN/2.0**
+**[RESOLVED 2026-06-07] Fixed: changed COMPETITIVE_MARGIN default from 0.07 to 0.10 to match scorecard threshold (half = 0.05 = ±5pp)**
 
 **Issue (archived):** Two different competitive-seat definitions were used in different code paths:
 - `build_draw_stats.py` and `compute_metrics()`: `|dem_2pv - 0.5| <= COMPETITIVE_MARGIN/2`
   where `COMPETITIVE_MARGIN = 0.07` (default), giving a ±3.5pp window (seats between 46.5% and
   53.5% dem_2pv are competitive).
 - `_score_geojson()` (line 1546 in `fdensemble/main.py`): hardcoded `[0.45, 0.55]` (±5pp window).
+
+**Cross-system issue (archived):** After the first fix, `_score_geojson` was internally consistent but
+the default `COMPETITIVE_MARGIN = 0.07` (half = 0.035, ±3.5pp) still differed from the scorecard
+parquets which were built with `competitive_threshold = 0.05` (±5pp). Uploaded plans were scored
+on a ±3.5pp window while the ensemble benchmark used ±5pp, producing misleading comp_seats
+pct_rank values.
+
+**Resolution:** `COMPETITIVE_MARGIN` default changed to `0.10` (half = 0.05 = ±5pp), matching
+`build_scorecard.py`'s `COMPETITIVE_THRESHOLD_DEFAULT = 0.05`. Description strings in `main.py`
+updated to use `COMPETITIVE_MARGIN / 2 * 100` for human-readable "5pp" output. The env var
+`COMPETITIVE_MARGIN_MAIN` remains available to override if needed.
 
 **Impact (archived):** When `COMPETITIVE_MARGIN = 0.10` (which equals a ±5pp window), the two definitions
 agreed. At the default of `COMPETITIVE_MARGIN = 0.07`, `_score_geojson` used a wider window than

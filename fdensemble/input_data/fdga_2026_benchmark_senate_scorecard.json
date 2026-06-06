@@ -148,7 +148,8 @@
             "formula": "count(d : dem_2pv_d \u2265 0.50)",
             "detail": "dem_2pv_d = \u03a3 dem_votes_vtd / \u03a3 (dem_votes_vtd + rep_votes_vtd) for all VTDs in district d",
             "data_source": "VTD composite \u2014 2018\u20132024 five-election average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov+Senate avg, 2024 Pres)",
-            "config_keys": []
+            "config_keys": [],
+            "grading_method": "seats (directional, one-sided)"
           },
           "a_grade_range": {
             "lo": 26.0,
@@ -264,7 +265,8 @@
             "formula": "(\u03a3 wasted_dem \u2212 \u03a3 wasted_rep) / \u03a3 total_votes  across all districts",
             "detail": "wasted_dem = excess Dem votes beyond 50%+1 in Dem wins + all Dem votes in Dem losses; symmetric for Rep",
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
-            "config_keys": []
+            "config_keys": [],
+            "grading_method": "symmetric (both tails bad)"
           },
           "a_grade_range": {
             "lo": 0.0588,
@@ -380,7 +382,8 @@
             "formula": "mean(dem_2pv_d) \u2212 median(dem_2pv_d)  across all d",
             "detail": "Positive \u2192 Dem votes distributed less efficiently across districts (Republican structural advantage). Negative \u2192 reverse.",
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
-            "config_keys": []
+            "config_keys": [],
+            "grading_method": "symmetric (both tails bad)"
           },
           "a_grade_range": {
             "lo": 0.034,
@@ -498,7 +501,8 @@
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
             "config_keys": [
               "competitive_margin"
-            ]
+            ],
+            "grading_method": "competitive (higher = more competitive)"
           },
           "a_grade_range": {
             "lo": 6.0,
@@ -617,7 +621,8 @@
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
             "config_keys": [
               "competitive_margin"
-            ]
+            ],
+            "grading_method": "symmetric (both tails notable)"
           },
           "a_grade_range": {
             "lo": 23.0,
@@ -736,7 +741,8 @@
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
             "config_keys": [
               "competitive_margin"
-            ]
+            ],
+            "grading_method": "symmetric (both tails notable)"
           },
           "a_grade_range": {
             "lo": 25.0,
@@ -1157,7 +1163,8 @@
           "data_source": "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
           "config_keys": [
             "bvap_majority_threshold"
-          ]
+          ],
+          "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
         },
         "a_grade_range": {
           "lo": 10.0,
@@ -1277,7 +1284,8 @@
           "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
           "config_keys": [
             "majority_threshold"
-          ]
+          ],
+          "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
         },
         "a_grade_range": {
           "lo": 19.0,
@@ -1397,7 +1405,8 @@
           "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
           "config_keys": [
             "majority_threshold"
-          ]
+          ],
+          "grading_method": "symmetric (both tails notable)"
         },
         "a_grade_range": {
           "lo": 37.0,
@@ -1516,7 +1525,8 @@
           "config_keys": [
             "influence_min_threshold",
             "influence_max_threshold"
-          ]
+          ],
+          "grading_method": "directional (higher = more influence districts)"
         },
         "a_grade_range": {
           "lo": 19.0,
@@ -1637,7 +1647,8 @@
         "formula": "count(municipalities m : \u2203 VTDs v1, v2 \u2208 m assigned to different districts)",
         "detail": "An incorporated municipality (city, town) is 'split' when at least two of its VTDs are assigned to different districts. Urban cracking indicator.",
         "data_source": "2020 Census VTD-to-municipality mapping (COUSUBFP)",
-        "config_keys": []
+        "config_keys": [],
+        "grading_method": "directional (lower = fewer splits)"
       },
       "a_grade_range": {
         "lo": null,
@@ -1757,7 +1768,8 @@
         "data_source": "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
         "config_keys": [
           "bvap_majority_threshold"
-        ]
+        ],
+        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
       },
       "a_grade_range": {
         "lo": 10.0,
@@ -1877,7 +1889,8 @@
         "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
         "config_keys": [
           "majority_threshold"
-        ]
+        ],
+        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
       },
       "a_grade_range": {
         "lo": 19.0,
@@ -1997,7 +2010,8 @@
         "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
         "config_keys": [
           "majority_threshold"
-        ]
+        ],
+        "grading_method": "symmetric (both tails notable)"
       },
       "a_grade_range": {
         "lo": 37.0,
@@ -2116,7 +2130,8 @@
         "config_keys": [
           "influence_min_threshold",
           "influence_max_threshold"
-        ]
+        ],
+        "grading_method": "directional (higher = more influence districts)"
       },
       "a_grade_range": {
         "lo": 19.0,
@@ -2232,7 +2247,8 @@
         "formula": "count(municipalities m : \u2203 VTDs v1, v2 \u2208 m assigned to different districts)",
         "detail": "An incorporated municipality (city, town) is 'split' when at least two of its VTDs are assigned to different districts. Urban cracking indicator.",
         "data_source": "2020 Census VTD-to-municipality mapping (COUSUBFP)",
-        "config_keys": []
+        "config_keys": [],
+        "grading_method": "directional (lower = fewer splits)"
       },
       "a_grade_range": {
         "lo": null,
@@ -5205,6 +5221,33 @@
         "enacted_y": 0.1142,
         "r": -0.9951
       }
+    }
+  },
+  "config": {
+    "competitive_threshold": 0.05,
+    "majority_threshold": 0.5,
+    "bvap_majority_threshold": 0.5,
+    "influence_min_threshold": 0.37,
+    "influence_max_threshold": 0.5,
+    "grading": {
+      "ensemble_pass_lo": 5,
+      "ensemble_pass_hi": 95,
+      "floor_grade_floor_pct": 10,
+      "floor_grade_a_pct": 50,
+      "seats_grade_a_pct": 50,
+      "seats_grade_b_pct": 20,
+      "comp_grade_a_pct": 95,
+      "symmetric_a_band": 10,
+      "symmetric_b_band": 30,
+      "directional_a_pct": 95,
+      "directional_b_pct": 64
+    },
+    "source_locations": {
+      "competitive_threshold": "fdp/scripts/build_scorecard.py \u2192 COMPETITIVE_THRESHOLD_DEFAULT",
+      "majority_threshold": "fdp/scripts/build_scorecard.py \u2192 MAJORITY_THRESHOLD",
+      "bvap_majority_threshold": "fdp/scripts/build_scorecard.py \u2192 BVAP_MAJORITY_THRESHOLD",
+      "influence_min_threshold": "fdp/scripts/build_scorecard.py \u2192 INFLUENCE_MIN_THRESHOLD",
+      "influence_max_threshold": "fdp/scripts/build_scorecard.py \u2192 INFLUENCE_MAX_THRESHOLD"
     }
   }
 }

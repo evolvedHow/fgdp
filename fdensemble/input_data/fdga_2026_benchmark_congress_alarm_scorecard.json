@@ -140,7 +140,8 @@
             "formula": "count(d : dem_2pv_d \u2265 0.50)",
             "detail": "dem_2pv_d = \u03a3 dem_votes_vtd / \u03a3 (dem_votes_vtd + rep_votes_vtd) for all VTDs in district d",
             "data_source": "VTD composite \u2014 2018\u20132024 five-election average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov+Senate avg, 2024 Pres)",
-            "config_keys": []
+            "config_keys": [],
+            "grading_method": "seats (directional, one-sided)"
           },
           "a_grade_range": {
             "lo": 6.0,
@@ -256,7 +257,8 @@
             "formula": "(\u03a3 wasted_dem \u2212 \u03a3 wasted_rep) / \u03a3 total_votes  across all districts",
             "detail": "wasted_dem = excess Dem votes beyond 50%+1 in Dem wins + all Dem votes in Dem losses; symmetric for Rep",
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
-            "config_keys": []
+            "config_keys": [],
+            "grading_method": "symmetric (both tails bad)"
           },
           "a_grade_range": {
             "lo": 0.0984,
@@ -372,7 +374,8 @@
             "formula": "mean(dem_2pv_d) \u2212 median(dem_2pv_d)  across all d",
             "detail": "Positive \u2192 Dem votes distributed less efficiently across districts (Republican structural advantage). Negative \u2192 reverse.",
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
-            "config_keys": []
+            "config_keys": [],
+            "grading_method": "symmetric (both tails bad)"
           },
           "a_grade_range": {
             "lo": 0.0356,
@@ -490,7 +493,8 @@
             "data_source": "VTD composite \u2014 2018\u20132024 composite",
             "config_keys": [
               "competitive_margin"
-            ]
+            ],
+            "grading_method": "competitive (higher = more competitive)"
           },
           "a_grade_range": {
             "lo": 6.0,
@@ -699,7 +703,8 @@
           "data_source": "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
           "config_keys": [
             "bvap_majority_threshold"
-          ]
+          ],
+          "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
         },
         "a_grade_range": {
           "lo": 3.0,
@@ -819,7 +824,8 @@
           "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
           "config_keys": [
             "majority_threshold"
-          ]
+          ],
+          "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
         },
         "a_grade_range": {
           "lo": 4.0,
@@ -3751,7 +3757,8 @@
         "data_source": "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
         "config_keys": [
           "bvap_majority_threshold"
-        ]
+        ],
+        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
       },
       "a_grade_range": {
         "lo": 3.0,
@@ -3871,7 +3878,8 @@
         "data_source": "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
         "config_keys": [
           "majority_threshold"
-        ]
+        ],
+        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)"
       },
       "a_grade_range": {
         "lo": 4.0,

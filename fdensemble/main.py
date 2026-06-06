@@ -42,7 +42,7 @@ ENACTED_PLAN_LABEL      = os.getenv('ENACTED_PLAN_LABEL', 'cd_2020')
 DATA_DIR                = Path(os.getenv('DATA_DIR', 'dataverse_files/GA_cd_2020'))
 RUNS_DIR                = Path(os.getenv('RUNS_DIR', 'runs'))
 MAPS_DIR                = Path(os.getenv('MAPS_DIR', 'uploaded_maps'))
-COMPETITIVE_MARGIN      = float(os.getenv('COMPETITIVE_MARGIN_MAIN', '0.07'))
+COMPETITIVE_MARGIN      = float(os.getenv('COMPETITIVE_MARGIN_MAIN', '0.10'))
 BVAP_THRESHOLD          = float(os.getenv('BVAP_MAJORITY_THRESHOLD', '0.50'))
 MINORITY_THRESHOLD      = float(os.getenv('MAJORITY_THRESHOLD', '0.50'))
 INFLUENCE_MIN_THRESHOLD = float(os.getenv('INFLUENCE_MIN_THRESHOLD', '0.37'))
@@ -486,7 +486,7 @@ _METRIC_META = {
         'competitive',
         f'A competitive district is one where the outcome is genuinely uncertain — '
         f'the margin between the two parties is within '
-        f'{COMPETITIVE_MARGIN*100:.0f} percentage points of 50/50. '
+        f'{COMPETITIVE_MARGIN / 2 * 100:.0f} percentage points of 50/50. '
         f'Competitive districts force elected officials to be responsive to a '
         f'broad range of constituents, not just their party base. Maps designed '
         f'to protect incumbents — whether Republican or Democratic — tend to '
@@ -612,7 +612,7 @@ _METRIC_META = {
         'How many districts lean solidly Democratic — beyond the competitive margin?',
         'competitive',
         f'Counts districts where the Democratic two-party vote share exceeds '
-        f'50% + {COMPETITIVE_MARGIN*100:.0f}pp — the outer boundary of the competitive zone. '
+        f'50% + {COMPETITIVE_MARGIN / 2 * 100:.0f}pp — the outer boundary of the competitive zone. '
         f'These seats are reliably Democratic and not meaningfully contested. '
         f'Together with safe Republican seats and competitive seats, this completes the '
         f'three-bucket political balance picture. Compared to the neutral ensemble, an '
@@ -624,7 +624,7 @@ _METRIC_META = {
         'How many districts lean solidly Republican — beyond the competitive margin?',
         'competitive',
         f'Counts districts where the Republican two-party vote share exceeds '
-        f'50% + {COMPETITIVE_MARGIN*100:.0f}pp — the outer boundary of the competitive zone. '
+        f'50% + {COMPETITIVE_MARGIN / 2 * 100:.0f}pp — the outer boundary of the competitive zone. '
         f'These seats are reliably Republican and not meaningfully contested. '
         f'Together with safe Democratic seats and competitive seats, this completes the '
         f'three-bucket political balance picture. Compared to the neutral ensemble, an '
@@ -1037,6 +1037,7 @@ def _build_analysis(run: dict) -> dict:
         'grades':          run['grades'],
         'river':           run['river'],
         'proportionality': run.get('proportionality'),  # three-level gap: proportional→neutral→enacted
+        'config':          run.get('config'),            # thresholds + grading constants
     }
 
 
@@ -1284,6 +1285,7 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0, plan_
         'river':           river,
         'correlations':    sc.get('correlations'),  # cross-metric scatter + Pearson r matrix
         'proportionality': proportionality,          # three-level gap: proportional→neutral→enacted
+        'config':          sc.get('config'),         # thresholds + grading constants
         # These are unused by fdensemble render paths but kept for compat
         'sampled': None,
         'enacted': None,

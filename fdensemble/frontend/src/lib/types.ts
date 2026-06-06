@@ -53,6 +53,14 @@ export interface Histogram {
   mean: number;
 }
 
+export interface FormulaInfo {
+  formula: string;
+  detail: string;
+  data_source: string;
+  config_keys: string[];
+  grading_method?: string;
+}
+
 export interface MetricGrade {
   label: string;
   headline: string;
@@ -60,10 +68,13 @@ export interface MetricGrade {
   description: string;
   takeaway: string;
   grade: string;
+  grade_symmetric?: string;  // retained for VRA floor metrics (lineage)
+  floor?: number;            // 10th-pct floor value for floor-graded metrics
   enacted: number;
   pct_rank: number;
   histogram: Histogram;
   a_grade_range?: { lo: number | null; hi: number | null };
+  formula_info?: FormulaInfo;
 }
 
 export interface CompositeGrade {
@@ -161,9 +172,32 @@ export interface ProportionalityGap {
   elections_used:      string[];
 }
 
+export interface BenchmarkConfig {
+  competitive_threshold: number;
+  majority_threshold: number;
+  bvap_majority_threshold: number;
+  influence_min_threshold: number;
+  influence_max_threshold: number;
+  grading: {
+    ensemble_pass_lo: number;
+    ensemble_pass_hi: number;
+    floor_grade_floor_pct: number;
+    floor_grade_a_pct: number;
+    seats_grade_a_pct: number;
+    seats_grade_b_pct: number;
+    comp_grade_a_pct: number;
+    symmetric_a_band: number;
+    symmetric_b_band: number;
+    directional_a_pct: number;
+    directional_b_pct: number;
+  };
+  source_locations: Record<string, string>;
+}
+
 export interface Analysis {
   summary: Summary;
   grades: Grades;
   river: RiverData | null;
   proportionality?: ProportionalityGap | null;
+  config?: BenchmarkConfig | null;
 }
