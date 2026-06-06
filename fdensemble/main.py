@@ -1499,10 +1499,11 @@ def _score_geojson(features: list, run_id: str) -> dict:
     # Municipal splits — count incorporated municipalities with VTDs in 2+ districts
     muni_splits_val: int | None = None
     if _vtd_muni_df is not None:
-        # vtd_assignments: GEOID → district_num
-        assigned_geoids = pd.Series(list(vtd_assignments.keys()), name='geoid')
-        assigned_districts = pd.Series(list(vtd_assignments.values()), name='district')
-        asgn_df = pd.DataFrame({'geoid': assigned_geoids.values, 'district': assigned_districts.values})
+        # Use assigned DataFrame directly (vtd_assignments not yet built at this point)
+        asgn_df = pd.DataFrame({
+            'geoid': assigned['GEOID20'].astype(str).values,
+            'district': (assigned['_dist_idx'] + 1).values,
+        })
         muni_join = asgn_df.merge(_vtd_muni_df, on='geoid', how='inner')
         if not muni_join.empty:
             splits_per_muni = muni_join.groupby('muni_id')['district'].nunique()
