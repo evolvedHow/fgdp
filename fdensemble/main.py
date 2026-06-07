@@ -1776,6 +1776,32 @@ def _to_png(fig) -> io.BytesIO:
 app = FastAPI(title=f'fdensemble — {STATE} {PLAN_TYPE.upper()} {PLAN_YEAR}')
 
 
+@app.middleware('http')
+async def _no_cache_html(request: _Request, call_next):
+    """Prevent browsers from caching index.html.
+
+    Every Railway deploy rebuilds the Svelte bundle, generating new Vite
+    content-hash filenames (e.g. index-AbCdEfGh.js).  If the browser has a
+    stale index.html that references the previous hash, the .js file no
+    longer exists; Starlette returns a text/plain 404 which the browser
+    blocks as a disallowed MIME type for <script type="module">.
+
+    Serving index.html with Cache-Control: no-cache forces the browser to
+    revalidate it on every visit, always getting the current asset hashes.
+    Hashed JS/CSS assets (/assets/*) are immutable and can be cached forever.
+    """
+    response = await call_next(request)
+    ct = response.headers.get('content-type', '')
+    path = request.url.path
+    if ct.startswith('text/html'):
+        # HTML pages must never be stale — always revalidate
+        response.headers['cache-control'] = 'no-cache, no-store, must-revalidate'
+    elif path.startswith('/assets/'):
+        # Content-hashed assets are immutable — cache for 1 year
+        response.headers.setdefault('cache-control', 'public, max-age=31536000, immutable')
+    return response
+
+
 @app.get('/api/health')
 def get_health():
     """Liveness check — includes FDP API connectivity status."""
