@@ -845,7 +845,8 @@ def _compute_composite_grades(metric_grades: dict, n_districts: int) -> dict:
                           if m in ('efficiency_gap', 'mean_median')):
         pf = _adj(pf, -1)   # B→C, C→D
 
-    comp_g = (metric_grades.get('comp_seats') or {}).get('grade', '')
+    _comp_m = metric_grades.get('comp_seats_7pt') or metric_grades.get('comp_seats') or {}
+    comp_g = _comp_m.get('grade', '')
     if comp_g == 'A': pf = _adj(pf, +1)
     if comp_g == 'F': pf = _adj(pf, -1)
 
@@ -889,7 +890,7 @@ def _compute_composite_grades(metric_grades: dict, n_districts: int) -> dict:
     # ── Overall ───────────────────────────────────────────────────────────────
     overall = pf
     if geo_g  == 'F': overall = _adj(overall, -1)
-    if comp_g == 'A': overall = _adj(overall, +1)
+    if comp_g == 'A': overall = _adj(overall, +1)   # comp_g already set from 7pt or legacy
     if comp_g == 'F': overall = _adj(overall, -1)
 
     result['_overall'] = {
@@ -1096,11 +1097,11 @@ def _vtd_composite_path() -> Path | None:
 
 def _get_statewide_dem_2pv() -> float | None:
     """
-    Compute the VAP-weighted statewide composite Dem two-party vote share (cached).
+    Compute the statewide composite Dem two-party vote share (cached).
 
-    Uses synthetic vote totals: composite_dem_pct * VAP_MOD per VTD — the same
-    weighting used when injecting composite election rows into election_results_vtd.
-    This means the proportional target is consistent with the scoring pipeline.
+    Prefers actual census-block vote counts when available (actual_dem_votes /
+    actual_total_votes columns in vtd_composite.parquet, built by build_composite_score.py).
+    Falls back to VAP-weighted synthetic totals for older parquet files.
 
     Result is the same for all four runs (congress/senate/house GerryChain + ALARM)
     because they share the same Georgia VTD composite elections.
@@ -1114,12 +1115,20 @@ def _get_statewide_dem_2pv() -> float | None:
         return None
 
     try:
-        df = pd.read_parquet(path, columns=['composite_dem_pct', 'composite_rep_pct', 'VAP_MOD'])
-        df = df[df['VAP_MOD'] > 0]
+        df = pd.read_parquet(path)
+        if 'actual_dem_votes' in df.columns and 'actual_total_votes' in df.columns:
+            total_dem = float(df['actual_dem_votes'].sum())
+            total_total = float(df['actual_total_votes'].sum())
+            if total_total > 0:
+                _statewide_dem_2pv = total_dem / total_total
+                print(f'  Statewide composite Dem 2pv (actual vote counts): {_statewide_dem_2pv:.4f}')
+                return _statewide_dem_2pv
+        # Fallback: VAP-weighted synthetic totals
+        df = df[df['VAP_MOD'] > 0] if 'VAP_MOD' in df.columns else df
         total_dem = float((df['composite_dem_pct'] * df['VAP_MOD']).sum())
         total_rep = float((df['composite_rep_pct'] * df['VAP_MOD']).sum())
         _statewide_dem_2pv = total_dem / (total_dem + total_rep)
-        print(f'  Statewide composite Dem 2pv (VAP-weighted): {_statewide_dem_2pv:.4f}')
+        print(f'  Statewide composite Dem 2pv (VAP-weighted fallback): {_statewide_dem_2pv:.4f}')
     except Exception as exc:
         print(f'  WARNING: could not compute statewide Dem 2pv: {exc}')
         return None
@@ -1478,13 +1487,34 @@ def _score_geojson(features: list, run_id: str) -> dict:
     grouped['centroid_lat'] = (grouped['lat_wt'] / grouped['total_vap']).round(5)
     grouped['centroid_lon'] = (grouped['lon_wt'] / grouped['total_vap']).round(5)
 
-    # ── Demographic aggregation per district ──────────────────────────────────
+    # ── BVAP aggregation from vtd_composite (Census PL 94-171 P4 table) ──────
+    # bvap_* columns are present when vtd_composite was built with build_composite_score.py
+    # after the BVAP merge step (build_bvap_vtd.py → vtd_composite join).
+    _bvap_cols = ['bvap_tot', 'bvap_blk', 'bvap_wht', 'bvap_hsp', 'bvap_asn', 'bvap_coalition']
+    _has_bvap = all(c in assigned.columns for c in _bvap_cols)
+
     demo_by_dist: dict = {}
-    if _vtd_demo_df is not None:
+    if _has_bvap:
+        bvap_agg = assigned.groupby('_dist_idx')[_bvap_cols].sum().reset_index()
+        for _, row in bvap_agg.iterrows():
+            d_vap = max(float(row['bvap_tot']), 1)
+            demo_by_dist[int(row['_dist_idx'])] = {
+                'vap_black':     int(row['bvap_blk']),
+                'vap_hisp':      int(row['bvap_hsp']),
+                'vap_white':     int(row['bvap_wht']),
+                'vap_asian':     int(row['bvap_asn']),
+                'vap_coalition': int(row['bvap_coalition']),
+                'pct_black':     round(float(row['bvap_blk'])       / d_vap, 4),
+                'pct_hisp':      round(float(row['bvap_hsp'])        / d_vap, 4),
+                'pct_white':     round(float(row['bvap_wht'])        / d_vap, 4),
+                'pct_asian':     round(float(row['bvap_asn'])        / d_vap, 4),
+                'pct_minority':  round(float(row['bvap_coalition'])  / d_vap, 4),
+            }
+    elif _vtd_demo_df is not None:
+        # Fallback: separate vtd_demographics.parquet (older vtd_composite without bvap_* cols)
         demo_cols = ['pop', 'vap', 'pop_black', 'pop_hisp', 'pop_white',
                      'pop_aian', 'pop_asian', 'vap_black', 'vap_hisp',
                      'vap_white', 'vap_aian', 'vap_asian']
-        # Join assigned VTDs with demographics
         assigned['_geoid_str'] = vtd.loc[assigned.index, 'GEOID20'].astype(str)
         demo_join = assigned.merge(
             _vtd_demo_df[['geoid'] + demo_cols],
@@ -1558,7 +1588,6 @@ def _score_geojson(features: list, run_id: str) -> dict:
         g = grades.get(metric_key)
         if g is None or 'histogram' not in g:
             return {'value': round(val, 4), 'pct_rank': 50.0, 'grade': 'C'}
-        grade_symmetric_val = None  # set only for floor-graded minority metrics
         hist = g['histogram']
         edges = hist['edges']
         counts = hist['counts']
@@ -1572,7 +1601,7 @@ def _score_geojson(features: list, run_id: str) -> dict:
             elif pct >= 20: grd = 'B'
             elif pct >= 5: grd = 'C'
             else: grd = 'F'
-        elif metric_key == 'comp_seats':
+        elif metric_key in ('comp_seats', 'comp_seats_7pt', 'comp_seats_10pt'):
             if pct >= 95: grd = 'A'
             elif pct >= 64: grd = 'B'
             elif pct >= 5: grd = 'C'
@@ -1583,24 +1612,14 @@ def _score_geojson(features: list, run_id: str) -> dict:
             elif rank >= 64: grd = 'B'
             elif rank >= 5:  grd = 'C'
             else: grd = 'F'
-        elif metric_key in ('maj_black', 'min_coal', 'maj_hisp', 'maj_aian', 'maj_asian'):
-            # Floor-based grade: VRA floor metric — having MORE is never penalized
-            # Grade A = >=50th pct, Grade B = >=10th pct (VRA floor), Grade F = <10th pct
-            d_sym = abs(pct - 50.0)
-            if d_sym <= 10: grade_symmetric_val = 'A'
-            elif d_sym <= 30: grade_symmetric_val = 'B'
-            elif d_sym <= 45: grade_symmetric_val = 'C'
-            else: grade_symmetric_val = 'F'
-            if pct >= 50: grd = 'A'
-            elif pct >= 10: grd = 'B'
-            else: grd = 'F'
         elif metric_key in ('min_influence', 'polsby_popper'):
-            # higher is better: directional (existing behavior, unchanged)
+            # higher is better: directional
             if pct >= 95: grd = 'A'
             elif pct >= 64: grd = 'B'
             elif pct >= 5:  grd = 'C'
             else: grd = 'F'
         else:
+            # Symmetric: values near neutral median are best; both tails are bad
             d = abs(pct - 50.0)
             if d <= 10: grd = 'A'
             elif d <= 30: grd = 'B'
@@ -1608,11 +1627,8 @@ def _score_geojson(features: list, run_id: str) -> dict:
             else: grd = 'F'
         # Pass through a_grade_range from the stored benchmark metric
         a_gr = g.get('a_grade_range')
-        result_dict = {'value': round(val, 4), 'pct_rank': round(pct, 1), 'grade': grd,
-                       'a_grade_range': a_gr}
-        if grade_symmetric_val is not None:
-            result_dict['grade_symmetric'] = grade_symmetric_val
-        return result_dict
+        return {'value': round(val, 4), 'pct_rank': round(pct, 1), 'grade': grd,
+                'a_grade_range': a_gr}
 
     metrics = {
         'dem_seats':      _rank_and_grade('dem_seats',      float(dem_seats)),
@@ -1625,14 +1641,20 @@ def _score_geojson(features: list, run_id: str) -> dict:
     if muni_splits_val is not None:
         metrics['muni_splits'] = _rank_and_grade('muni_splits', float(muni_splits_val))
 
-    # Minority demographic metrics from vtd_demographics (if available)
+    # Minority demographic metrics from BVAP data (vtd_composite or vtd_demographics fallback)
     if demo_by_dist:
         d_vals = list(demo_by_dist.values())
-        maj_white_count = sum(1 for d in d_vals if d.get('pct_white', 0) >= MINORITY_THRESHOLD)
+        maj_black_count = sum(1 for d in d_vals if d.get('pct_black',    0) >= BVAP_THRESHOLD)
+        maj_hisp_count  = sum(1 for d in d_vals if d.get('pct_hisp',     0) >= MINORITY_THRESHOLD)
+        min_coal_count  = sum(1 for d in d_vals if d.get('pct_minority', 0) >= MINORITY_THRESHOLD)
+        maj_white_count = sum(1 for d in d_vals if d.get('pct_white',    0) >= MINORITY_THRESHOLD)
         min_influence_count = sum(
             1 for d in d_vals
             if INFLUENCE_MIN_THRESHOLD <= d.get('pct_minority', 0) < INFLUENCE_MAX_THRESHOLD
         )
+        metrics['maj_black']     = _rank_and_grade('maj_black',     float(maj_black_count))
+        metrics['maj_hisp']      = _rank_and_grade('maj_hisp',      float(maj_hisp_count))
+        metrics['min_coal']      = _rank_and_grade('min_coal',      float(min_coal_count))
         metrics['maj_white']     = _rank_and_grade('maj_white',     float(maj_white_count))
         metrics['min_influence'] = _rank_and_grade('min_influence', float(min_influence_count))
 
@@ -1777,7 +1799,7 @@ app = FastAPI(title=f'fdensemble — {STATE} {PLAN_TYPE.upper()} {PLAN_YEAR}')
 
 
 @app.middleware('http')
-async def _no_cache_html(request: _Request, call_next):
+async def _no_cache_html(request: Request, call_next):
     """Prevent browsers from caching index.html.
 
     Every Railway deploy rebuilds the Svelte bundle, generating new Vite

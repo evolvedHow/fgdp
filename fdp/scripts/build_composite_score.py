@@ -54,6 +54,7 @@ _BLOCK_VTD_LOOKUP = _VTD_DIR / "block_vtd_lookup.parquet"
 
 # Outputs
 _COMPOSITE_OUT    = _VTD_DIR / "vtd_composite.parquet"
+_BVAP_IN          = _VTD_DIR / "bvap_vtd.parquet"
 
 
 # ── Election loaders ──────────────────────────────────────────────────────────
@@ -193,7 +194,7 @@ def _load_2018_vtd(election_vtd: Path) -> pd.DataFrame:
         wide["rep_pct_2018_gov"] = np.where(wide["total_2018"] > 0,
                                              wide["rep_2018"] / wide["total_2018"], np.nan)
 
-    keep = ["vtd_GEOID20", "dem_pct_2018_gov", "rep_pct_2018_gov", "total_2018"]
+    keep = ["vtd_GEOID20", "dem_pct_2018_gov", "rep_pct_2018_gov", "total_2018", "dem_2018"]
     print(f"    {len(wide):,} VTDs, 2018 turnout sum: {wide['total_2018'].sum():,.0f}")
     return wide[keep].copy()
 
@@ -333,9 +334,30 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
     vtd["dem_pct_2022_gov"]        = _safe_div(vtd["wn_g22"],  vtd["wd_g22"])
     vtd["dem_pct_2022_uss"]        = _safe_div(vtd["wn_u22"],  vtd["wd_u22"])
     vtd["dem_pct_2024_pres"]       = _safe_div(vtd["wn_2024"], vtd["wd_2024"])
+
+    # Actual vote count columns — join 2018 VTD totals, then sum across all 6 elections
+    vtd = vtd.merge(
+        df_2018_vtd[["vtd_GEOID20", "dem_2018", "total_2018"]].rename(
+            columns={"vtd_GEOID20": "GEOID20"}
+        ),
+        on="GEOID20", how="left",
+    )
+    vtd["dem_2018"]   = vtd["dem_2018"].fillna(0)
+    vtd["total_2018"] = vtd["total_2018"].fillna(0)
+    vtd["actual_dem_votes"] = (
+        vtd["wn_2020"].fillna(0) + vtd["wn_2021"].fillna(0)
+        + vtd["wn_g22"].fillna(0) + vtd["wn_u22"].fillna(0)
+        + vtd["wn_2024"].fillna(0) + vtd["dem_2018"]
+    ).round(0).astype(int)
+    vtd["actual_total_votes"] = (
+        vtd["wd_2020"].fillna(0) + vtd["wd_2021"].fillna(0)
+        + vtd["wd_g22"].fillna(0) + vtd["wd_u22"].fillna(0)
+        + vtd["wd_2024"].fillna(0) + vtd["total_2018"]
+    ).round(0).astype(int)
+
     vtd = vtd.drop(columns=["wn_2020","wd_2020","wn_2021","wd_2021",
                               "wn_g22","wd_g22","wn_u22","wd_u22",
-                              "wn_2024","wd_2024"])
+                              "wn_2024","wd_2024","dem_2018","total_2018"])
 
     with np.errstate(invalid="ignore", divide="ignore"):
         vtd["composite_dem_pct"] = np.where(vtd["sum_weight"] > 0,
@@ -404,12 +426,37 @@ def build_composite(dry_run: bool = False) -> pd.DataFrame:
     print(f"  Statewide composite dem 2pv:   {vtd['composite_dem_2pv'].mean():.3f}")
     print(f"  NaN composite_dem_pct: {vtd['composite_dem_pct'].isna().sum()}")
 
+    # ── Step 6c: Join BVAP from Census PL 94-171 (build_bvap_vtd.py output) ───
+    print("\n=== Step 6c: Join BVAP (Census PL 94-171 Table P4) ===")
+    if _BVAP_IN.exists():
+        bvap = pd.read_parquet(_BVAP_IN)
+        bvap["GEOID20"] = bvap["GEOID20"].astype(str)
+        vtd = vtd.merge(
+            bvap[["GEOID20", "bvap_tot", "bvap_blk", "bvap_wht",
+                  "bvap_hsp", "bvap_asn", "bvap_coalition"]],
+            on="GEOID20", how="left",
+        )
+        matched = vtd["bvap_tot"].notna().sum()
+        print(f"  BVAP joined: {matched:,}/{len(vtd):,} VTDs matched")
+        print(f"  Total VAP (bvap_tot): {vtd['bvap_tot'].sum():,.0f}")
+        print(f"  Total Black VAP:      {vtd['bvap_blk'].sum():,.0f}  "
+              f"({vtd['bvap_blk'].sum()/vtd['bvap_tot'].sum()*100:.1f}%)")
+        print(f"  Minority coalition:   {vtd['bvap_coalition'].sum():,.0f}  "
+              f"({vtd['bvap_coalition'].sum()/vtd['bvap_tot'].sum()*100:.1f}%)")
+        for col in ["bvap_tot", "bvap_blk", "bvap_wht", "bvap_hsp", "bvap_asn", "bvap_coalition"]:
+            vtd[col] = vtd[col].fillna(0).astype(int)
+    else:
+        print(f"  WARNING: {_BVAP_IN} not found — BVAP columns will be absent.")
+        print(f"  Run: uv run --project fdp python fdp/scripts/build_bvap_vtd.py")
+
     final_cols = [
         "GEOID20", "composite_dem_pct", "composite_rep_pct",
         "composite_other_pct", "composite_dem_2pv",
         "dem_pct_2018_gov", "dem_pct_2020_pres",
         "dem_pct_2021_war_runoff", "dem_pct_2022_gov", "dem_pct_2022_uss",
         "dem_pct_2024_pres", "VAP_MOD",
+        "bvap_tot", "bvap_blk", "bvap_wht", "bvap_hsp", "bvap_asn", "bvap_coalition",
+        "actual_dem_votes", "actual_total_votes",
         "centroid_lat", "centroid_lon",
     ]
     vtd = vtd[[c for c in final_cols if c in vtd.columns]]

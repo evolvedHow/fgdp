@@ -12,19 +12,21 @@ export interface DistrictResult {
   total_vap: number;
   centroid_lat: number;
   centroid_lon: number;
-  // Optional demographics (present when scored via /api/score-map with vtd_demographics)
-  total_pop?:    number;
-  vap_black?:    number;
-  vap_hisp?:     number;
-  vap_white?:    number;
-  vap_aian?:     number;
-  vap_asian?:    number;
-  pct_black?:    number;
-  pct_hisp?:     number;
-  pct_white?:    number;
-  pct_aian?:     number;
-  pct_asian?:    number;
-  pct_minority?: number;   // 1 - pct_white (non-white VAP share)
+  // Optional demographics (present when scored via /api/score-map)
+  // Primary source: bvap_* columns in vtd_composite.parquet (Census PL 94-171 P4)
+  total_pop?:      number;
+  vap_black?:      number;
+  vap_hisp?:       number;
+  vap_white?:      number;
+  vap_aian?:       number;
+  vap_asian?:      number;
+  vap_coalition?:  number;  // all non-white VAP (bvap_coalition)
+  pct_black?:      number;
+  pct_hisp?:       number;
+  pct_white?:      number;
+  pct_aian?:       number;
+  pct_asian?:      number;
+  pct_minority?:   number;  // 1 - pct_white (non-white VAP share = minority coalition %)
 }
 
 export interface VtdDetail {
