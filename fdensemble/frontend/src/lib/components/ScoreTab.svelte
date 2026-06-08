@@ -334,14 +334,14 @@
   />
 
   <!-- ── Demographic Representation — 3-column White / Black / Minority Coalition ── -->
-  {#if THRESHOLD_KEYS.some(k => k in analysis.grades && 'draw_values_by_threshold' in (analysis.grades[k] ?? {}))}
+  {#if THRESHOLD_KEYS.some(k => k in analysis.grades && 'histogram' in (analysis.grades[k] ?? {}))}
     <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                 color:var(--gray);margin:.8rem 0 .5rem;">Demographic Representation</div>
 
     <!-- 3-column grid: White | Black | Minority Coalition -->
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.6rem;">
       {#each THRESHOLD_KEYS as key}
-        {#if key in analysis.grades && 'draw_values_by_threshold' in (analysis.grades[key] ?? {})}
+        {#if key in analysis.grades && 'histogram' in (analysis.grades[key] ?? {})}
           {@const m = analysis.grades[key] as any}
           <DemoMetricCard metric={m} nDistricts={analysis.summary?.n_districts ?? 14} />
         {/if}
