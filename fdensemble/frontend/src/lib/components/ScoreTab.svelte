@@ -37,9 +37,12 @@
   const PARTISAN_KEYS    = ['dem_seats', 'partisan_bias', 'efficiency_gap', 'mean_median'];
   const COMPETITIVE_KEYS = ['comp_seats_7pt', 'comp_seats_10pt', 'comp_seats', 'rep_safe_seats', 'dem_safe_seats'];
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];  // muni_splits = Split Cities
-  const MINORITY_KEYS    = ['maj_black', 'maj_white', 'maj_hisp', 'maj_aian', 'maj_asian', 'min_coal'];
+  // 3-column threshold metrics (White / Black / Minority Coalition) — shown in compact side-by-side layout
+  const THRESHOLD_KEYS   = ['maj_white', 'maj_black', 'min_coal'];
+  // Other minority metrics shown full-width below the 3-column block
+  const MINORITY_KEYS    = ['maj_hisp', 'maj_aian', 'maj_asian', 'min_influence'];
   const ALL_METRIC_GROUPS = [PARTISAN_KEYS, COMPETITIVE_KEYS, GEOGRAPHIC_KEYS, MINORITY_KEYS];
-  const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Minority Representation'];
+  const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Other Minority Metrics'];
 
   // Demographic threshold slider — 20%–50% BVAP for Black / White / Minority Coalition
   // Default 50% = true VRA majority. Slide left to 20% to see influence districts.
@@ -47,6 +50,8 @@
   const demoThresholdKey = $derived(
     (demoThresholdPct / 100).toFixed(2)  // "0.50", "0.45", ..., "0.20"
   );
+
+  let showUploader = $state(false);
 
   // Multi-map comparison
   let comparisonPlans: ScoredPlan[] = $state([]);
@@ -338,44 +343,57 @@
     planGrades={scoredPlan ? scoredPlan.grades : null}
   />
 
-  <!-- Metric groups -->
+  <!-- ── Minority Representation — 3-column threshold block ───────────────── -->
+  {#if THRESHOLD_KEYS.some(k => k in analysis.grades && 'histogram' in (analysis.grades[k] ?? {}))}
+    <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                color:var(--gray);margin:.8rem 0 .4rem;">Minority Representation</div>
+
+    <!-- Demographic threshold slider -->
+    <div class="no-print" style="background:#f8f4ff;border:1px solid #d7bde2;border-radius:6px;
+                padding:.55rem .9rem;margin-bottom:.6rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;">
+        <span style="font-size:.72rem;font-weight:700;color:#8e44ad;white-space:nowrap;">
+          Threshold: {demoThresholdPct}% BVAP
+        </span>
+        <span style="font-size:.65rem;color:var(--gray);">
+          {demoThresholdPct === 50 ? '50% = True majority (VRA Section 2 standard)' :
+           demoThresholdPct === 20 ? '20% = Influence threshold (meaningful electoral impact)' :
+           `${demoThresholdPct}% — between influence and majority`}
+        </span>
+      </div>
+      <input type="range" min=20 max=50 step=5 bind:value={demoThresholdPct}
+        style="width:100%;margin:.3rem 0 .2rem;accent-color:#8e44ad;cursor:pointer;" />
+      <div style="font-size:.61rem;color:var(--gray);line-height:1.45;">
+        For each of the 99,001 neutral maps, counts how many districts have ≥{demoThresholdPct}% BVAP for each group,
+        producing a bell curve. The enacted map is scored against that distribution.
+        <b>50%</b>: true VRA majority standard.
+        <b>20%</b>: influence district threshold.
+      </div>
+    </div>
+
+    <!-- 3-column grid: White | Black | Minority Coalition -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-bottom:.55rem;">
+      {#each THRESHOLD_KEYS as key}
+        {#if key in analysis.grades && 'histogram' in (analysis.grades[key] ?? {})}
+          {@const metric = analysis.grades[key] as any}
+          <MetricCard {metric} planMetric={planMetricFor(key)}
+            demoThresholdKey={demoThresholdKey}
+            compact={true}
+            nDistricts={analysis.summary?.n_districts ?? 14} />
+        {/if}
+      {/each}
+    </div>
+  {/if}
+
+  <!-- Metric groups (Partisan / Competitive / Geographic / Other Minority) -->
   {#each ALL_METRIC_GROUPS as keys, gi}
     {#if allMetrics(keys).length}
       <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                   color:var(--gray);margin:.8rem 0 .4rem;">{GROUP_LABELS[gi]}</div>
 
-      {#if GROUP_LABELS[gi] === 'Minority Representation'}
-        <!-- Demographic threshold slider — specific to Black/White/Minority metrics -->
-        <div class="no-print" style="background:#f8f4ff;border:1px solid #d7bde2;border-radius:6px;
-                    padding:.55rem .9rem;margin-bottom:.5rem;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;">
-            <span style="font-size:.72rem;font-weight:700;color:#8e44ad;white-space:nowrap;">
-              Threshold: {demoThresholdPct}% BVAP
-            </span>
-            <span style="font-size:.65rem;color:var(--gray);">
-              {demoThresholdPct === 50 ? '50% = True majority (VRA Section 2 standard)' :
-               demoThresholdPct === 20 ? '20% = Influence threshold (meaningful electoral impact)' :
-               `${demoThresholdPct}% — between influence and majority`}
-            </span>
-          </div>
-          <input type="range" min=20 max=50 step=5 bind:value={demoThresholdPct}
-            style="width:100%;margin:.3rem 0 .2rem;accent-color:#8e44ad;cursor:pointer;" />
-          <div style="font-size:.61rem;color:var(--gray);line-height:1.45;">
-            Counts districts per map with ≥{demoThresholdPct}% BVAP for each group.
-            <b>Right (50%)</b>: traditional majority — voters can elect their candidate of choice.
-            <b>Left (20%)</b>: influence districts — voters have meaningful but non-majority impact.
-          </div>
-        </div>
-      {/if}
-
       <div style="display:flex;flex-direction:column;gap:.55rem;">
         {#each allMetrics(keys) as {key, metric}}
-          {#if GROUP_LABELS[gi] === 'Minority Representation'}
-            <MetricCard {metric} planMetric={planMetricFor(key)}
-              demoThresholdKey={(metric as any).draw_values_by_threshold ? demoThresholdKey : ''} />
-          {:else}
-            <MetricCard {metric} planMetric={planMetricFor(key)} />
-          {/if}
+          <MetricCard {metric} planMetric={planMetricFor(key)} />
         {/each}
       </div>
     {/if}
