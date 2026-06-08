@@ -41,8 +41,12 @@
   const ALL_METRIC_GROUPS = [PARTISAN_KEYS, COMPETITIVE_KEYS, GEOGRAPHIC_KEYS, MINORITY_KEYS];
   const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Minority Representation'];
 
-  // Ensemble quality filter slider (0 = no filter, 50 = keep top 50% only)
-  let filterPct = $state(0);
+  // Demographic threshold slider — 20%–50% BVAP for Black / White / Minority Coalition
+  // Default 50% = true VRA majority. Slide left to 20% to see influence districts.
+  let demoThresholdPct = $state(50);
+  const demoThresholdKey = $derived(
+    (demoThresholdPct / 100).toFixed(2)  // "0.50", "0.45", ..., "0.20"
+  );
 
   // Multi-map comparison
   let comparisonPlans: ScoredPlan[] = $state([]);
@@ -334,37 +338,44 @@
     planGrades={scoredPlan ? scoredPlan.grades : null}
   />
 
-  <!-- Ensemble quality filter slider -->
-  <div class="no-print" style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;
-              padding:.6rem 1rem;margin-bottom:.6rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);
-                white-space:nowrap;">Quality floor:</div>
-    <input type="range" min=0 max=50 step=5 bind:value={filterPct}
-      style="flex:1;min-width:120px;max-width:260px;accent-color:var(--blue);cursor:pointer;" />
-    <div style="font-size:.73rem;color:#333;white-space:nowrap;">
-      {#if filterPct === 0}
-        <span style="color:var(--gray);">All {summary?.n_plans?.toLocaleString() ?? ''} ensemble plans</span>
-      {:else}
-        <span>Grading against top <b>{100 - filterPct}%</b> of plans
-          <span style="color:var(--gray);">(removed bottom {filterPct}% worst-performing)</span>
-        </span>
-      {/if}
-    </div>
-    {#if filterPct > 0}
-      <button onclick={() => filterPct = 0}
-        style="font-size:.68rem;color:var(--gray);background:transparent;border:1px solid var(--border);
-               border-radius:4px;padding:.15rem .45rem;cursor:pointer;">Reset</button>
-    {/if}
-  </div>
-
   <!-- Metric groups -->
   {#each ALL_METRIC_GROUPS as keys, gi}
     {#if allMetrics(keys).length}
       <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                   color:var(--gray);margin:.8rem 0 .4rem;">{GROUP_LABELS[gi]}</div>
+
+      {#if GROUP_LABELS[gi] === 'Minority Representation'}
+        <!-- Demographic threshold slider — specific to Black/White/Minority metrics -->
+        <div class="no-print" style="background:#f8f4ff;border:1px solid #d7bde2;border-radius:6px;
+                    padding:.55rem .9rem;margin-bottom:.5rem;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;">
+            <span style="font-size:.72rem;font-weight:700;color:#8e44ad;white-space:nowrap;">
+              Threshold: {demoThresholdPct}% BVAP
+            </span>
+            <span style="font-size:.65rem;color:var(--gray);">
+              {demoThresholdPct === 50 ? '50% = True majority (VRA Section 2 standard)' :
+               demoThresholdPct === 20 ? '20% = Influence threshold (meaningful electoral impact)' :
+               `${demoThresholdPct}% — between influence and majority`}
+            </span>
+          </div>
+          <input type="range" min=20 max=50 step=5 bind:value={demoThresholdPct}
+            style="width:100%;margin:.3rem 0 .2rem;accent-color:#8e44ad;cursor:pointer;" />
+          <div style="font-size:.61rem;color:var(--gray);line-height:1.45;">
+            Counts districts per map with ≥{demoThresholdPct}% BVAP for each group.
+            <b>Right (50%)</b>: traditional majority — voters can elect their candidate of choice.
+            <b>Left (20%)</b>: influence districts — voters have meaningful but non-majority impact.
+          </div>
+        </div>
+      {/if}
+
       <div style="display:flex;flex-direction:column;gap:.55rem;">
         {#each allMetrics(keys) as {key, metric}}
-          <MetricCard {metric} planMetric={planMetricFor(key)} {filterPct} />
+          {#if GROUP_LABELS[gi] === 'Minority Representation'}
+            <MetricCard {metric} planMetric={planMetricFor(key)}
+              demoThresholdKey={(metric as any).draw_values_by_threshold ? demoThresholdKey : ''} />
+          {:else}
+            <MetricCard {metric} planMetric={planMetricFor(key)} />
+          {/if}
         {/each}
       </div>
     {/if}

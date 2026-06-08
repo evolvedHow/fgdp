@@ -11,41 +11,14 @@
   interface Props {
     metric: MetricGrade;
     planMetric?: PlanMetricOverlay | null;
-    filterPct?: number;
+    demoThresholdKey?: string;  // e.g. "0.50", "0.20" — for demographic metrics only
   }
-  let { metric, planMetric = null, filterPct = 0 }: Props = $props();
+  let { metric, planMetric = null, demoThresholdKey = '' }: Props = $props();
 
-  // ── Ensemble quality filter logic ─────────────────────────────────────────
-  // When filterPct > 0, remove the bottom X% worst-performing ensemble plans
-  // and recompute the enacted map's percentile rank + grade in real-time.
-
-  function computeGrade(pctRank: number, gradeFn: string, higherIsBetter: boolean | null): string {
-    if (gradeFn === 'seats') {
-      if (pctRank >= 50) return 'A';
-      if (pctRank >= 20) return 'B';
-      if (pctRank >= 5)  return 'C';
-      return 'F';
-    }
-    if (gradeFn === 'comp') {
-      if (pctRank >= 95) return 'A';
-      if (pctRank >= 64) return 'B';
-      if (pctRank >= 5)  return 'C';
-      return 'F';
-    }
-    if (gradeFn === 'simple' || higherIsBetter === null || higherIsBetter === undefined) {
-      const dist = Math.abs(pctRank - 50);
-      if (dist <= 10) return 'A';
-      if (dist <= 30) return 'B';
-      if (dist <= 45) return 'C';
-      return 'F';
-    }
-    // directional
-    const rank = higherIsBetter ? pctRank : (100 - pctRank);
-    if (rank >= 95) return 'A';
-    if (rank >= 64) return 'B';
-    if (rank >= 5)  return 'C';
-    return 'F';
-  }
+  // ── Demographic threshold override ────────────────────────────────────────
+  // When demoThresholdKey is set and the metric has pre-computed threshold arrays,
+  // use that threshold's draw_values and enacted count instead of the defaults.
+  // This enables the 20%–50% BVAP threshold slider for Black/White/Minority metrics.
 
   function rebucket(values: number[], edges: number[]): number[] {
     const n = edges.length - 1;
@@ -61,40 +34,54 @@
     return counts;
   }
 
-  const filteredDrawValues = $derived.by((): number[] | null => {
-    const dv = (metric as any).draw_values as number[] | undefined;
-    const hib = (metric as any).higher_is_better as boolean | null | undefined;
-    if (!dv || filterPct <= 0) return null;
-    const sorted = [...dv].sort((a: number, b: number) => a - b);
-    const n = sorted.length;
-    const cutN = Math.floor(filterPct / 100 * n);
-    if (hib === true) {
-      return sorted.slice(cutN);           // keep top (100 - filterPct)%
-    } else if (hib === false) {
-      return sorted.slice(0, n - cutN);    // keep bottom (100 - filterPct)%
-    } else {
-      // Symmetric: remove cutN/2 from each tail (both extremes are "worst")
-      const halfCut = Math.floor(cutN / 2);
-      return sorted.slice(halfCut, n - halfCut);
-    }
+  // Active draw_values: threshold-specific array if available, else metric default
+  const activeDrawValues = $derived.by((): number[] => {
+    const dbt = (metric as any).draw_values_by_threshold as Record<string, number[]> | undefined;
+    if (demoThresholdKey && dbt && dbt[demoThresholdKey]) return dbt[demoThresholdKey];
+    return (metric as any).draw_values as number[] ?? [];
   });
 
+  // Active enacted count: threshold-specific if available, else metric default
+  const activeEnacted = $derived.by((): number => {
+    const ebt = (metric as any).enacted_by_threshold as Record<string, number> | undefined;
+    if (demoThresholdKey && ebt && ebt[demoThresholdKey] !== undefined) return ebt[demoThresholdKey];
+    return metric.enacted;
+  });
+
+  // Recomputed percentile rank using the active draw_values and active enacted
   const displayedPctRank = $derived.by((): number => {
-    if (!filteredDrawValues || !filteredDrawValues.length) return metric.pct_rank;
-    const enacted = metric.enacted;
-    return (filteredDrawValues.filter((v: number) => v <= enacted).length / filteredDrawValues.length) * 100;
+    const dv = activeDrawValues;
+    if (!dv || !dv.length || !demoThresholdKey) return metric.pct_rank;
+    const enacted = activeEnacted;
+    return (dv.filter((v: number) => v <= enacted).length / dv.length) * 100;
   });
 
+  // Recomputed grade using the active percentile rank
   const displayedGrade = $derived.by((): string => {
-    if (!filteredDrawValues) return metric.grade;
+    if (!demoThresholdKey) return metric.grade;
     const gradeFn = (metric as any).grade_fn as string || 'simple';
     const hib = (metric as any).higher_is_better as boolean | null;
-    return computeGrade(displayedPctRank, gradeFn, hib);
+    const pct = displayedPctRank;
+    if (gradeFn === 'seats') {
+      if (pct >= 50) return 'A'; if (pct >= 20) return 'B'; if (pct >= 5) return 'C'; return 'F';
+    }
+    if (gradeFn === 'comp') {
+      if (pct >= 95) return 'A'; if (pct >= 64) return 'B'; if (pct >= 5) return 'C'; return 'F';
+    }
+    if (gradeFn === 'simple' || hib === null || hib === undefined) {
+      const d = Math.abs(pct - 50);
+      if (d <= 10) return 'A'; if (d <= 30) return 'B'; if (d <= 45) return 'C'; return 'F';
+    }
+    const rank = hib ? pct : (100 - pct);
+    if (rank >= 95) return 'A'; if (rank >= 64) return 'B'; if (rank >= 5) return 'C'; return 'F';
   });
 
-  const filteredHistCounts = $derived.by((): number[] | null => {
-    if (!filteredDrawValues) return null;
-    return rebucket(filteredDrawValues, Array.from(metric.histogram.edges));
+  // Recomputed histogram counts using the active draw_values
+  const activeHistCounts = $derived.by((): number[] | null => {
+    if (!demoThresholdKey) return null;
+    const dv = activeDrawValues;
+    if (!dv || !dv.length) return null;
+    return rebucket(dv, Array.from(metric.histogram.edges));
   });
 
   // Plain let — NOT $state(). Chart.js calls Object.defineProperty on canvas
@@ -238,13 +225,13 @@
     });
   }
 
-  // Track metric + planMetric + filterPct changes so chart rebuilds when any change.
+  // Track metric + planMetric + demoThresholdKey changes so chart rebuilds when any change.
   $effect(() => {
     const m  = metric;
-    const pm = planMetric;    // declare dependency
-    const fc = filteredHistCounts;  // declare dependency — triggers on filterPct change
+    const pm = planMetric;      // declare dependency
+    const ac = activeHistCounts; // declare dependency — triggers on threshold change
     tick().then(() => {
-      if (canvas && m) buildChart(fc);
+      if (canvas && m) buildChart(ac);
     });
     return () => { if (chart) { chart.destroy(); chart = null; } };
   });
@@ -332,7 +319,7 @@
             </div>
           </div>
           <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile
-            {#if filterPct > 0}<span style="font-size:.6rem;color:var(--blue);font-style:italic;"> filtered</span>{/if}
+            {#if demoThresholdKey}<span style="font-size:.6rem;color:#8e44ad;font-style:italic;"> @{Math.round(+demoThresholdKey*100)}%</span>{/if}
           </span>
         {:else}
           <!-- Single grade (no grade_symmetric, or both grades match) -->
@@ -342,8 +329,8 @@
                          background:{gradeColor[displayedGrade] ?? '#888'};
                          color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{displayedGrade}</span>
             <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile</span>
-            {#if filterPct > 0}
-              <span style="font-size:.6rem;color:var(--blue);font-style:italic;" title="Grade recomputed against the top {100-filterPct}% of ensemble plans">filtered</span>
+            {#if demoThresholdKey}
+              <span style="font-size:.6rem;color:#8e44ad;font-style:italic;" title="Grade recomputed at {Math.round(+demoThresholdKey*100)}% BVAP threshold">@{Math.round(+demoThresholdKey*100)}%</span>
             {/if}
           </div>
         {/if}
@@ -386,9 +373,10 @@
       <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">
         {#if planMetric}
           <span style="color:#e67e22;font-weight:700;">—</span> this plan &nbsp;
-          <span style="color:#111;">‒‒</span> enacted &nbsp;|&nbsp; {(filterPct > 0 ? (filteredHistCounts?.reduce((a:number,b:number)=>a+b,0) ?? 0) : metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} {filterPct > 0 ? 'filtered' : 'neutral'} maps
+          <span style="color:#111;">‒‒</span> enacted &nbsp;|&nbsp; {(activeHistCounts ?? metric.histogram.counts).reduce((a:number,b:number)=>a+b,0).toLocaleString()} neutral maps
         {:else}
-          ‒‒ enacted &nbsp;|&nbsp; {(filterPct > 0 ? (filteredHistCounts?.reduce((a:number,b:number)=>a+b,0) ?? 0) : metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} {filterPct > 0 ? 'filtered' : 'neutral'} maps
+          ‒‒ enacted &nbsp;|&nbsp; {(activeHistCounts ?? metric.histogram.counts).reduce((a:number,b:number)=>a+b,0).toLocaleString()} neutral maps
+          {#if demoThresholdKey}&nbsp;<span style="color:#8e44ad;font-weight:600;">≥{Math.round(+demoThresholdKey*100)}% BVAP</span>{/if}
         {/if}
         {#if metric.a_grade_range}
           &nbsp;|&nbsp; <span style="color:#27ae60;">█</span> A zone

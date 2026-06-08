@@ -32,12 +32,17 @@ DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main/ensemble"
 # VTD → municipality lookup (built from ALARM RDS via scripts/build_alarm_scorecard.py)
 _VTD_MUNI_PATH = _REPO_ROOT / "fdensemble" / "data" / "vtd_muni.parquet"
 
-MAJORITY_THRESHOLD            = 0.20   # ≥ 20% = influence/coalition district threshold
+MAJORITY_THRESHOLD            = 0.20   # ≥ 20% = influence/coalition district threshold (legacy binary flags)
 BVAP_MAJORITY_THRESHOLD       = 0.20   # same — BVAP 2020 Census PL 94-171 headcounts
 COMPETITIVE_THRESHOLD_DEFAULT = 0.05
 COMPETITIVE_THRESHOLDS_DEFAULT = [0.035, 0.05]  # 7-point and 10-point margins
 INFLUENCE_MIN_THRESHOLD       = 0.37   # minority influence band lower bound (FDGA standard)
 INFLUENCE_MAX_THRESHOLD       = 0.50   # minority influence band upper bound
+
+# Demographic threshold slider — precompute per-draw counts at each step for
+# maj_black, maj_white, min_coal.  Default display uses 0.50 (true VRA majority).
+DEMO_THRESHOLDS        = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
+DEMO_DEFAULT_THRESHOLD = 0.50   # primary display threshold in the UI
 
 # Princeton grading constants (mirrors fdensemble/main.py)
 _GRADE_ORDER = ["A", "B", "C", "F"]
@@ -224,25 +229,28 @@ _METRIC_META: dict[str, tuple] = {
         "Black Community Representation",
         "Do Black voters have the opportunity to elect representatives of their choice?",
         "minority",
-        f"This counts districts where Black Voting Age Population (BVAP) makes up at least "
-        f"{BVAP_MAJORITY_THRESHOLD*100:.0f}% of total Voting Age Population — the influence/coalition threshold. "
+        "Counts districts where Black Voting Age Population (BVAP) meets or exceeds the "
+        "selected threshold. At 50% (default): traditional VRA Section 2 majority standard — "
+        "districts where Black voters can independently elect candidates of their choice. "
+        "Slide the threshold down to 20% to see influence districts, where Black voters "
+        "hold meaningful but not majority electoral power. "
         "Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that "
         "dilute minority communities' ability to elect their preferred candidates. "
-        "The histogram shows how many influence-level Black districts thousands of "
+        "The histogram shows how many districts at the selected threshold thousands of "
         "neutrally drawn alternative maps produce. Standard Princeton symmetric grading "
-        "is used: both unusually low and unusually high counts are flagged relative to "
-        "the neutral ensemble. "
+        "compares the enacted map to that neutral range. "
         "Uses 2020 Census PL 94-171 headcounts (not ACS estimates).",
         None),
     "min_coal": (
         "Minority Coalition Representation",
         "Do communities of color collectively hold electoral influence?",
         "minority",
-        f"This counts districts where non-white Voting Age Population makes up at least "
-        f"{MAJORITY_THRESHOLD*100:.0f}% of total VAP — communities of color collectively hold "
-        "influence even when no single racial group holds a majority. "
-        "Standard Princeton symmetric grading is used: both unusually low and unusually "
-        "high counts relative to the neutral ensemble are flagged. "
+        "Counts districts where non-white Voting Age Population meets or exceeds the "
+        "selected threshold. At 50% (default): districts where communities of color "
+        "collectively hold majority electoral power. At 20%: broader influence districts "
+        "where diverse communities have meaningful but not majority impact. "
+        "Standard Princeton symmetric grading compares the enacted map to the neutral "
+        "ensemble range at the selected threshold. "
         "Uses 2020 Census PL 94-171 headcounts (not ACS estimates).",
         None),
     "muni_splits": (
@@ -261,10 +269,12 @@ _METRIC_META: dict[str, tuple] = {
         "Majority-White Districts",
         "How many districts have a white-citizen majority of eligible voters?",
         "minority",
-        "Counts districts where non-Hispanic white citizens make up more than "
-        f"{MAJORITY_THRESHOLD*100:.0f}% of the Citizen Voting Age Population. "
-        "Shown alongside minority representation metrics to complete the full demographic "
-        "picture of how the map distributes political power across racial groups. "
+        "Counts districts where non-Hispanic white Voting Age Population meets or exceeds "
+        "the selected threshold. At 50% (default): districts with a true white-citizen "
+        "majority of eligible voters. Slide the threshold down to 20% to see districts "
+        "where white voters hold strong but not majority influence. "
+        "Shown alongside Black and Minority Coalition metrics to complete the full "
+        "demographic picture of how the map distributes political power across racial groups. "
         "The Princeton ensemble test grades statistical distance from neutral redistricting "
         "outcomes symmetrically — unusually high or low counts compared to neutral maps "
         "both indicate the map departs from geography-driven redistricting.",
@@ -844,6 +854,54 @@ def _build_river(
 
 # ── Demographics ───────────────────────────────────────────────────────────────
 
+def _build_demo_threshold_arrays(
+    run_name: str,
+    data_dir: Path,
+    conn: duckdb.DuckDBPyConnection,
+) -> dict:
+    """
+    Pre-compute per-draw district counts for maj_black, maj_white, min_coal at each
+    threshold in DEMO_THRESHOLDS.  Returns a dict keyed by metric name, each containing:
+      - "draw_values_by_threshold": { "0.20": [int, ...], "0.30": [...], ..., "0.50": [...] }
+      - "enacted_by_threshold":     { "0.20": int, ..., "0.50": int }
+
+    Uses raw pct_black / pct_white / pct_minority_coalition columns from the demographics
+    parquet — no re-scoring required; those columns are written by score_ensemble_demographics.py.
+    """
+    demo_file = data_dir / f"{run_name}_demographics.parquet"
+    if not demo_file.exists():
+        return {}
+
+    result: dict = {
+        "maj_black": {"draw_values_by_threshold": {}, "enacted_by_threshold": {}},
+        "maj_white": {"draw_values_by_threshold": {}, "enacted_by_threshold": {}},
+        "min_coal":  {"draw_values_by_threshold": {}, "enacted_by_threshold": {}},
+    }
+
+    for T in DEMO_THRESHOLDS:
+        tkey = f"{T:.2f}"
+        df = conn.execute("""
+            SELECT draw,
+                   SUM(CASE WHEN pct_black              >= ? THEN 1 ELSE 0 END) AS maj_black,
+                   SUM(CASE WHEN pct_white              >= ? THEN 1 ELSE 0 END) AS maj_white,
+                   SUM(CASE WHEN pct_minority_coalition >= ? THEN 1 ELSE 0 END) AS min_coal
+            FROM read_parquet(?)
+            GROUP BY draw
+            ORDER BY draw
+        """, [T, T, T, str(demo_file)]).df()
+
+        sim     = df[df["draw"] > 1]
+        enacted = df[df["draw"] == 1]
+        enacted_row = enacted.iloc[0] if len(enacted) > 0 else None
+
+        for metric in ("maj_black", "maj_white", "min_coal"):
+            result[metric]["draw_values_by_threshold"][tkey] = sim[metric].astype(int).tolist()
+            if enacted_row is not None:
+                result[metric]["enacted_by_threshold"][tkey] = int(enacted_row[metric])
+
+    return result
+
+
 def _build_demographics(
     run_name: str,
     data_dir: Path,
@@ -856,37 +914,48 @@ def _build_demographics(
     if not demo_file.exists():
         return None
 
+    # ── Build threshold arrays for maj_black, maj_white, min_coal ──────────────
+    # Uses raw pct columns from the parquet; default display at DEMO_DEFAULT_THRESHOLD.
+    threshold_data = _build_demo_threshold_arrays(run_name, data_dir, conn)
+    default_key = f"{DEMO_DEFAULT_THRESHOLD:.2f}"
+
+    metrics: dict = {}
+
+    for key in ("maj_black", "maj_white", "min_coal"):
+        td = threshold_data.get(key, {})
+        draw_vals_default = td.get("draw_values_by_threshold", {}).get(default_key)
+        enacted_default   = td.get("enacted_by_threshold", {}).get(default_key)
+        if draw_vals_default is None or enacted_default is None:
+            continue
+        dist  = np.array(draw_vals_default, dtype=float)
+        entry = _metric_entry(key, dist, float(enacted_default))
+        if entry:
+            entry["draw_values_by_threshold"] = td["draw_values_by_threshold"]
+            entry["enacted_by_threshold"]     = td["enacted_by_threshold"]
+            entry.pop("draw_values", None)   # redundant — draw_values_by_threshold["0.50"] is the canonical source
+            metrics[key] = entry
+
+    # ── min_influence — fixed influence band (37–50%), no threshold slider ─────
     dd = conn.execute("""
         SELECT draw,
-               SUM(CAST(majority_black AS INTEGER))              AS n_maj_black,
-               SUM(CAST(majority_minority_coalition AS INTEGER)) AS n_maj_coal,
-               SUM(CAST(majority_white AS INTEGER))              AS n_maj_white,
                SUM(CAST(
                    pct_minority_coalition >= ? AND pct_minority_coalition < ?
-               AS INTEGER))                                      AS n_min_influence
+               AS INTEGER)) AS n_min_influence
         FROM read_parquet(?)
         GROUP BY draw
         ORDER BY draw
     """, [influence_min, influence_max, str(demo_file)]).df()
 
-    sim     = dd[dd["draw"] > 1]
-    enacted = dd[dd["draw"] == 1]
-    if len(enacted) == 0:
-        return None
-
-    enacted_row = enacted.iloc[0]
-    metrics: dict = {}
-
-    for key, col in [
-        ("maj_black",     "n_maj_black"),
-        ("min_coal",      "n_maj_coal"),
-        ("maj_white",     "n_maj_white"),
-        ("min_influence", "n_min_influence"),
-    ]:
-        dist = sim[col].astype(float).to_numpy()
-        entry = _metric_entry(key, dist, float(enacted_row[col]))
+    sim_inf     = dd[dd["draw"] > 1]
+    enacted_inf = dd[dd["draw"] == 1]
+    if len(enacted_inf) > 0:
+        dist  = sim_inf["n_min_influence"].astype(float).to_numpy()
+        entry = _metric_entry("min_influence", dist, float(enacted_inf.iloc[0]["n_min_influence"]))
         if entry:
-            metrics[key] = entry
+            metrics["min_influence"] = entry
+
+    if not metrics:
+        return None
 
     return {
         "source":  "bvap",
@@ -1606,7 +1675,7 @@ def main() -> None:
     )
 
     out_file.parent.mkdir(parents=True, exist_ok=True)
-    out_file.write_text(json.dumps(scorecard, indent=2, default=str))
+    out_file.write_text(json.dumps(scorecard, separators=(',', ':'), default=str))
     size_kb = out_file.stat().st_size / 1024
 
     n_elec = len(scorecard["elections"])
