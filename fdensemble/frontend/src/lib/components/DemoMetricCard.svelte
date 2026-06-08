@@ -105,16 +105,6 @@
   // Pre-computed label positions (avoids {@const} outside block boundaries in SVG)
   const enactedBarH = $derived((countMap[enactedVal] ?? 0) / maxCount * CHART_H);
   const enactedBarX = $derived(PAD_L + enactedVal * SLOT_W + BAR_W / 2);
-  const peakBarH    = $derived(peakIdx >= 0 ? countMap[peakIdx] / maxCount * CHART_H : 0);
-  const peakBarX    = $derived(peakIdx >= 0 ? PAD_L + peakIdx * SLOT_W + BAR_W / 2 : 0);
-  const showPeakLbl = $derived(peakIdx >= 0 && Math.abs(peakIdx - enactedVal) >= 2);
-
-  // Show peak bar as "X% of maps" — clearer than a raw count on a small chart
-  const peakPct = $derived(
-    peakIdx >= 0 && total > 0
-      ? Math.round(countMap[peakIdx] / total * 100) + '%'
-      : ''
-  );
 </script>
 
 <div style="background:var(--card);border-radius:8px;overflow:hidden;
@@ -174,13 +164,7 @@
           text-anchor="middle" font-size="10" font-weight="bold"
           fill={gcol}>{enactedVal}</text>
 
-        <!-- ── Peak bar % label (if ≥2 slots away from enacted) ── -->
-        {#if showPeakLbl}
-          <text x={peakBarX} y={CHART_B - peakBarH - 4}
-            text-anchor="middle" font-size="8" fill="#555">
-            {peakPct}
-          </text>
-        {/if}
+        <!-- peak bar label removed — bar height conveys frequency visually -->
 
         <!-- ── X-axis integer labels (even numbers only) ── -->
         {#each Array.from({length: nDistricts + 1}, (_, i) => i) as i}
