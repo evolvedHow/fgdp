@@ -68,4 +68,12 @@ body {
   body { background: #fff !important; }
   main { max-width: 100% !important; padding: 0 .5rem !important; }
   .metric-card { page-break-inside: avoid; break-inside: avoid; }
+
+  /* Urban cracking panel — force all 4 scatters to appear when printing.
+     beforeprint handler in UrbanCrackPanel.svelte sets expanded=true, so
+     the {#if expanded} block is in the DOM by print time. */
+  .urban-crack-panel { break-before: page; break-inside: avoid; }
+  /* Ensure the 2×2 scatter grid stays 2 columns in print */
+  .scatter-grid { grid-template-columns: 1fr 1fr !important; }
+  .scatter-layout { grid-template-columns: 1fr 220px !important; }
 }

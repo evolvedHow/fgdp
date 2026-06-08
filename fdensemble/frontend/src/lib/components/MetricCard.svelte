@@ -11,8 +11,91 @@
   interface Props {
     metric: MetricGrade;
     planMetric?: PlanMetricOverlay | null;
+    filterPct?: number;
   }
-  let { metric, planMetric = null }: Props = $props();
+  let { metric, planMetric = null, filterPct = 0 }: Props = $props();
+
+  // ── Ensemble quality filter logic ─────────────────────────────────────────
+  // When filterPct > 0, remove the bottom X% worst-performing ensemble plans
+  // and recompute the enacted map's percentile rank + grade in real-time.
+
+  function computeGrade(pctRank: number, gradeFn: string, higherIsBetter: boolean | null): string {
+    if (gradeFn === 'seats') {
+      if (pctRank >= 50) return 'A';
+      if (pctRank >= 20) return 'B';
+      if (pctRank >= 5)  return 'C';
+      return 'F';
+    }
+    if (gradeFn === 'comp') {
+      if (pctRank >= 95) return 'A';
+      if (pctRank >= 64) return 'B';
+      if (pctRank >= 5)  return 'C';
+      return 'F';
+    }
+    if (gradeFn === 'simple' || higherIsBetter === null || higherIsBetter === undefined) {
+      const dist = Math.abs(pctRank - 50);
+      if (dist <= 10) return 'A';
+      if (dist <= 30) return 'B';
+      if (dist <= 45) return 'C';
+      return 'F';
+    }
+    // directional
+    const rank = higherIsBetter ? pctRank : (100 - pctRank);
+    if (rank >= 95) return 'A';
+    if (rank >= 64) return 'B';
+    if (rank >= 5)  return 'C';
+    return 'F';
+  }
+
+  function rebucket(values: number[], edges: number[]): number[] {
+    const n = edges.length - 1;
+    const counts = new Array(n).fill(0);
+    for (const v of values) {
+      let idx = edges.findIndex((e: number, i: number) => v >= e && v < edges[i + 1]);
+      if (idx < 0) {
+        if (v >= edges[0]) idx = n - 1;
+        else idx = 0;
+      }
+      if (idx >= 0 && idx < n) counts[idx]++;
+    }
+    return counts;
+  }
+
+  const filteredDrawValues = $derived.by((): number[] | null => {
+    const dv = (metric as any).draw_values as number[] | undefined;
+    const hib = (metric as any).higher_is_better as boolean | null | undefined;
+    if (!dv || filterPct <= 0) return null;
+    const sorted = [...dv].sort((a: number, b: number) => a - b);
+    const n = sorted.length;
+    const cutN = Math.floor(filterPct / 100 * n);
+    if (hib === true) {
+      return sorted.slice(cutN);           // keep top (100 - filterPct)%
+    } else if (hib === false) {
+      return sorted.slice(0, n - cutN);    // keep bottom (100 - filterPct)%
+    } else {
+      // Symmetric: remove cutN/2 from each tail (both extremes are "worst")
+      const halfCut = Math.floor(cutN / 2);
+      return sorted.slice(halfCut, n - halfCut);
+    }
+  });
+
+  const displayedPctRank = $derived.by((): number => {
+    if (!filteredDrawValues || !filteredDrawValues.length) return metric.pct_rank;
+    const enacted = metric.enacted;
+    return (filteredDrawValues.filter((v: number) => v <= enacted).length / filteredDrawValues.length) * 100;
+  });
+
+  const displayedGrade = $derived.by((): string => {
+    if (!filteredDrawValues) return metric.grade;
+    const gradeFn = (metric as any).grade_fn as string || 'simple';
+    const hib = (metric as any).higher_is_better as boolean | null;
+    return computeGrade(displayedPctRank, gradeFn, hib);
+  });
+
+  const filteredHistCounts = $derived.by((): number[] | null => {
+    if (!filteredDrawValues) return null;
+    return rebucket(filteredDrawValues, Array.from(metric.histogram.edges));
+  });
 
   // Plain let — NOT $state(). Chart.js calls Object.defineProperty on canvas
   // elements internally (resize observer), which Svelte 5's reactive proxy blocks.
@@ -52,7 +135,7 @@
     return idx;
   }
 
-  async function buildChart() {
+  async function buildChart(filteredCounts: number[] | null = null) {
     const { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip } = await import('chart.js');
     Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip);
 
@@ -66,6 +149,7 @@
     const edges   = Array.from(h.edges);
     const labels  = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
     const col     = categoryColor[snap.category] ?? '#888';
+    const barCounts = filteredCounts ?? Array.from(h.counts);
 
     const aRange = snap.a_grade_range ?? null;
 
@@ -74,7 +158,7 @@
       data: {
         labels,
         datasets: [{
-          data:            Array.from(h.counts),
+          data:            barCounts,
           backgroundColor: col + '88',
           borderColor:     col,
           borderWidth:     0.5,
@@ -154,12 +238,13 @@
     });
   }
 
-  // Track metric + planMetric changes so chart rebuilds when election or plan switches.
+  // Track metric + planMetric + filterPct changes so chart rebuilds when any change.
   $effect(() => {
-    const m = metric;
-    const pm = planMetric; // declare dependency
+    const m  = metric;
+    const pm = planMetric;    // declare dependency
+    const fc = filteredHistCounts;  // declare dependency — triggers on filterPct change
     tick().then(() => {
-      if (canvas && m) buildChart();
+      if (canvas && m) buildChart(fc);
     });
     return () => { if (chart) { chart.destroy(); chart = null; } };
   });
@@ -231,11 +316,11 @@
           <div style="display:flex;align-items:center;gap:.5rem;">
             <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;">
               <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
-                           color:{gradeColor[metric.grade] ?? '#888'};">VRA Floor</span>
+                           color:{gradeColor[displayedGrade] ?? '#888'};">VRA Floor</span>
               <span style="display:inline-flex;align-items:center;justify-content:center;
                            width:1.7rem;height:1.7rem;border-radius:50%;
-                           background:{gradeColor[metric.grade] ?? '#888'};
-                           color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
+                           background:{gradeColor[displayedGrade] ?? '#888'};
+                           color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{displayedGrade}</span>
             </div>
             <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;opacity:.55;">
               <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
@@ -246,15 +331,20 @@
                            color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{(metric as any).grade_symmetric}</span>
             </div>
           </div>
-          <span style="font-size:.7rem;color:var(--gray);">{metric.pct_rank}th percentile</span>
+          <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile
+            {#if filterPct > 0}<span style="font-size:.6rem;color:var(--blue);font-style:italic;"> filtered</span>{/if}
+          </span>
         {:else}
           <!-- Single grade (no grade_symmetric, or both grades match) -->
           <div style="display:flex;align-items:center;gap:.4rem;">
             <span style="display:inline-flex;align-items:center;justify-content:center;
                          width:1.7rem;height:1.7rem;border-radius:50%;
-                         background:{gradeColor[metric.grade] ?? '#888'};
-                         color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{metric.grade}</span>
-            <span style="font-size:.7rem;color:var(--gray);">{metric.pct_rank}th percentile</span>
+                         background:{gradeColor[displayedGrade] ?? '#888'};
+                         color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{displayedGrade}</span>
+            <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile</span>
+            {#if filterPct > 0}
+              <span style="font-size:.6rem;color:var(--blue);font-style:italic;" title="Grade recomputed against the top {100-filterPct}% of ensemble plans">filtered</span>
+            {/if}
           </div>
         {/if}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
@@ -296,12 +386,15 @@
       <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">
         {#if planMetric}
           <span style="color:#e67e22;font-weight:700;">—</span> this plan &nbsp;
-          <span style="color:#111;">‒‒</span> enacted &nbsp;|&nbsp; {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
+          <span style="color:#111;">‒‒</span> enacted &nbsp;|&nbsp; {(filterPct > 0 ? (filteredHistCounts?.reduce((a:number,b:number)=>a+b,0) ?? 0) : metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} {filterPct > 0 ? 'filtered' : 'neutral'} maps
         {:else}
-          ‒‒ enacted &nbsp;|&nbsp; distribution of {(metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} neutral maps
+          ‒‒ enacted &nbsp;|&nbsp; {(filterPct > 0 ? (filteredHistCounts?.reduce((a:number,b:number)=>a+b,0) ?? 0) : metric.histogram.counts.reduce((a,b)=>a+b,0)).toLocaleString()} {filterPct > 0 ? 'filtered' : 'neutral'} maps
         {/if}
         {#if metric.a_grade_range}
           &nbsp;|&nbsp; <span style="color:#27ae60;">█</span> A zone
+          <span
+            title="The green band marks the A-grade threshold — what excellent looks like. For this metric, earning an A means the enacted map performs better than roughly 95% of randomly drawn fair maps. The black dashed line shows where the enacted map falls relative to that standard."
+            style="cursor:help;color:#27ae60;font-size:.68rem;vertical-align:super;margin-left:1px;line-height:1;">ⓘ</span>
         {/if}
       </div>
     </div>

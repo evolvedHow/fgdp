@@ -8,8 +8,9 @@
     ylabel: string;
     color?: string;
     title?: string;
+    compact?: boolean;
   }
-  let { pair, xlabel, ylabel, color = '#3D77BB', title = '' }: Props = $props();
+  let { pair, xlabel, ylabel, color = '#3D77BB', title = '', compact = false }: Props = $props();
 
   let canvas: HTMLCanvasElement;
   let chart: any;
@@ -198,13 +199,13 @@
 </script>
 
 <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;
-            padding:.6rem .8rem;display:flex;flex-direction:column;gap:.3rem;">
+            padding:{compact ? '.4rem .6rem' : '.6rem .8rem'};display:flex;flex-direction:column;gap:.25rem;">
   {#if title}
-    <div style="font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);">
+    <div style="font-size:{compact ? '.62rem' : '.66rem'};font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);">
       {title}
     </div>
   {/if}
-  <div style="height:200px;position:relative;">
+  <div style="height:{compact ? '155px' : '200px'};position:relative;">
     <canvas bind:this={canvas}></canvas>
   </div>
   {#if pair.r != null}

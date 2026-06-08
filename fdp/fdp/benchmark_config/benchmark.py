@@ -101,16 +101,25 @@ class CompetitivenessConfig:
 
 @dataclass
 class MCMCConfig:
-    algorithm: str = "recom"        # recom | reversible_recom
-    n_steps: int = 10_000
+    algorithm: str = "recom"        # recom | reversible_recom | smc
+    n_steps: int = 10_000           # GerryChain: MCMC steps; SMC: ignored (use nsims)
     burn_in: int = 0
     pop_epsilon: float | None = None  # if None: inherits from ChamberConfig
     n_chains: int = 1
     random_seed: int | None = None
     save_assignments: bool = True   # must be True to enable post-run re-scoring
 
+    # SMC-specific (ignored for GerryChain algorithms)
+    nsims: int | None = None        # plans per SMC chain; defaults to n_steps for compat
+    compactness: float = 1.0        # redist_smc compactness weight
+    counties_col: str = "pseudo_county"   # redist_map column for county constraint
+
     def effective_epsilon(self, chamber: ChamberConfig) -> float:
         return self.pop_epsilon if self.pop_epsilon is not None else chamber.pop_epsilon
+
+    def effective_nsims(self) -> int:
+        """SMC plans per chain — falls back to n_steps for backward-compat."""
+        return self.nsims if self.nsims is not None else self.n_steps
 
 
 @dataclass
@@ -254,6 +263,10 @@ class BenchmarkConfig:
             n_chains=mcmc_raw.get("n_chains", 1),
             random_seed=mcmc_raw.get("random_seed"),
             save_assignments=mcmc_raw.get("save_assignments", True),
+            # SMC-specific
+            nsims=mcmc_raw.get("nsims"),
+            compactness=float(mcmc_raw.get("compactness", 1.0)),
+            counties_col=mcmc_raw.get("counties_col", "pseudo_county"),
         )
 
         grading_raw = d.get("grading", {})
@@ -448,6 +461,10 @@ class BenchmarkConfig:
                 "pop_epsilon":      self.mcmc.effective_epsilon(self.chamber),
                 "random_seed":      self.mcmc.random_seed,
                 "save_assignments": self.mcmc.save_assignments,
+                # SMC-specific (present for all configs; None for non-SMC)
+                "nsims":            self.mcmc.nsims,
+                "compactness":      self.mcmc.compactness,
+                "counties_col":     self.mcmc.counties_col,
             },
             "grading": {
                 "pass_band": list(self.grading.pass_band),

@@ -115,6 +115,86 @@ GROUP BY plan_id, draw, year, election_type, office
 ORDER BY draw, year, office
 """
 
+# Composite partisan rollup — averages dem_2pv across all elections per (draw, district)
+# then computes plan-level partisan stats. Appended to draw_stats with year=0/office=composite.
+_COMPOSITE_STATS_SQL = """
+WITH district_avg AS (
+    -- Average dem_2pv (and raw vote counts) across all elections per (draw, district)
+    SELECT plan_id, draw, district,
+           AVG(dem_2pv)                         AS dem_2pv,
+           SUM(CAST(dem_votes   AS DOUBLE))      AS dem_votes,
+           SUM(CAST(rep_votes   AS DOUBLE))      AS rep_votes,
+           SUM(CAST(total_votes AS DOUBLE))      AS total_votes,
+           CASE WHEN AVG(dem_2pv) > 0.5 THEN 'dem'
+                WHEN AVG(dem_2pv) < 0.5 THEN 'rep'
+                ELSE 'tie' END                   AS winner
+    FROM read_parquet(?)
+    WHERE plan_id = ?
+    GROUP BY plan_id, draw, district
+)
+SELECT
+    plan_id, draw,
+    0           AS year,
+    'composite' AS election_type,
+    'composite' AS office,
+
+    COUNT(*) FILTER (WHERE winner = 'dem')  AS dem_seats,
+    COUNT(*) FILTER (WHERE winner = 'rep')  AS rep_seats,
+    COUNT(*) FILTER (WHERE winner = 'tie')  AS tied_seats,
+
+    ROUND(AVG(dem_2pv), 6)                  AS avg_dem_2pv,
+
+    ROUND((
+        SUM(
+            CASE WHEN winner = 'dem'
+                 THEN dem_votes - total_votes / 2.0
+                 ELSE dem_votes
+            END
+        )
+        -
+        SUM(
+            CASE WHEN winner = 'rep'
+                 THEN rep_votes - total_votes / 2.0
+                 ELSE rep_votes
+            END
+        )
+    ) / NULLIF(SUM(total_votes), 0), 6)     AS efficiency_gap,
+
+    ROUND(
+        AVG(dem_2pv)
+        - PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY dem_2pv),
+        6
+    )                                       AS mean_median
+
+FROM district_avg
+GROUP BY plan_id, draw
+ORDER BY draw
+"""
+
+# Composite competitive counts — parameterised by threshold value
+_COMPOSITE_COMPETITIVE_SQL = """
+WITH district_avg AS (
+    SELECT plan_id, draw, district,
+           AVG(dem_2pv) AS dem_2pv
+    FROM read_parquet(?)
+    WHERE plan_id = ?
+    GROUP BY plan_id, draw, district
+)
+SELECT
+    plan_id, draw,
+    0           AS year,
+    'composite' AS election_type,
+    'composite' AS office,
+    ?           AS threshold,
+    COUNT(*) FILTER (
+        WHERE dem_2pv IS NOT NULL
+          AND ABS(dem_2pv - 0.5) <= ?
+    )::INTEGER  AS n_competitive
+FROM district_avg
+GROUP BY plan_id, draw
+ORDER BY draw
+"""
+
 _VERIFY_SQL = """
 SELECT
     COUNT(*)                                    AS n_rows,
@@ -235,6 +315,16 @@ def main() -> None:
     print(f"  {len(draw_stats_df):,} rows computed in {time.time() - t0:.1f}s")
 
     stats_out.parent.mkdir(parents=True, exist_ok=True)
+
+    # ── Composite rollup ──────────────────────────────────────────────────────
+    # Average dem_2pv across all elections per district, then compute plan stats.
+    # Appended as year=0 / election_type='composite' / office='composite'.
+    print("\nComputing composite stats (avg dem_2pv across all elections)…")
+    t0 = time.time()
+    composite_df = conn.execute(_COMPOSITE_STATS_SQL, [scores_path_str, plan_id]).df()
+    print(f"  {len(composite_df):,} composite rows in {time.time() - t0:.1f}s")
+
+    draw_stats_df = pd.concat([draw_stats_df, composite_df], ignore_index=True)
     draw_stats_df.to_parquet(stats_out, index=False)
     size_mb = stats_out.stat().st_size / 1_000_000
     print(f"  → {stats_out.name}  ({size_mb:.1f} MB)")
@@ -250,6 +340,16 @@ def main() -> None:
             ).df()
             comp_frames.append(df_t)
             print(f"  threshold={t:.3f}: {len(df_t):,} rows in {time.time() - t0:.1f}s")
+
+        # ── Composite competitive counts ──────────────────────────────────────
+        print("\nComputing composite competitive counts…")
+        for t in thresholds:
+            t0 = time.time()
+            df_t = conn.execute(
+                _COMPOSITE_COMPETITIVE_SQL, [scores_path_str, plan_id, t, t]
+            ).df()
+            comp_frames.append(df_t)
+            print(f"  composite threshold={t:.3f}: {len(df_t):,} rows in {time.time() - t0:.1f}s")
 
         comp_df = pd.concat(comp_frames, ignore_index=True)
         comp_df.to_parquet(comp_out, index=False)

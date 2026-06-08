@@ -1,0 +1,110 @@
+# =============================================================================
+# Georgia Congressional Benchmark — v3
+# 14 districts | 2020 VTD base | 6 elections | 100,000 MCMC steps (1 chain)
+#
+# Changes from v2:
+#   - n_steps: 10,000 → 100,000 (10× more thorough sampling)
+#   - n_chains: 1 (single long chain instead of 5 × 10K)
+#   - burn_in: 500 → 1,000
+# =============================================================================
+
+benchmark_id: ga_congress_2026_v3
+description: "Georgia 14-district congressional benchmark — v3 (100K steps, 1 chain)"
+version: "3.0"
+
+geography:
+  state: GA
+  geo_level: vtd
+  vintage_year: 2020
+  graph_file: fdga-chain/data/graphs/ga_congress.json   # pre-built dual graph, 2698 nodes
+
+chamber:
+  name: congress
+  n_districts: 14
+  pop_column: TOTPOP
+  pop_epsilon: 0.01                  # ±1% — Princeton/MGGG standard for congressional benchmarks
+
+elections:
+
+  - label: gov_2018
+    year: 2018
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+
+  - label: pre_2020
+    year: 2020
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+
+  - label: uss_2021_war
+    year: 2021
+    election_type: runoff
+    office: senate
+    candidates: [war, loe]
+    partisan_score: true
+    competitive: true
+
+  - label: gov_2022
+    year: 2022
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+
+  - label: uss_2022
+    year: 2022
+    election_type: general
+    office: senate
+    partisan_score: true
+    competitive: true
+
+  - label: pre_2024
+    year: 2024
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+
+competitiveness:
+  thresholds: [0.035, 0.05]         # 7-point margin (±3.5pp) and 10-point margin (±5pp)
+  method: all_independent
+
+demographics:
+  cvap_year: 2024
+  majority_threshold: 0.50
+  groups:
+    - name: black
+      label: "Majority Black (any-part)"
+      cvap_col: CVAP_BLK24
+    - name: white
+      label: "Majority White"
+      cvap_col: CVAP_WHT24
+    - name: hispanic
+      label: "Majority Hispanic"
+      cvap_col: CVAP_HSP24
+    - name: minority_coalition
+      label: "Majority Minority Coalition"
+      formula: "1 - (CVAP_WHT24 / CVAP_TOT24)"
+
+mcmc:
+  algorithm: recom
+  n_steps: 100000
+  burn_in: 1000                      # 1000-step warmup for longer chain
+  n_chains: 1
+  pop_epsilon: 0.01
+  random_seed: null
+  save_assignments: true
+
+grading:
+  pass_band: [1, 99]
+  a_band:    [25, 75]
+  b_band:    [10, 90]
+  c_band:    [5, 95]
+  composite: min
+
+output:
+  dir: fdp/data/repos/main/ensemble

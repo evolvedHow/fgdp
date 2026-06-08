@@ -37,9 +37,12 @@
   const PARTISAN_KEYS    = ['dem_seats', 'partisan_bias', 'efficiency_gap', 'mean_median'];
   const COMPETITIVE_KEYS = ['comp_seats_7pt', 'comp_seats_10pt', 'comp_seats', 'rep_safe_seats', 'dem_safe_seats'];
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];  // muni_splits = Split Cities
-  const MINORITY_KEYS    = ['maj_black', 'maj_hisp', 'maj_aian', 'maj_asian', 'min_coal'];
+  const MINORITY_KEYS    = ['maj_black', 'maj_white', 'maj_hisp', 'maj_aian', 'maj_asian', 'min_coal'];
   const ALL_METRIC_GROUPS = [PARTISAN_KEYS, COMPETITIVE_KEYS, GEOGRAPHIC_KEYS, MINORITY_KEYS];
   const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Minority Representation'];
+
+  // Ensemble quality filter slider (0 = no filter, 50 = keep top 50% only)
+  let filterPct = $state(0);
 
   // Multi-map comparison
   let comparisonPlans: ScoredPlan[] = $state([]);
@@ -331,6 +334,29 @@
     planGrades={scoredPlan ? scoredPlan.grades : null}
   />
 
+  <!-- Ensemble quality filter slider -->
+  <div class="no-print" style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;
+              padding:.6rem 1rem;margin-bottom:.6rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);
+                white-space:nowrap;">Quality floor:</div>
+    <input type="range" min=0 max=50 step=5 bind:value={filterPct}
+      style="flex:1;min-width:120px;max-width:260px;accent-color:var(--blue);cursor:pointer;" />
+    <div style="font-size:.73rem;color:#333;white-space:nowrap;">
+      {#if filterPct === 0}
+        <span style="color:var(--gray);">All {summary?.n_plans?.toLocaleString() ?? ''} ensemble plans</span>
+      {:else}
+        <span>Grading against top <b>{100 - filterPct}%</b> of plans
+          <span style="color:var(--gray);">(removed bottom {filterPct}% worst-performing)</span>
+        </span>
+      {/if}
+    </div>
+    {#if filterPct > 0}
+      <button onclick={() => filterPct = 0}
+        style="font-size:.68rem;color:var(--gray);background:transparent;border:1px solid var(--border);
+               border-radius:4px;padding:.15rem .45rem;cursor:pointer;">Reset</button>
+    {/if}
+  </div>
+
   <!-- Metric groups -->
   {#each ALL_METRIC_GROUPS as keys, gi}
     {#if allMetrics(keys).length}
@@ -338,7 +364,7 @@
                   color:var(--gray);margin:.8rem 0 .4rem;">{GROUP_LABELS[gi]}</div>
       <div style="display:flex;flex-direction:column;gap:.55rem;">
         {#each allMetrics(keys) as {key, metric}}
-          <MetricCard {metric} planMetric={planMetricFor(key)} />
+          <MetricCard {metric} planMetric={planMetricFor(key)} {filterPct} />
         {/each}
       </div>
     {/if}

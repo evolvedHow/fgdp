@@ -649,18 +649,33 @@ def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None
     else:
         grade = _directional_grade(pct, higher_is_better)
 
+    # grade_fn tells the frontend which grading function to apply when regrading
+    # after ensemble quality filtering. Mirrors the Python grading dispatch above.
+    if key == "dem_seats":
+        grade_fn = "seats"
+    elif key in ("comp_seats", "comp_seats_7pt", "comp_seats_10pt"):
+        grade_fn = "comp"
+    elif higher_is_better is None:
+        grade_fn = "simple"
+    else:
+        grade_fn = "directional"
+
     return {
-        "label":          label,
-        "headline":       headline,
-        "category":       category,
-        "description":    desc,
-        "takeaway":       _generate_takeaway(key, enacted_val, pct, hist),
-        "grade":          grade,
-        "enacted":        round(float(enacted_val), 4),
-        "pct_rank":       round(pct, 1),
-        "histogram":      hist,
-        "formula_info":   _METRIC_FORMULAS.get(key),
-        "a_grade_range":  _a_grade_range(key, dist, higher_is_better),
+        "label":            label,
+        "headline":         headline,
+        "category":         category,
+        "description":      desc,
+        "takeaway":         _generate_takeaway(key, enacted_val, pct, hist),
+        "grade":            grade,
+        "enacted":          round(float(enacted_val), 4),
+        "pct_rank":         round(pct, 1),
+        "histogram":        hist,
+        "formula_info":     _METRIC_FORMULAS.get(key),
+        "a_grade_range":    _a_grade_range(key, dist, higher_is_better),
+        # Browser-side quality filter (ensemble quality filter slider)
+        "draw_values":      [round(float(v), 4) for v in dist.tolist()],
+        "higher_is_better": higher_is_better,
+        "grade_fn":         grade_fn,
     }
 
 
@@ -1327,8 +1342,10 @@ def build_scorecard(
             "    uv run --project fdp python fdp/scripts/build_draw_stats.py --run-name {run_name}"
         )
 
-    # Discover elections and n_districts
-    meta_df = conn.execute("""
+    # Discover elections to include in the scorecard.
+    # Priority: use composite if available (single aggregate entry); fall back to all.
+    # The composite row has year=0 and office='composite' — it's the primary view.
+    _meta_all = conn.execute("""
         SELECT DISTINCT year, election_type, office,
                MAX(dem_seats + rep_seats + tied_seats) AS n_d
         FROM read_parquet(?)
@@ -1336,6 +1353,14 @@ def build_scorecard(
         GROUP BY year, election_type, office
         ORDER BY year, office
     """, [str(ds_file)]).df()
+
+    _has_composite = "composite" in _meta_all["office"].values
+    if _has_composite:
+        # Use composite only — hides per-election clutter from the scorecard UI
+        meta_df = _meta_all[_meta_all["office"] == "composite"].copy()
+    else:
+        # Legacy: no composite available, show all elections
+        meta_df = _meta_all
 
     # Override data-file prefix for all subsequent lookups
     # (river, competitive counts use the same base prefix)

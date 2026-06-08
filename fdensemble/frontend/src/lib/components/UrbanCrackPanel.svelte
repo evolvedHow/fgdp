@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import type { CorrelationData } from '../types.js';
   import CrossMetricScatter from './CrossMetricScatter.svelte';
   import { apiGet } from '../api.js';
@@ -11,7 +12,6 @@
   let data:      CorrelationData | null = $state(null);
   let loading    = $state(false);
   let expanded   = $state(false);
-  let activePair = $state<string | null>(null);
 
   // The 4 scatter pairs — order determines the summary table order
   const PAIR_META: Record<string, { xlabel: string; ylabel: string; title: string; color: string; question: string }> = {
@@ -59,9 +59,6 @@
     loading = true;
     try {
       data = await apiGet<CorrelationData>('/analysis/correlations', { run: runId });
-      if (data.available && data.scatter) {
-        activePair = Object.keys(data.scatter).find(k => k in PAIR_META) ?? null;
-      }
     } catch {
       data = { available: false };
     } finally {
@@ -69,13 +66,23 @@
     }
   }
 
+  onMount(() => {
+    // Force panel open + load data when the user prints, so all 4 scatters appear.
+    const handler = () => {
+      if (!expanded) { expanded = true; }
+      if (!data) load();
+    };
+    window.addEventListener('beforeprint', handler);
+    return () => window.removeEventListener('beforeprint', handler);
+  });
+
   function toggleExpanded() {
     expanded = !expanded;
     if (expanded) load();
   }
 </script>
 
-<div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;
+<div class="urban-crack-panel" style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;
             overflow:hidden;margin-top:.9rem;">
 
   <!-- Collapsible header -->
@@ -143,77 +150,31 @@
           {/if}
         </div>
 
-        <!-- Scatter pair tabs -->
-        {#if availablePairKeys.length > 1}
-          <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.6rem;">
+        <!-- 2×2 grid of all scatter plots + correlation summary sidebar -->
+        <div class="scatter-layout" style="display:grid;grid-template-columns:1fr 220px;gap:1rem;align-items:start;">
+
+          <!-- Left: 2×2 scatter grid — all 4 always visible -->
+          <div class="scatter-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;">
             {#each availablePairKeys as k}
               {@const meta = PAIR_META[k]}
-              <button
-                onclick={() => activePair = k}
-                style="padding:.25rem .6rem;border:1.5px solid {activePair === k ? 'var(--blue)' : 'var(--border)'};
-                       border-radius:4px;font-size:.68rem;cursor:pointer;
-                       background:{activePair === k ? 'var(--blue)' : 'transparent'};
-                       color:{activePair === k ? '#fff' : 'var(--gray)'};"
-              >
-                {meta.title}
-              </button>
+              {#if data.scatter?.[k]}
+                <CrossMetricScatter
+                  pair={data.scatter[k]}
+                  xlabel={meta.xlabel}
+                  ylabel={meta.ylabel}
+                  color={meta.color}
+                  title={meta.title}
+                  compact={true}
+                />
+              {/if}
             {/each}
           </div>
-        {/if}
 
-        <!-- Layout: scatter left, summary table right -->
-        <div style="display:grid;grid-template-columns:1fr 300px;gap:1rem;align-items:start;">
-
-          <!-- Scatter chart -->
-          <div>
-            {#if activePair && data.scatter?.[activePair]}
-              {@const meta = PAIR_META[activePair]}
-              <CrossMetricScatter
-                pair={data.scatter[activePair]}
-                xlabel={meta.xlabel}
-                ylabel={meta.ylabel}
-                color={meta.color}
-                title={meta.title}
-              />
-              <!-- Plain-English takeaway for the active pair -->
-              {#if data.scatter[activePair].r != null}
-                {@const r  = data.scatter[activePair].r ?? 0}
-                {@const ex = data.scatter[activePair].enacted_x}
-                {@const ey = data.scatter[activePair].enacted_y}
-                {@const nearZero = Math.abs(r) < 0.2}
-                <div style="margin-top:.5rem;font-size:.73rem;color:#333;line-height:1.65;
-                            background:#f8f9fb;border-radius:4px;padding:.55rem .75rem;
-                            border-left:3px solid {PAIR_META[activePair].color};">
-                  {#if nearZero}
-                    Each dot in the chart above is one neutral map. The flat orange trend line
-                    (r = {r.toFixed(2)}) shows that across thousands of random maps, city-split count
-                    has <b>almost no effect</b> on this outcome.
-                    {#if ex != null && ey != null}
-                      The <b style="color:#e74c3c;">enacted map (red marker)</b> is labelled directly
-                      on the chart — notice where it sits relative to the blue cloud.
-                    {/if}
-                  {:else if Math.abs(r) > 0.8}
-                    r = {r.toFixed(2)} — these two metrics are <b>nearly identical in what they measure</b>.
-                    They both capture the same underlying partisan tilt, just calculated differently.
-                    The tight diagonal line of dots shows they move in near-perfect lockstep across all neutral maps.
-                  {:else}
-                    r = {r.toFixed(2)} — a {Math.abs(r) < 0.4 ? 'weak' : 'moderate'} association
-                    across neutral maps. The orange trend line shows the general direction.
-                    {#if ex != null && ey != null}
-                      Find the <b style="color:#e74c3c;">enacted map (red)</b> on the chart to see
-                      where it falls relative to the neutral cloud.
-                    {/if}
-                  {/if}
-                </div>
-              {/if}
-            {/if}
-          </div>
-
-          <!-- Simple correlation summary table (replaces heatmap) -->
+          <!-- Right: correlation summary sidebar -->
           <div>
             <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;
                         letter-spacing:.05em;color:var(--gray);margin-bottom:.5rem;">
-              Click a row to see the scatter →
+              Correlation summary
             </div>
             <div style="display:flex;flex-direction:column;gap:.35rem;">
               {#each availablePairKeys as k}
@@ -221,37 +182,33 @@
                 {@const sp   = data.scatter?.[k]}
                 {@const r    = sp?.r ?? null}
                 {@const str  = rStrength(r)}
-                {@const isActive = activePair === k}
-                <button
-                  onclick={() => activePair = k}
-                  style="text-align:left;border:1.5px solid {isActive ? meta.color : 'var(--border)'};
-                         border-radius:6px;padding:.5rem .65rem;cursor:pointer;
-                         background:{isActive ? meta.color + '12' : 'var(--card)'};
-                         transition:border-color .15s, background .15s;"
+                <div
+                  style="text-align:left;border:1.5px solid var(--border);
+                         border-radius:6px;padding:.5rem .65rem;
+                         background:var(--card);"
                 >
-                  <div style="font-size:.72rem;font-weight:700;color:{isActive ? meta.color : '#333'};
-                              margin-bottom:.15rem;">
+                  <div style="font-size:.7rem;font-weight:700;color:{meta.color};margin-bottom:.1rem;">
                     {meta.title}
                   </div>
-                  <div style="font-size:.67rem;color:var(--gray);margin-bottom:.25rem;line-height:1.4;">
+                  <div style="font-size:.64rem;color:var(--gray);margin-bottom:.2rem;line-height:1.35;">
                     {meta.question}
                   </div>
                   <div style="display:flex;align-items:center;gap:.5rem;">
-                    <span style="font-family:monospace;font-size:.8rem;font-weight:800;color:#333;">
+                    <span style="font-family:monospace;font-size:.78rem;font-weight:800;color:#333;">
                       r = {r != null ? r.toFixed(2) : '—'}
                     </span>
-                    <span style="font-size:.65rem;font-weight:600;color:{str.color};">
+                    <span style="font-size:.63rem;font-weight:600;color:{str.color};">
                       {str.label}
                     </span>
                   </div>
-                </button>
+                </div>
               {/each}
             </div>
-            <div style="margin-top:.6rem;font-size:.64rem;color:var(--gray);line-height:1.5;
+            <div style="margin-top:.6rem;font-size:.63rem;color:var(--gray);line-height:1.5;
                         padding:.4rem .5rem;background:var(--light);border-radius:4px;">
               <b>r (Pearson correlation)</b> measures how two metrics move together
               across all neutral ensemble plans. Near zero = independent.
-              ±1 = perfectly linked. Each button above selects a scatter plot.
+              ±1 = perfectly linked. Red star = enacted map.
             </div>
           </div>
 
@@ -263,4 +220,14 @@
 
 <style>
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Narrow screens: stack 2×2 grid to single column */
+  @media (max-width: 700px) {
+    .scatter-grid {
+      grid-template-columns: 1fr !important;
+    }
+    .scatter-layout {
+      grid-template-columns: 1fr !important;
+    }
+  }
 </style>
