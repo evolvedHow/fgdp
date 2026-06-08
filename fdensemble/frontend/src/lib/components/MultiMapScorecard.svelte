@@ -21,7 +21,8 @@
 
   const ROWS: ScorecardRow[] = [
     { key: 'dem_seats',      label: 'Dem-Lean Seats',      isInt: true,  section: 'Partisan' },
-    { key: 'comp_seats',     label: 'Competitive Seats',   isInt: true  },
+    { key: 'comp_seats_7pt', label: 'Competitive (7-pt)',  isInt: true  },
+    { key: 'comp_seats_10pt',label: 'Competitive (10-pt)', isInt: true  },
     { key: 'rep_safe_seats', label: 'Rep Safe Seats',      isInt: true  },
     { key: 'dem_safe_seats', label: 'Dem Safe Seats',      isInt: true  },
     { key: 'partisan_bias',  label: 'Partisan Bias',       isInt: false },

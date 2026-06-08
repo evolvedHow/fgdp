@@ -32,9 +32,10 @@ DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main/ensemble"
 # VTD → municipality lookup (built from ALARM RDS via scripts/build_alarm_scorecard.py)
 _VTD_MUNI_PATH = _REPO_ROOT / "fdensemble" / "data" / "vtd_muni.parquet"
 
-MAJORITY_THRESHOLD            = 0.50
-BVAP_MAJORITY_THRESHOLD       = 0.50   # threshold for majority-Black (CVAP)
+MAJORITY_THRESHOLD            = 0.20   # ≥ 20% = influence/coalition district threshold
+BVAP_MAJORITY_THRESHOLD       = 0.20   # same — BVAP 2020 Census PL 94-171 headcounts
 COMPETITIVE_THRESHOLD_DEFAULT = 0.05
+COMPETITIVE_THRESHOLDS_DEFAULT = [0.035, 0.05]  # 7-point and 10-point margins
 INFLUENCE_MIN_THRESHOLD       = 0.37   # minority influence band lower bound (FDGA standard)
 INFLUENCE_MAX_THRESHOLD       = 0.50   # minority influence band upper bound
 
@@ -102,51 +103,51 @@ _METRIC_FORMULAS: dict[str, dict] = {
         "grading_method": "directional (lower = fewer splits)",
     },
     "maj_black": {
-        "formula":       "count(d : black_CVAP_d / total_CVAP_d ≥ bvap_majority_threshold)",
-        "detail":        "Uses Citizen Voting Age Population (CVAP, excludes non-citizens) for legal precision under Section 2 VRA. GerryChain: 2024 ACS 5-yr CVAP. ALARM: 2020 Census VAP.",
-        "data_source":   "2024 ACS 5-year CVAP disaggregated to 2020 blocks (GerryChain) / 2020 Census VAP (ALARM)",
+        "formula":       "count(d : bvap_blk_d / bvap_tot_d ≥ bvap_majority_threshold)",
+        "detail":        "Uses 2020 Census PL 94-171 headcounts (Table P4, P0040006 NH Black alone / P0040001 Total VAP). Headcounts — not ACS estimates.",
+        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["bvap_majority_threshold"],
-        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)",
+        "grading_method": "symmetric (standard Princeton — both tails evaluated)",
     },
     "maj_hisp": {
-        "formula":       "count(d : hispanic_CVAP_d / total_CVAP_d ≥ majority_threshold)",
-        "detail":        "Hispanic or Latino Citizen VAP share per district",
-        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "formula":       "count(d : bvap_hsp_d / bvap_tot_d ≥ majority_threshold)",
+        "detail":        "Hispanic or Latino VAP share per district (2020 Census P0040002)",
+        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["majority_threshold"],
-        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)",
+        "grading_method": "symmetric (standard Princeton — both tails evaluated)",
     },
     "maj_aian": {
-        "formula":       "count(d : AIAN_CVAP_d / total_CVAP_d ≥ majority_threshold)",
-        "detail":        "American Indian and Alaska Native Citizen VAP share per district",
-        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "formula":       "count(d : AIAN_VAP_d / total_VAP_d ≥ majority_threshold)",
+        "detail":        "American Indian and Alaska Native VAP share per district",
+        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["majority_threshold"],
-        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)",
+        "grading_method": "symmetric (standard Princeton — both tails evaluated)",
     },
     "maj_asian": {
-        "formula":       "count(d : asian_CVAP_d / total_CVAP_d ≥ majority_threshold)",
-        "detail":        "Asian American Citizen VAP share per district",
-        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "formula":       "count(d : bvap_asn_d / bvap_tot_d ≥ majority_threshold)",
+        "detail":        "Asian American VAP share per district (2020 Census P0040008 NH Asian alone)",
+        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["majority_threshold"],
-        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)",
+        "grading_method": "symmetric (standard Princeton — both tails evaluated)",
     },
     "min_coal": {
-        "formula":       "count(d : (1 − white_CVAP_d / total_CVAP_d) ≥ majority_threshold)",
-        "detail":        "Combined non-white Citizen VAP share. A minority-coalition district is majority non-white but may include multiple racial groups, none individually a majority.",
-        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "formula":       "count(d : (1 − bvap_wht_d / bvap_tot_d) ≥ majority_threshold)",
+        "detail":        "Combined non-white VAP share (1 − NH White fraction). A minority-coalition district includes multiple racial groups, none individually a majority.",
+        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["majority_threshold"],
-        "grading_method": "VRA floor (one-sided: below floor = F; above median = A)",
+        "grading_method": "symmetric (standard Princeton — both tails evaluated)",
     },
     "maj_white": {
-        "formula":       "count(d : white_CVAP_d / total_CVAP_d ≥ majority_threshold)",
-        "detail":        "Districts where non-Hispanic white citizens are a majority of eligible voters. Shown alongside minority metrics to complete the demographic picture.",
-        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "formula":       "count(d : bvap_wht_d / bvap_tot_d ≥ majority_threshold)",
+        "detail":        "Districts where non-Hispanic white citizens are a majority of eligible voters (2020 Census P0040005). Shown alongside minority metrics to complete the demographic picture.",
+        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["majority_threshold"],
         "grading_method": "symmetric (both tails notable)",
     },
     "min_influence": {
-        "formula":       "count(d : influence_min ≤ (1 − white_CVAP_d / total_CVAP_d) < influence_max)",
+        "formula":       "count(d : influence_min ≤ (1 − bvap_wht_d / bvap_tot_d) < influence_max)",
         "detail":        "Districts where communities of color have meaningful electoral influence but do not constitute a majority. Below the majority threshold for direct VRA Section 2 protection, but above the FDGA influence floor where minority voters can meaningfully affect outcomes.",
-        "data_source":   "2024 ACS 5-year CVAP (GerryChain) / 2020 Census VAP (ALARM)",
+        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["influence_min_threshold", "influence_max_threshold"],
         "grading_method": "directional (higher = more influence districts)",
     },
@@ -223,37 +224,26 @@ _METRIC_META: dict[str, tuple] = {
         "Black Community Representation",
         "Do Black voters have the opportunity to elect representatives of their choice?",
         "minority",
-        "This counts districts where Black citizens make up more than 50% of the "
-        "Citizen Voting Age Population (CVAP). Under Section 2 of the Voting Rights "
-        "Act, mapmakers must not draw lines that dilute minority communities' ability "
-        "to elect their preferred candidates. The histogram shows how many "
-        "majority-Black districts thousands of neutrally drawn alternative maps "
-        "produce — establishing the race-neutral VRA floor. "
-        "This metric uses floor-based grading: having MORE majority-Black districts "
-        "than neutral maps is never penalized — the VRA protects against dilution, "
-        "not over-representation. Grade F means the map falls below the race-neutral "
-        "redistricting floor (10th-percentile of ensemble). "
-        "A symmetric grade is also reported alongside for comparison with the "
-        "traditional Princeton methodology. "
-        "Uses CVAP rather than VAP for legal precision (excludes non-citizens).",
+        f"This counts districts where Black Voting Age Population (BVAP) makes up at least "
+        f"{BVAP_MAJORITY_THRESHOLD*100:.0f}% of total Voting Age Population — the influence/coalition threshold. "
+        "Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that "
+        "dilute minority communities' ability to elect their preferred candidates. "
+        "The histogram shows how many influence-level Black districts thousands of "
+        "neutrally drawn alternative maps produce. Standard Princeton symmetric grading "
+        "is used: both unusually low and unusually high counts are flagged relative to "
+        "the neutral ensemble. "
+        "Uses 2020 Census PL 94-171 headcounts (not ACS estimates).",
         None),
     "min_coal": (
         "Minority Coalition Representation",
         "Do communities of color collectively hold electoral influence?",
         "minority",
-        "This counts districts where voters of color — Black, Hispanic, Asian, "
-        "and others — together make up more than 50% of the Citizen Voting Age "
-        "Population. Even when no single racial group holds a majority, communities "
-        "of color can collectively influence electoral outcomes. This coalition "
-        "measure is increasingly important as Georgia's demographics diversify. "
-        "This metric uses floor-based grading: having MORE minority-coalition "
-        "districts than neutral maps is never penalized — the VRA protects against "
-        "dilution of minority voting power, not against maps that are well-represented. "
-        "Grade F means the enacted map has fewer coalition districts than the "
-        "race-neutral redistricting floor (10th percentile of ensemble). "
-        "A symmetric grade is reported alongside for comparison with the traditional "
-        "Princeton methodology. "
-        "Uses 2024 ACS 5-year CVAP estimates.",
+        f"This counts districts where non-white Voting Age Population makes up at least "
+        f"{MAJORITY_THRESHOLD*100:.0f}% of total VAP — communities of color collectively hold "
+        "influence even when no single racial group holds a majority. "
+        "Standard Princeton symmetric grading is used: both unusually low and unusually "
+        "high counts relative to the neutral ensemble are flagged. "
+        "Uses 2020 Census PL 94-171 headcounts (not ACS estimates).",
         None),
     "muni_splits": (
         "Split Cities & Municipalities",
@@ -599,28 +589,6 @@ def _simple_grade(pct_rank: float) -> str:
     return "F"                   # outside 5–95: statistical outlier
 
 
-# Metrics that use floor-based grading (VRA floor, not symmetric ceiling).
-# Having MORE majority-minority districts is never penalized.
-_FLOOR_GRADE_METRICS = frozenset({"maj_black", "min_coal"})
-
-
-def _floor_grade(pct_rank: float) -> str:
-    """
-    Floor-based grade for minority-representation metrics.
-    The VRA is a floor statute: Section 2 protects against dilution, not
-    over-representation.  Having MORE majority-minority districts than the
-    neutral median is never a VRA concern — only having FEWER raises legal
-    and advocacy issues.
-
-    Floor = 10th-percentile of ensemble (race-neutral VRA floor).
-    Grade A  : at or above 50th percentile — comfortably adequate
-    Grade B  : at or above 10th percentile — meets the VRA floor
-    Grade F  : below 10th percentile       — potential VRA dilution
-    """
-    if pct_rank >= 50: return "A"
-    if pct_rank >= 10: return "B"
-    return "F"
-
 
 def _adj(grade: str, delta: int) -> str:
     try:
@@ -649,10 +617,7 @@ def _histogram_data(dist: np.ndarray, enacted: float, n_bins: int = 40) -> dict:
 
 def _a_grade_range(key: str, dist: np.ndarray, higher_is_better) -> dict:
     """Distribution VALUE range corresponding to A-grade (for histogram highlighting)."""
-    if key in _FLOOR_GRADE_METRICS:
-        # A-grade = at or above neutral median (50th pct)
-        return {"lo": round(float(np.percentile(dist, 50)), 4), "hi": None}
-    if key == "comp_seats":
+    if key in ("comp_seats", "comp_seats_7pt", "comp_seats_10pt"):
         return {"lo": round(float(np.percentile(dist, 95)), 4), "hi": None}
     elif key in ("dem_seats", "dem_safe_seats"):
         return {"lo": round(float(np.percentile(dist, 50)), 4), "hi": None}
@@ -675,20 +640,16 @@ def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None
     pct     = _pct_rank(dist, enacted_val)
     hist    = _histogram_data(dist, enacted_val)
 
-    grade_symmetric: str | None = None
     if key == "dem_seats":
         grade = _seats_grade(pct)    # directional: fewer Dem seats = worse; F only below 5th pct
-    elif key == "comp_seats":
+    elif key in ("comp_seats", "comp_seats_7pt", "comp_seats_10pt"):
         grade = _comp_grade(pct)
-    elif key in _FLOOR_GRADE_METRICS:
-        grade           = _floor_grade(pct)    # primary: floor-based (VRA floor)
-        grade_symmetric = _simple_grade(pct)   # legacy: symmetric, retained for lineage
     elif higher_is_better is None:
         grade = _simple_grade(pct)   # symmetric: both tails are bad; F only outside 5–95
     else:
         grade = _directional_grade(pct, higher_is_better)
 
-    entry = {
+    return {
         "label":          label,
         "headline":       headline,
         "category":       category,
@@ -701,10 +662,6 @@ def _metric_entry(key: str, dist: np.ndarray, enacted_val: float) -> dict | None
         "formula_info":   _METRIC_FORMULAS.get(key),
         "a_grade_range":  _a_grade_range(key, dist, higher_is_better),
     }
-    if key in _FLOOR_GRADE_METRICS:
-        entry["grade_symmetric"] = grade_symmetric
-        entry["floor"] = round(float(np.percentile(dist, 10)), 4)
-    return entry
 
 
 # ── Per-election metrics ───────────────────────────────────────────────────────
@@ -716,12 +673,13 @@ def _build_election_metrics(
     election_type: str,
     office: str,
     conn: duckdb.DuckDBPyConnection,
-    competitive_threshold: float,
+    competitive_thresholds: list[float],
 ) -> dict:
     """
     Build grades dict for one election (same format as fdensemble's grades dict).
     Uses draw_stats.parquet for partisan metrics and competitive_counts.parquet
-    for competitiveness.
+    for competitiveness. Produces comp_seats_7pt and comp_seats_10pt from
+    competitive_thresholds[0] and competitive_thresholds[1] respectively.
     """
     ds_file = data_dir / f"{run_name}_draw_stats.parquet"
 
@@ -747,27 +705,33 @@ def _build_election_metrics(
         if entry:
             metrics[key] = entry
 
-    # Competitive seats
+    # Competitive seats — produce named metrics for each threshold
     cc_file = data_dir / f"{run_name}_competitive_counts.parquet"
-    if cc_file.exists():
-        cc = conn.execute("""
-            SELECT draw, n_competitive
-            FROM read_parquet(?)
-            WHERE year=? AND election_type=? AND office=? AND threshold=?
-            ORDER BY draw
-        """, [str(cc_file), year, election_type, office, competitive_threshold]).df()
+    _comp_keys = ["comp_seats_7pt", "comp_seats_10pt"]
+    if cc_file.exists() and competitive_thresholds:
+        for i, t in enumerate(competitive_thresholds[:2]):
+            metric_key = _comp_keys[i] if i < len(_comp_keys) else f"comp_seats_t{i}"
+            cc = conn.execute("""
+                SELECT draw, n_competitive
+                FROM read_parquet(?)
+                WHERE year=? AND election_type=? AND office=? AND threshold=?
+                ORDER BY draw
+            """, [str(cc_file), year, election_type, office, t]).df()
 
-        if len(cc) > 0:
-            sim_cc     = cc[cc["draw"] > 1]
-            enacted_cc = cc[cc["draw"] == 1]
-            if len(enacted_cc) > 0:
-                dist = sim_cc["n_competitive"].to_numpy(dtype=float)
-                entry = _metric_entry("comp_seats", dist, float(enacted_cc["n_competitive"].iloc[0]))
-                if entry:
-                    entry["threshold"] = competitive_threshold
-                    metrics["comp_seats"] = entry
+            if len(cc) > 0:
+                sim_cc     = cc[cc["draw"] > 1]
+                enacted_cc = cc[cc["draw"] == 1]
+                if len(enacted_cc) > 0:
+                    dist = sim_cc["n_competitive"].to_numpy(dtype=float)
+                    entry = _metric_entry("comp_seats", dist, float(enacted_cc["n_competitive"].iloc[0]))
+                    if entry:
+                        entry["threshold"] = t
+                        margin_pts = int(round(t * 200))  # ±3.5pp → 7pt, ±5pp → 10pt
+                        entry["label"] = f"Electoral Competitiveness ({margin_pts}-pt)"
+                        metrics[metric_key] = entry
 
-    # Safe seats — computed from district-level scores parquet
+    # Safe seats — use the most stringent threshold (7-point, index 0)
+    safe_threshold = competitive_thresholds[0] if competitive_thresholds else COMPETITIVE_THRESHOLD_DEFAULT
     scores_file = data_dir / f"{run_name}_scores.parquet"
     if scores_file.exists():
         safe = conn.execute("""
@@ -778,7 +742,7 @@ def _build_election_metrics(
             WHERE year=? AND election_type=? AND office=?
             GROUP BY draw
             ORDER BY draw
-        """, [competitive_threshold, competitive_threshold,
+        """, [safe_threshold, safe_threshold,
               str(scores_file), year, election_type, office]).df()
 
         if len(safe) > 0:
@@ -789,7 +753,7 @@ def _build_election_metrics(
                     dist = sim_safe[col].to_numpy(dtype=float)
                     entry = _metric_entry(key, dist, float(enacted_safe[col].iloc[0]))
                     if entry:
-                        entry["threshold"] = competitive_threshold
+                        entry["threshold"] = safe_threshold
                         metrics[key] = entry
 
     # partisan_bias is null for GerryChain (we don't compute it)
@@ -910,8 +874,8 @@ def _build_demographics(
             metrics[key] = entry
 
     return {
-        "source":  "cvap",
-        "year":    None,  # populated by caller
+        "source":  "bvap",
+        "year":    2020,  # 2020 Census PL 94-171 headcounts
         "metrics": metrics,
     }
 
@@ -958,8 +922,8 @@ def _build_composite_grades(
                               if m in ("efficiency_gap", "mean_median")):
             g = _adj(g, -1)   # B→C, C→D
 
-        # Competitiveness adjustment
-        comp = metrics.get("comp_seats")
+        # Competitiveness adjustment — use 7pt (more stringent) primary metric
+        comp = metrics.get("comp_seats_7pt") or metrics.get("comp_seats")
         if comp:
             if comp["grade"] == "A": g = _adj(g, +1)
             if comp["grade"] == "F": g = _adj(g, -1)
@@ -972,10 +936,11 @@ def _build_composite_grades(
         worst_idx = max(range(len(partisan_grades)), key=lambda i: _GRADE_ORDER.index(partisan_grades[i]))
         partisan_g = partisan_grades[worst_idx]
 
-    # Competitiveness: first election that has it
+    # Competitiveness: use 7pt metric (most stringent)
     comp_g: str | None = None
     for elec in elections:
-        nc = elec.get("metrics", {}).get("comp_seats")
+        m = elec.get("metrics", {})
+        nc = m.get("comp_seats_7pt") or m.get("comp_seats")
         if nc:
             comp_g = nc["grade"]
             break
@@ -1207,7 +1172,7 @@ def _build_correlations(
     year: int,
     election_type: str,
     office: str,
-    competitive_threshold: float,
+    competitive_threshold: float,  # single threshold for correlation (use 7pt)
     conn: duckdb.DuckDBPyConnection,
     muni_splits_df: pd.DataFrame | None = None,
     n_scatter: int = 300,
@@ -1331,18 +1296,26 @@ def build_scorecard(
     run_name: str,
     data_dir: Path,
     chamber: str | None = None,
-    competitive_threshold: float = COMPETITIVE_THRESHOLD_DEFAULT,
+    competitive_thresholds: list[float] | None = None,
     base_run_name: str | None = None,
     influence_min: float = INFLUENCE_MIN_THRESHOLD,
     influence_max: float = INFLUENCE_MAX_THRESHOLD,
     majority_threshold: float = MAJORITY_THRESHOLD,
     bvap_majority_threshold: float = BVAP_MAJORITY_THRESHOLD,
+    # Legacy single-threshold compat (ignored if competitive_thresholds is set)
+    competitive_threshold: float | None = None,
 ) -> dict:
     """
     Build the canonical scorecard JSON for a GerryChain scored run.
 
     Returns the scorecard dict (also written to disk by main()).
     """
+    if competitive_thresholds is None:
+        if competitive_threshold is not None:
+            competitive_thresholds = [competitive_threshold]
+        else:
+            competitive_thresholds = COMPETITIVE_THRESHOLDS_DEFAULT
+
     conn = duckdb.connect()
     _base = base_run_name or run_name
 
@@ -1391,7 +1364,7 @@ def build_scorecard(
         print(f"  Election: {label}…", end="", flush=True)
 
         metrics = _build_election_metrics(
-            run_name, data_dir, year, election_type, office, conn, competitive_threshold
+            run_name, data_dir, year, election_type, office, conn, competitive_thresholds
         )
         river = _build_river(
             run_name, data_dir, year, election_type, office, n_districts, conn
@@ -1420,8 +1393,6 @@ def build_scorecard(
         influence_max=influence_max,
         majority_threshold=majority_threshold,
     )
-    if demographics:
-        demographics["year"] = 2024  # CVAP 2024 vintage (from ACS 2020–2024 5yr)
     print(" done")
 
     # Municipal splits
@@ -1438,7 +1409,7 @@ def build_scorecard(
             correlations = _build_correlations(
                 run_name, data_dir,
                 corr_elec["year"], corr_elec["election_type"], corr_elec["office"],
-                competitive_threshold, conn,
+                competitive_thresholds[0], conn,
                 muni_splits_df=muni_splits_df,
             )
         except Exception as exc:
@@ -1489,7 +1460,8 @@ def build_scorecard(
                 "pct_rank": elections[0]["metrics"][key]["pct_rank"],
                 "grade":    elections[0]["metrics"][key]["grade"],
             }
-            for key in ["dem_seats", "efficiency_gap", "mean_median", "comp_seats",
+            for key in ["dem_seats", "efficiency_gap", "mean_median",
+                        "comp_seats_7pt", "comp_seats_10pt",
                         "dem_safe_seats", "rep_safe_seats"]
             if elections and key in elections[0].get("metrics", {})
                and elections[0]["metrics"][key] is not None
@@ -1521,7 +1493,7 @@ def build_scorecard(
             ],
             # Configurable threshold values used — surfaced in UI info tooltips
             "config": {
-                "competitive_margin":       competitive_threshold,
+                "competitive_thresholds":   competitive_thresholds,
                 "majority_threshold":       majority_threshold,
                 "bvap_majority_threshold":  bvap_majority_threshold,
                 "influence_min_threshold":  influence_min,
@@ -1536,7 +1508,7 @@ def build_scorecard(
         "plans":        plans,
         "correlations": correlations,
         "config": {
-            "competitive_threshold":   competitive_threshold,
+            "competitive_thresholds":  competitive_thresholds,
             "majority_threshold":      majority_threshold,
             "bvap_majority_threshold": bvap_majority_threshold,
             "influence_min_threshold": influence_min,
@@ -1544,8 +1516,6 @@ def build_scorecard(
             "grading": {
                 "ensemble_pass_lo":      5,
                 "ensemble_pass_hi":      95,
-                "floor_grade_floor_pct": 10,
-                "floor_grade_a_pct":     50,
                 "seats_grade_a_pct":     50,
                 "seats_grade_b_pct":     20,
                 "comp_grade_a_pct":      95,
@@ -1555,7 +1525,7 @@ def build_scorecard(
                 "directional_b_pct":     64,
             },
             "source_locations": {
-                "competitive_threshold":   "fdp/scripts/build_scorecard.py → COMPETITIVE_THRESHOLD_DEFAULT",
+                "competitive_thresholds":  "fdp/configs/benchmarks/*.yml → competitiveness.thresholds",
                 "majority_threshold":      "fdp/scripts/build_scorecard.py → MAJORITY_THRESHOLD",
                 "bvap_majority_threshold": "fdp/scripts/build_scorecard.py → BVAP_MAJORITY_THRESHOLD",
                 "influence_min_threshold": "fdp/scripts/build_scorecard.py → INFLUENCE_MIN_THRESHOLD",
@@ -1585,8 +1555,10 @@ def main() -> None:
                     help="Output JSON path (default: {data_dir}/{run_name}_scorecard.json)")
     ap.add_argument("--chamber", default=None,
                     help="Chamber name — auto-detected from n_districts if omitted")
-    ap.add_argument("--competitive-threshold", type=float, default=COMPETITIVE_THRESHOLD_DEFAULT,
-                    help=f"Win-margin threshold for competitive seats (default: {COMPETITIVE_THRESHOLD_DEFAULT})")
+    ap.add_argument("--competitive-thresholds", nargs="+", type=float,
+                    default=COMPETITIVE_THRESHOLDS_DEFAULT, dest="competitive_thresholds",
+                    help=f"Win-margin thresholds for competitive seats — 7pt and 10pt "
+                         f"(default: {COMPETITIVE_THRESHOLDS_DEFAULT})")
     ap.add_argument("--influence-min", type=float, default=INFLUENCE_MIN_THRESHOLD,
                     help=f"Minority influence district lower bound (default: {INFLUENCE_MIN_THRESHOLD} = {INFLUENCE_MIN_THRESHOLD*100:.0f}%%)")
     ap.add_argument("--influence-max", type=float, default=INFLUENCE_MAX_THRESHOLD,
@@ -1600,7 +1572,8 @@ def main() -> None:
 
     print(f"Building scorecard: {args.run_name}")
     scorecard = build_scorecard(
-        args.run_name, data_dir, args.chamber, args.competitive_threshold,
+        args.run_name, data_dir, args.chamber,
+        competitive_thresholds=args.competitive_thresholds,
         base_run_name=args.base_run_name,
         influence_min=args.influence_min,
         influence_max=args.influence_max,

@@ -107,8 +107,8 @@ SELECT
     ? AS threshold,
     COUNT(*) FILTER (
         WHERE dem_2pv IS NOT NULL
-          AND ABS(dem_2pv - 0.5) * 2 <= ?
-    ) AS n_competitive
+          AND ABS(dem_2pv - 0.5) <= ?
+    )::INTEGER AS n_competitive
 FROM read_parquet(?)
 WHERE plan_id = ?
 GROUP BY plan_id, draw, year, election_type, office

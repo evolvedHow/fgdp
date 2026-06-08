@@ -61,12 +61,12 @@ elections:
     competitive: true
 
 competitiveness:
-  thresholds: [0.05]                 # 5% win margin primary threshold; add 0.07 after first run
+  thresholds: [0.035, 0.05]         # 7-point margin (±3.5pp) and 10-point margin (±5pp)
   method: all_independent
 
 demographics:
   cvap_year: 2024
-  majority_threshold: 0.50
+  majority_threshold: 0.20
   groups:
     - name: black
       label: "Majority Black (any-part)"
@@ -83,11 +83,11 @@ demographics:
 
 mcmc:
   algorithm: recom                   # ❓ TBD — same guidance as congress config
-  n_steps: 10000                     # ✅
-  burn_in: 1000                      # ❓ TBD — 1000 recommended for 56-district chamber
+  n_steps: 100000                     # ✅
+  burn_in: 10000                      # ❓ TBD — 1000 recommended for 56-district chamber
   # GUIDANCE: State Senate has 56 districts — harder to mix than Congress.
   #   Discard first 1,000 steps as warm-up. Net usable draws: 9,000.
-  n_chains: 1                        # ❓ TBD — 1 standard; 5 for convergence diagnostics
+  n_chains: 5                        # ❓ TBD — 1 standard; 5 for convergence diagnostics
   pop_epsilon: 0.05
   random_seed: null
   save_assignments: true

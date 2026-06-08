@@ -70,8 +70,7 @@ elections:
     competitive: true
 
 competitiveness:
-  thresholds: [0.05]                 # 5% win margin — tight primary threshold
-  # Add 0.07 in v3 once we see the 5% distribution shape.
+  thresholds: [0.035, 0.05]         # 7-point margin (±3.5pp) and 10-point margin (±5pp)
   method: all_independent
 
 demographics:

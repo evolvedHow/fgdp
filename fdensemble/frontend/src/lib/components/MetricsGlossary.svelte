@@ -62,8 +62,6 @@
       'A ≥ 95th pct · B ≥ 64th · C ≥ 5th · F < 5th',
     'directional (higher = more influence districts)':
       'A ≥ 95th pct · B ≥ 64th · C ≥ 5th · F < 5th',
-    'VRA floor (one-sided: below floor = F; above median = A)':
-      'A ≥ 50th pct · B ≥ 10th pct (VRA floor) · F < 10th — having MORE is never penalised',
     'normative test (Princeton cube-law)':
       'Pass/fail test — not shown as A/B/C/F',
   };
@@ -73,7 +71,7 @@
     competitive_margin:      'Competitive margin (half-width from 50%)',
     competitive_threshold:   'Competitive margin (±pp from 50%)',
     majority_threshold:      'Majority threshold',
-    bvap_majority_threshold: 'Black majority threshold (CVAP)',
+    bvap_majority_threshold: 'Black majority threshold (BVAP, 2020 Census)',
     influence_min_threshold: 'Minority influence lower bound',
     influence_max_threshold: 'Minority influence upper bound (= majority threshold)',
   };
@@ -95,7 +93,6 @@
     grade:    string;
     enacted:  number | null;
     pct_rank: number | null;
-    grade_symmetric?: string;
     formula_info: {
       formula:        string;
       detail:         string;
@@ -124,7 +121,6 @@
           grade:          v.grade       ?? '—',
           enacted:        v.enacted     ?? null,
           pct_rank:       v.pct_rank    ?? null,
-          grade_symmetric: v.grade_symmetric,
           formula_info:   v.formula_info ?? null,
         } as MetricEntry))
         .sort((a, b) => {
@@ -275,36 +271,11 @@
               </div>
               <!-- Grade badge + percentile -->
               <div style="display:flex;align-items:center;gap:.5rem;flex-shrink:0;">
-                {#if m.grade_symmetric !== undefined && m.grade_symmetric !== m.grade}
-                  <!-- Dual badge for VRA floor metrics -->
-                  <div style="display:flex;align-items:center;gap:.25rem;">
-                    <div style="display:flex;flex-direction:column;align-items:center;gap:.05rem;">
-                      <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;
-                                   text-transform:uppercase;color:{gradeColor};">VRA</span>
-                      <span style="display:inline-flex;align-items:center;justify-content:center;
-                                   width:1.45rem;height:1.45rem;border-radius:50%;
-                                   background:{gradeColor};color:#fff;font-weight:800;font-size:.78rem;">
-                        {m.grade}
-                      </span>
-                    </div>
-                    <div style="display:flex;flex-direction:column;align-items:center;gap:.05rem;opacity:.55;">
-                      <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;
-                                   text-transform:uppercase;color:var(--gray);">Sym</span>
-                      <span style="display:inline-flex;align-items:center;justify-content:center;
-                                   width:1.45rem;height:1.45rem;border-radius:50%;
-                                   background:{GRADE_COLORS[m.grade_symmetric] ?? '#888'};
-                                   color:#fff;font-weight:800;font-size:.78rem;">
-                        {m.grade_symmetric}
-                      </span>
-                    </div>
-                  </div>
-                {:else}
-                  <span style="display:inline-flex;align-items:center;justify-content:center;
-                               width:1.45rem;height:1.45rem;border-radius:50%;
-                               background:{gradeColor};color:#fff;font-weight:800;font-size:.78rem;">
-                    {m.grade}
-                  </span>
-                {/if}
+                <span style="display:inline-flex;align-items:center;justify-content:center;
+                             width:1.45rem;height:1.45rem;border-radius:50%;
+                             background:{gradeColor};color:#fff;font-weight:800;font-size:.78rem;">
+                  {m.grade}
+                </span>
                 {#if m.pct_rank != null}
                   <span style="font-size:.7rem;color:var(--gray);white-space:nowrap;">
                     {ordinal(m.pct_rank)} pctile
@@ -399,17 +370,6 @@
                 {/if}
               </div>
 
-              <!-- grade_symmetric note (when VRA floor metric) -->
-              {#if m.grade_symmetric !== undefined && m.grade_symmetric !== m.grade}
-                <div style="font-size:.68rem;color:#8e44ad;background:#f8f4ff;
-                            border-left:2.5px solid #8e44ad;border-radius:3px;
-                            padding:.25rem .5rem;margin-top:.1rem;line-height:1.45;">
-                  Symmetric (Princeton) grade: <b>{m.grade_symmetric}</b> — shown for comparison.
-                  The VRA floor grade ({m.grade}) is the legally operative measure: having
-                  more opportunity districts than neutral maps produce is never a violation.
-                </div>
-              {/if}
-
             </div><!-- /body -->
 
             <!-- ── Config threshold section (only when config_keys present) ─ -->
@@ -467,8 +427,8 @@
                   <div style="margin-top:.3rem;font-size:.66rem;color:var(--gray);
                               font-style:italic;">
                     Live threshold values will appear here once the API config block is populated.
-                    Defaults: competitive_margin = 0.10, majority_threshold = 0.50,
-                    bvap_majority_threshold = 0.50, influence_min = 0.37, influence_max = 0.50.
+                    Defaults: competitive thresholds = [0.035, 0.05], majority_threshold = 0.20,
+                    bvap_majority_threshold = 0.20, influence_min = 0.20, influence_max = 0.50.
                   </div>
                 {/if}
               </div>
@@ -485,7 +445,7 @@
                 font-size:.67rem;color:var(--gray);line-height:1.55;">
       <b>Princeton grading thresholds:</b> A = near neutral median (40th–60th pct or directional top band);
       B = within normal range; C = within ensemble 5th–95th pct; F = statistical outlier outside 5–95.
-      VRA floor metrics use one-sided grading: A ≥ 50th pct, B ≥ 10th pct, F &lt; 10th pct.
+      Minority representation metrics use symmetric grading — the same standard as all other metrics.
       Threshold env vars: <code style="font-family:monospace;font-size:.67rem;">COMPETITIVE_MARGIN_MAIN</code>,
       <code style="font-family:monospace;font-size:.67rem;">MAJORITY_THRESHOLD</code>,
       <code style="font-family:monospace;font-size:.67rem;">BVAP_MAJORITY_THRESHOLD</code>,

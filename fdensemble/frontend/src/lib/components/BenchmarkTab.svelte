@@ -14,7 +14,7 @@
   let { analysis, selectedElectionIdx, onSwitchElection }: Props = $props();
 
   const PARTISAN_KEYS    = ['dem_seats', 'partisan_bias', 'efficiency_gap', 'mean_median'];
-  const COMPETITIVE_KEYS = ['comp_seats'];
+  const COMPETITIVE_KEYS = ['comp_seats_7pt', 'comp_seats_10pt', 'comp_seats'];
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];
   const MINORITY_KEYS    = ['maj_black', 'maj_hisp', 'maj_aian', 'maj_asian', 'min_coal'];
 

@@ -52,44 +52,51 @@ MAJORITY_THRESHOLD = 0.20   # ≥ 20% BVAP = influence/coalition district (confi
 
 def load_plan_matrix(plans_file: Path) -> tuple[np.ndarray, list[str], int]:
     """
-    Load plans parquet → (n_vtds × n_draws) int16 matrix via PyArrow.
+    Load plans parquet in batches → (n_vtds × n_draws) int16 matrix.
 
-    Uses PyArrow dictionary encoding to keep geoid strings as compact
-    integer indices (~486MB vs ~12GB for plain Python strings).
-    Single parquet scan, no DuckDB overhead.
+    Reads in 5M-row batches so PyArrow never holds all rows simultaneously
+    (~60MB peak per batch vs ~3GB full-table). Eliminates address-space
+    fragmentation that caused OOM crashes during scoring.
 
     Returns (plan_np, geoids, n_districts).
     """
     print(f"Loading plan matrix from {plans_file.name}…")
 
-    # read_dictionary preserves parquet dict encoding for geoid → ~486MB vs ~3.6GB
-    table = pq.read_table(plans_file, columns=["geoid", "draw", "district"],
-                          read_dictionary=["geoid"])
-    print(f"  Read {len(table):,} rows")
+    pf = pq.ParquetFile(plans_file)
+    BATCH = 5_000_000
 
-    # Get sorted unique geoids (2698 values) without combining the chunked column
-    geoids  = sorted(pc.unique(table["geoid"]).to_pylist())
-    row_idx = pc.index_in(table["geoid"], value_set=pa.array(geoids)) \
-                .combine_chunks().to_numpy(zero_copy_only=False).astype(np.int32)
+    # Pass 1: discover unique geoids and draw range
+    all_geoids: set[str] = set()
+    draws_min = draws_max = None
+    for batch in pf.iter_batches(batch_size=BATCH, columns=["geoid", "draw"]):
+        for g in pc.unique(batch.column("geoid")).to_pylist():
+            all_geoids.add(g)
+        darr = batch.column("draw").to_numpy()
+        bmin, bmax = int(darr.min()), int(darr.max())
+        if draws_min is None or bmin < draws_min:
+            draws_min = bmin
+        if draws_max is None or bmax > draws_max:
+            draws_max = bmax
 
-    draw_arr    = table["draw"].combine_chunks().to_numpy()
-    draws_min   = int(draw_arr.min())
-    draws_max   = int(draw_arr.max())
-    col_idx     = (draw_arr - draws_min).astype(np.int32)
-    del draw_arr
+    geoids      = sorted(all_geoids)
+    geoid_np    = pa.array(geoids)
+    n_vtds      = len(geoids)
+    n_draws     = draws_max - draws_min + 1
+    plan_np     = np.zeros((n_vtds, n_draws), dtype=np.int16)
+    n_districts = 0
+    total_rows  = 0
 
-    district_arr = table["district"].combine_chunks().to_numpy()
-    n_districts  = int(district_arr.max())
-    vals         = district_arr.astype(np.int16)
-    del district_arr, table
+    # Pass 2: fill plan_np in batches
+    for batch in pf.iter_batches(batch_size=BATCH, columns=["geoid", "draw", "district"]):
+        row_idx = (pc.index_in(batch.column("geoid"), value_set=geoid_np)
+                   .to_numpy(zero_copy_only=False).astype(np.int32))
+        col_idx = (batch.column("draw").to_numpy() - draws_min).astype(np.int32)
+        vals    = batch.column("district").to_numpy().astype(np.int16)
+        n_districts = max(n_districts, int(vals.max()))
+        plan_np[row_idx, col_idx] = vals
+        total_rows += len(batch)
 
-    n_vtds  = len(geoids)
-    n_draws = draws_max - draws_min + 1
-
-    plan_np = np.zeros((n_vtds, n_draws), dtype=np.int16)
-    plan_np[row_idx, col_idx] = vals
-    del row_idx, col_idx, vals
-
+    print(f"  Read {total_rows:,} rows  (batched)")
     print(f"  {n_vtds:,} VTDs × {n_draws:,} draws  ({n_districts} districts)")
     return plan_np, geoids, n_districts
 
@@ -153,13 +160,22 @@ def score_demographics(
     print(f"\nScoring {n_draws:,} draws × {n_districts} districts…")
     t0 = time.time()
 
-    all_bvap = np.zeros((n_districts, n_draws, 5), dtype=np.float64)
+    bvap_f32 = bvap_np.astype(np.float32)
+    all_bvap = np.zeros((n_districts, n_draws, 5), dtype=np.float32)
+
+    # Pre-allocate all working buffers ONCE (same fragmentation fix as score_ensemble_plans).
+    plan_np_T = np.ascontiguousarray(plan_np.T)
+    bool_buf  = np.empty((n_draws, n_vtds), dtype=np.bool_)
+    float_buf = np.empty((n_draws, n_vtds), dtype=np.float32)
 
     for d_idx, district in enumerate(range(1, n_districts + 1)):
-        mask = (plan_np == district)
-        all_bvap[d_idx] = mask.T.astype(np.float64) @ bvap_np
+        np.equal(plan_np_T, district, out=bool_buf)
+        np.copyto(float_buf, bool_buf, casting="unsafe")
+        all_bvap[d_idx] = float_buf @ bvap_f32
         if (d_idx + 1) % 5 == 0:
             print(f"  District {district:>3}/{n_districts}…")
+
+    plan_np_T = bvap_f32 = bool_buf = float_buf = None
 
     print(f"  Matrix math done in {time.time()-t0:.1f}s")
 

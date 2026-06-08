@@ -69,7 +69,7 @@
         { key: 'dem_seats',          label: 'Dem Seats',           isCount: true },
         { key: 'efficiency_gap',     label: 'Efficiency Gap' },
         { key: 'mean_median',        label: 'Mean–Median' },
-        { key: 'comp_seats',         label: 'Competitive Seats',   isCount: true },
+        { key: 'comp_seats_7pt',     label: 'Competitive (7-pt)',  isCount: true },
         { key: 'muni_splits',        label: 'Split Cities',        isCount: true },
       ]
     : [
@@ -78,7 +78,7 @@
         { key: 'dem_seats',          label: 'Dem Seats',           isCount: true },
         { key: 'efficiency_gap',     label: 'Efficiency Gap' },
         { key: 'mean_median',        label: 'Mean–Median' },
-        { key: 'comp_seats',         label: 'Competitive Seats',   isCount: true },
+        { key: 'comp_seats_7pt',     label: 'Competitive (7-pt)',  isCount: true },
         { key: 'muni_splits',        label: 'Split Cities',        isCount: true },
         { key: 'maj_black',          label: 'Majority-Black Districts', isCount: true },
         { key: 'min_coal',           label: 'Minority Coalition Districts', isCount: true },

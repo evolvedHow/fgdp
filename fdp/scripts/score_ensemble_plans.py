@@ -37,9 +37,11 @@ import argparse
 import time
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.parquet as pq
 
 # ── Config ─────────────────────────────────────────────────────────────────
 
@@ -61,65 +63,54 @@ N_DISTRICTS:   int  = 14   # overridden after loading the parquet
 
 def load_plan_matrix(race_filter: list[str] | None) -> tuple[np.ndarray, list[str]]:
     """
-    Read the plans parquet via DuckDB and return:
+    Read the plans parquet in batches and return:
       - plan_np:  (n_vtds, n_draws) int16 matrix of district assignments
       - geoids:   ordered list of VTD GEOIDs matching rows of plan_np
 
-    Uses DuckDB instead of pandas pivot to avoid Python object overhead on
-    the geoid string column — critical for house-scale runs (64M+ rows).
+    Reads in 5M-row batches so PyArrow never holds all 243M rows simultaneously
+    (~60MB peak per batch vs ~3GB for a full-table read). Eliminates the
+    address-space fragmentation that caused OOM crashes during scoring.
 
     Also sets the global N_DISTRICTS from the data.
     """
     global N_DISTRICTS
     print(f"Loading plan matrix from {PLANS_PARQUET.name} …")
-    conn = duckdb.connect()
-    plans_str = str(PLANS_PARQUET)
 
-    # Metadata in one pass
-    meta = conn.execute("""
-        SELECT COUNT(DISTINCT geoid) AS n_vtds,
-               COUNT(DISTINCT draw)  AS n_draws,
-               MAX(district)         AS n_districts
-        FROM read_parquet(?)
-    """, [plans_str]).fetchone()
-    n_vtds, n_draws, N_DISTRICTS = int(meta[0]), int(meta[1]), int(meta[2])
+    pf = pq.ParquetFile(PLANS_PARQUET)
+    BATCH = 5_000_000  # rows per batch — ~60MB of PyArrow memory at a time
 
-    # Ordered index maps
-    geoids = [r[0] for r in conn.execute(
-        "SELECT DISTINCT geoid FROM read_parquet(?) ORDER BY geoid", [plans_str]
-    ).fetchall()]
-    draws = [r[0] for r in conn.execute(
-        "SELECT DISTINCT draw FROM read_parquet(?) ORDER BY draw", [plans_str]
-    ).fetchall()]
+    # Pass 1: discover unique geoids and draw range
+    all_geoids: set[str] = set()
+    draws_min = draws_max = None
+    for batch in pf.iter_batches(batch_size=BATCH, columns=["geoid", "draw"]):
+        for g in pc.unique(batch.column("geoid")).to_pylist():
+            all_geoids.add(g)
+        darr = batch.column("draw").to_numpy()
+        bmin, bmax = int(darr.min()), int(darr.max())
+        if draws_min is None or bmin < draws_min:
+            draws_min = bmin
+        if draws_max is None or bmax > draws_max:
+            draws_max = bmax
 
-    # Map geoid strings → integer row indices entirely in DuckDB SQL.
-    # Avoids ever creating 64M Python string objects in the Python process.
-    # fetchnumpy() then returns only integer arrays (~650 MB total for house).
-    result = conn.execute("""
-        WITH geoid_map AS (
-            SELECT geoid,
-                   (ROW_NUMBER() OVER (ORDER BY geoid) - 1)::INTEGER AS geoid_idx
-            FROM (SELECT DISTINCT geoid FROM read_parquet(?))
-        ),
-        draw_map AS (
-            SELECT draw,
-                   (ROW_NUMBER() OVER (ORDER BY draw) - 1)::INTEGER AS draw_idx
-            FROM (SELECT DISTINCT draw FROM read_parquet(?))
-        )
-        SELECT g.geoid_idx, d.draw_idx, p.district::SMALLINT AS district
-        FROM read_parquet(?) p
-        JOIN geoid_map g USING (geoid)
-        JOIN draw_map  d USING (draw)
-        ORDER BY d.draw_idx, g.geoid_idx
-    """, [plans_str, plans_str, plans_str]).fetchnumpy()
+    geoids   = sorted(all_geoids)
+    geoid_np = pa.array(geoids)          # value_set for index_in
+    n_vtds   = len(geoids)
+    n_draws  = draws_max - draws_min + 1
+    plan_np  = np.zeros((n_vtds, n_draws), dtype=np.int16)
+    N_DISTRICTS = 0
+    total_rows  = 0
 
-    row_idx = result["geoid_idx"].astype(np.int32)
-    col_idx = result["draw_idx"].astype(np.int32)
-    vals    = result["district"].astype(np.int16)
+    # Pass 2: fill plan_np in batches
+    for batch in pf.iter_batches(batch_size=BATCH, columns=["geoid", "draw", "district"]):
+        row_idx = (pc.index_in(batch.column("geoid"), value_set=geoid_np)
+                   .to_numpy(zero_copy_only=False).astype(np.int32))
+        col_idx = (batch.column("draw").to_numpy() - draws_min).astype(np.int32)
+        vals    = batch.column("district").to_numpy().astype(np.int16)
+        N_DISTRICTS = max(N_DISTRICTS, int(vals.max()))
+        plan_np[row_idx, col_idx] = vals
+        total_rows += len(batch)
 
-    plan_np = np.zeros((n_vtds, n_draws), dtype=np.int16)
-    plan_np[row_idx, col_idx] = vals
-
+    print(f"  Read {total_rows:,} rows  (batched, ~60MB peak per batch)")
     print(f"  {n_vtds:,} VTDs × {n_draws:,} draws  ({N_DISTRICTS} districts)")
     return plan_np, geoids
 
@@ -195,11 +186,20 @@ def load_elections(
 
 # ── Stage 3 — Vectorised scoring ──────────────────────────────────────────
 
-def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) -> pd.DataFrame:
+def score_plans(
+    plan_np: np.ndarray,
+    elec_np: np.ndarray,
+    races: list[tuple],
+    out_path: Path,
+    dry_run: bool = False,
+) -> int:
     """
-    For each of N_DISTRICTS districts, compute per-draw vote totals via matrix multiply.
+    For each district, compute per-draw vote totals then stream each race to Parquet.
 
-    plan_np:  (n_vtds, n_draws)   int8    — district assignment per VTD per draw
+    Streams one race at a time to keep peak memory under ~2GB (vs 8+ GB for full concat).
+    Returns total row count written.
+
+    plan_np:  (n_vtds, n_draws)   int16   — district assignment per VTD per draw
     elec_np:  (n_vtds, 2*N_races) int64   — dem/rep votes per VTD per race
     """
     n_vtds, n_draws = plan_np.shape
@@ -207,23 +207,40 @@ def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) ->
     print(f"\nScoring {n_draws:,} draws × {N_DISTRICTS} districts × {n_races} races …")
     t0 = time.time()
 
+    elec_f32 = elec_np.astype(np.float32)
+
     # scores[district_idx, draw_idx, race_col] = total votes in that district/draw
-    all_district_votes = np.empty((N_DISTRICTS, n_draws, n_races * 2), dtype=np.int64)
+    all_district_votes = np.empty((N_DISTRICTS, n_draws, n_races * 2), dtype=np.float32)
+
+    # Pre-allocate all working buffers ONCE.
+    # plan_np_T: C-contiguous transpose — avoids numpy creating a 486MB internal copy
+    # on each np.equal call (plan_np.T is Fortran-order/non-contiguous).
+    # bool_buf + float_buf: reused each district so the 970MB alloc happens once, not 56×.
+    plan_np_T = np.ascontiguousarray(plan_np.T)           # (n_draws, n_vtds) int16 ~486MB
+    bool_buf  = np.empty((n_draws, n_vtds), dtype=np.bool_)    # 242MB
+    float_buf = np.empty((n_draws, n_vtds), dtype=np.float32)  # 970MB
 
     for d_idx, district in enumerate(range(1, N_DISTRICTS + 1)):
-        # mask: (n_vtds, n_draws) bool
-        mask = (plan_np == district)
-        # Matrix multiply: (n_draws, n_vtds) @ (n_vtds, 2*n_races) = (n_draws, 2*n_races)
-        all_district_votes[d_idx] = mask.T.astype(np.int64) @ elec_np
+        np.equal(plan_np_T, district, out=bool_buf)
+        np.copyto(float_buf, bool_buf, casting="unsafe")
+        all_district_votes[d_idx] = float_buf @ elec_f32
         if (d_idx + 1) % 5 == 0:
-            print(f"  District {district:2d}/{N_DISTRICTS} done …")
+            print(f"  District {district:2d}/{N_DISTRICTS} done …", flush=True)
 
-    print(f"  Matrix math done in {time.time()-t0:.1f}s")
+    plan_np_T = bool_buf = float_buf = elec_f32 = None
 
-    # ── Build long-format DataFrame ─────────────────────────────────────────
-    records = []
+    del plan_np  # free ~500MB before building DataFrames
+    print(f"  Matrix math done in {time.time()-t0:.1f}s", flush=True)
+
     draws_arr     = np.arange(1, n_draws + 1)
     districts_arr = np.arange(1, N_DISTRICTS + 1)
+    dist_flat     = np.repeat(districts_arr, n_draws)
+    draw_flat     = np.tile(draws_arr, N_DISTRICTS)
+
+    total_rows = 0
+    writer = None
+    if not dry_run:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
 
     for race_idx, (year, etype, office) in enumerate(races):
         dem_col_idx = race_idx * 2
@@ -234,17 +251,14 @@ def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) ->
         total_mat = dem_mat + rep_mat
 
         with np.errstate(invalid="ignore", divide="ignore"):
-            d2pv_mat = np.where(total_mat > 0, dem_mat / total_mat, np.nan)
-
-        dist_flat  = np.repeat(districts_arr, n_draws)
-        draw_flat  = np.tile(draws_arr, N_DISTRICTS)
-        dem_flat   = dem_mat.ravel()
-        rep_flat   = rep_mat.ravel()
-        tot_flat   = total_mat.ravel()
-        d2pv_flat  = d2pv_mat.ravel()
+            d2pv_flat = np.where(
+                total_mat.ravel() > 0,
+                dem_mat.ravel() / total_mat.ravel(),
+                np.nan
+            )
 
         winner_flat = np.where(
-            np.isnan(d2pv_flat), None,
+            np.isnan(d2pv_flat), "none",
             np.where(d2pv_flat > 0.5, "dem",
             np.where(d2pv_flat < 0.5, "rep", "tie"))
         )
@@ -256,32 +270,33 @@ def score_plans(plan_np: np.ndarray, elec_np: np.ndarray, races: list[tuple]) ->
             "year":          int(year),
             "election_type": etype,
             "office":        office,
-            "dem_votes":     dem_flat,
-            "rep_votes":     rep_flat,
-            "total_votes":   tot_flat,
+            "dem_votes":     dem_mat.ravel().astype(np.int64),
+            "rep_votes":     rep_mat.ravel().astype(np.int64),
+            "total_votes":   total_mat.ravel().astype(np.int64),
             "dem_2pv":       np.round(d2pv_flat, 6),
             "winner":        winner_flat,
             "loaded_by":     LOADED_BY,
         })
-        records.append(race_df)
-        enacted_row = race_df[race_df.draw == 1]
-        enacted_dem = (enacted_row["winner"] == "dem").sum()
+        del total_mat, d2pv_flat, winner_flat  # free before next race
+
+        enacted_dem = (race_df[race_df.draw == 1]["winner"] == "dem").sum()
         print(f"  Race {race_idx+1:2d}/{n_races}: {year} {etype} {office}  "
-              f"— enacted dem seats: {enacted_dem}/{N_DISTRICTS}")
+              f"— enacted dem seats: {enacted_dem}/{N_DISTRICTS}", flush=True)
 
-    scores = pd.concat(records, ignore_index=True)
-    print(f"\nScored {len(scores):,} rows total in {time.time()-t0:.1f}s")
-    return scores
+        if not dry_run:
+            tbl = pa.Table.from_pandas(race_df, preserve_index=False)
+            if writer is None:
+                writer = pq.ParquetWriter(out_path, tbl.schema)
+            writer.write_table(tbl)
+            del tbl
+        total_rows += len(race_df)
+        del race_df
 
+    if writer:
+        writer.close()
 
-# ── Stage 4 — Save to Parquet ─────────────────────────────────────────────
-
-def save_scores(scores: pd.DataFrame, out_path: Path) -> None:
-    """Write scored ensemble to Parquet (replaces Supabase upsert)."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    scores.to_parquet(out_path, index=False)
-    size_mb = out_path.stat().st_size / 1_000_000
-    print(f"\n✓ {len(scores):,} rows → {out_path.name}  ({size_mb:.1f} MB)")
+    print(f"\nScored {total_rows:,} rows total in {time.time()-t0:.1f}s", flush=True)
+    return total_rows
 
 
 # ── Main ──────────────────────────────────────────────────────────────────
@@ -343,17 +358,14 @@ def main() -> None:
 
     plan_np, geoids = load_plan_matrix(args.races)
     elec_np, races  = load_elections(geoids, args.races, elections_file)
-    scores          = score_plans(plan_np, elec_np, races)
+    n_rows = score_plans(plan_np, elec_np, races, out_file, dry_run=args.dry_run)
 
-    if args.dry_run:
-        print("\n[dry-run] Skipping write.")
-        print(scores.head(10).to_string())
-        return
-
-    save_scores(scores, out_file)
-    print(f"\nNext step:")
-    print(f"  uv run --project fdp python fdp/scripts/build_draw_stats.py \\")
-    print(f"      --run-name {PLAN_ID} --config fdp/configs/benchmarks/<your_config>.yml")
+    if not args.dry_run:
+        size_mb = out_file.stat().st_size / 1_000_000
+        print(f"\n✓ {n_rows:,} rows → {out_file.name}  ({size_mb:.1f} MB)")
+        print(f"\nNext step:")
+        print(f"  uv run --project fdp python fdp/scripts/build_draw_stats.py \\")
+        print(f"      --run-name {PLAN_ID} --config fdp/configs/benchmarks/<your_config>.yml")
 
 
 if __name__ == "__main__":

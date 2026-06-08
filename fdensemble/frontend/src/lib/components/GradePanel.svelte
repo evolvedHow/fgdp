@@ -24,7 +24,7 @@
   const overall    = $derived(displayGrades._overall    as CompositeGrade | undefined);
   const partisan   = $derived(displayGrades._partisan_fairness as CompositeGrade | undefined);
   const geographic = $derived(displayGrades._geographic as CompositeGrade | undefined);
-  const compSeats  = $derived((displayGrades as any).comp_seats);
+  const compSeats  = $derived((displayGrades as any).comp_seats_7pt ?? (displayGrades as any).comp_seats);
 
   const gradeColor: Record<string, string> = {
     A: '#27ae60', B: '#2980b9', C: '#d68910', D: '#e67e22', F: '#c0392b',

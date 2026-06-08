@@ -35,7 +35,7 @@
 
   // Metric display constants
   const PARTISAN_KEYS    = ['dem_seats', 'partisan_bias', 'efficiency_gap', 'mean_median'];
-  const COMPETITIVE_KEYS = ['comp_seats', 'rep_safe_seats', 'dem_safe_seats'];
+  const COMPETITIVE_KEYS = ['comp_seats_7pt', 'comp_seats_10pt', 'comp_seats', 'rep_safe_seats', 'dem_safe_seats'];
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];  // muni_splits = Split Cities
   const MINORITY_KEYS    = ['maj_black', 'maj_hisp', 'maj_aian', 'maj_asian', 'min_coal'];
   const ALL_METRIC_GROUPS = [PARTISAN_KEYS, COMPETITIVE_KEYS, GEOGRAPHIC_KEYS, MINORITY_KEYS];
@@ -379,7 +379,8 @@
     {@const ROWS = [
       { key: 'dem_seats',      label: 'Dem-Lean Districts',   isInt: true  },
       { key: '_rep_seats',     label: 'Rep-Lean Districts',   isInt: true  },
-      { key: 'comp_seats',     label: 'Competitive Districts',isInt: true  },
+      { key: 'comp_seats_7pt', label: 'Competitive (7-pt)',   isInt: true  },
+      { key: 'comp_seats_10pt',label: 'Competitive (10-pt)',  isInt: true  },
       { key: 'rep_safe_seats', label: 'Rep Safe Seats',       isInt: true  },
       { key: 'dem_safe_seats', label: 'Dem Safe Seats',       isInt: true  },
       { key: 'efficiency_gap', label: 'Efficiency Gap',       isInt: false },
