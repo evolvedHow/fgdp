@@ -109,9 +109,12 @@
   const peakBarX    = $derived(peakIdx >= 0 ? PAD_L + peakIdx * SLOT_W + BAR_W / 2 : 0);
   const showPeakLbl = $derived(peakIdx >= 0 && Math.abs(peakIdx - enactedVal) >= 2);
 
-  function fmtCount(n: number): string {
-    return n >= 10000 ? Math.round(n / 1000) + 'K' : n.toLocaleString();
-  }
+  // Show peak bar as "X% of maps" — clearer than a raw count on a small chart
+  const peakPct = $derived(
+    peakIdx >= 0 && total > 0
+      ? Math.round(countMap[peakIdx] / total * 100) + '%'
+      : ''
+  );
 </script>
 
 <div style="background:var(--card);border-radius:8px;overflow:hidden;
@@ -171,11 +174,11 @@
           text-anchor="middle" font-size="10" font-weight="bold"
           fill={gcol}>{enactedVal}</text>
 
-        <!-- ── Peak bar count label (if ≥2 slots away from enacted) ── -->
+        <!-- ── Peak bar % label (if ≥2 slots away from enacted) ── -->
         {#if showPeakLbl}
           <text x={peakBarX} y={CHART_B - peakBarH - 4}
             text-anchor="middle" font-size="8" fill="#555">
-            {fmtCount(countMap[peakIdx])}
+            {peakPct}
           </text>
         {/if}
 
