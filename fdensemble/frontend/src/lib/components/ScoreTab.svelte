@@ -4,6 +4,7 @@
   import { STATIC_MODE, LIVE_SERVER_URL, apiPost, apiDelete } from '../api.js';
   import GradePanel              from './GradePanel.svelte';
   import MetricCard              from './MetricCard.svelte';
+  import DemoMetricCard          from './DemoMetricCard.svelte';
   import RiverChart              from './RiverChart.svelte';
   import BenchmarkComparisonTable from './BenchmarkComparisonTable.svelte';
   import MultiMapScorecard       from './MultiMapScorecard.svelte';
@@ -44,12 +45,7 @@
   const ALL_METRIC_GROUPS = [PARTISAN_KEYS, COMPETITIVE_KEYS, GEOGRAPHIC_KEYS, MINORITY_KEYS];
   const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Other Minority Metrics'];
 
-  // Demographic threshold slider — 20%–50% BVAP for Black / White / Minority Coalition
-  // Default 50% = true VRA majority. Slide left to 20% to see influence districts.
-  let demoThresholdPct = $state(50);
-  const demoThresholdKey = $derived(
-    (demoThresholdPct / 100).toFixed(2)  // "0.50", "0.45", ..., "0.20"
-  );
+  // demoThresholdPct / demoThresholdKey removed — each DemoMetricCard manages its own slider.
 
   let showUploader = $state(false);
 
@@ -343,43 +339,17 @@
     planGrades={scoredPlan ? scoredPlan.grades : null}
   />
 
-  <!-- ── Minority Representation — 3-column threshold block ───────────────── -->
+  <!-- ── Minority Representation — 3-column White / Black / Minority Coalition ── -->
   {#if THRESHOLD_KEYS.some(k => k in analysis.grades && 'histogram' in (analysis.grades[k] ?? {}))}
     <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-                color:var(--gray);margin:.8rem 0 .4rem;">Minority Representation</div>
+                color:var(--gray);margin:.8rem 0 .5rem;">Minority Representation</div>
 
-    <!-- Demographic threshold slider -->
-    <div class="no-print" style="background:#f8f4ff;border:1px solid #d7bde2;border-radius:6px;
-                padding:.55rem .9rem;margin-bottom:.6rem;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;">
-        <span style="font-size:.72rem;font-weight:700;color:#8e44ad;white-space:nowrap;">
-          Threshold: {demoThresholdPct}% BVAP
-        </span>
-        <span style="font-size:.65rem;color:var(--gray);">
-          {demoThresholdPct === 50 ? '50% = True majority (VRA Section 2 standard)' :
-           demoThresholdPct === 20 ? '20% = Influence threshold (meaningful electoral impact)' :
-           `${demoThresholdPct}% — between influence and majority`}
-        </span>
-      </div>
-      <input type="range" min=20 max=50 step=5 bind:value={demoThresholdPct}
-        style="width:100%;margin:.3rem 0 .2rem;accent-color:#8e44ad;cursor:pointer;" />
-      <div style="font-size:.61rem;color:var(--gray);line-height:1.45;">
-        For each of the 99,001 neutral maps, counts how many districts have ≥{demoThresholdPct}% BVAP for each group,
-        producing a bell curve. The enacted map is scored against that distribution.
-        <b>50%</b>: true VRA majority standard.
-        <b>20%</b>: influence district threshold.
-      </div>
-    </div>
-
-    <!-- 3-column grid: White | Black | Minority Coalition -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin-bottom:.55rem;">
+    <!-- 3-column grid: White | Black | Minority Coalition (each card has its own slider) -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.6rem;">
       {#each THRESHOLD_KEYS as key}
         {#if key in analysis.grades && 'histogram' in (analysis.grades[key] ?? {})}
-          {@const metric = analysis.grades[key] as any}
-          <MetricCard {metric} planMetric={planMetricFor(key)}
-            demoThresholdKey={demoThresholdKey}
-            compact={true}
-            nDistricts={analysis.summary?.n_districts ?? 14} />
+          {@const m = analysis.grades[key] as any}
+          <DemoMetricCard metric={m} nDistricts={analysis.summary?.n_districts ?? 14} />
         {/if}
       {/each}
     </div>
