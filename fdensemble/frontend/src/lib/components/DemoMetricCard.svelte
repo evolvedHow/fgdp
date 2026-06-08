@@ -53,7 +53,7 @@
   });
 
   const grade = $derived.by((): string => {
-    const gradeFn = (metric as any).grade_fn as string || 'directional';
+    const gradeFn = (metric as any).grade_fn as string || 'simple';
     const hib     = (metric as any).higher_is_better as boolean | null;
     const pct     = pctRank;
     if (gradeFn === 'seats') {
@@ -214,7 +214,7 @@
   </div>
 
   <!-- ── Takeaway ──────────────────────────────────────────────────────── -->
-  {#if metric.takeaway}
+  {#if metric.takeaway && thresholdPct === 50}
     <div style="border-top:1px solid var(--border);padding:.4rem .8rem;
          background:{grade === 'F' ? '#fff0f0' : grade === 'A' ? '#f0faf4' : '#f8f9fb'};
          font-size:.67rem;color:#333;line-height:1.45;">

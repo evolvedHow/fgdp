@@ -6,14 +6,12 @@
   import MetricCard              from './MetricCard.svelte';
   import DemoMetricCard          from './DemoMetricCard.svelte';
   import RiverChart              from './RiverChart.svelte';
-  import BenchmarkComparisonTable from './BenchmarkComparisonTable.svelte';
   import MultiMapScorecard       from './MultiMapScorecard.svelte';
   import UrbanCrackPanel         from './UrbanCrackPanel.svelte';
   import ProportionalityGapPanel from './ProportionalityGapPanel.svelte';
 
   interface Props {
     analysis: Analysis;
-    companionAnalysis?: Analysis | null;
     companionRunId?: string | null;
     selectedRunId: string;
     selectedElectionIdx: number;
@@ -21,7 +19,7 @@
     onAddPlan: (plan: ScoredPlan) => void;
   }
   let {
-    analysis, companionAnalysis = null, companionRunId = null,
+    analysis, companionRunId = null,
     selectedRunId, selectedElectionIdx, onSwitchElection, onAddPlan,
   }: Props = $props();
 
@@ -40,14 +38,11 @@
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];  // muni_splits = Split Cities
   // 3-column threshold metrics (White / Black / Minority Coalition) — shown in compact side-by-side layout
   const THRESHOLD_KEYS   = ['maj_white', 'maj_black', 'min_coal'];
-  // Other minority metrics shown full-width below the 3-column block
-  const MINORITY_KEYS    = ['maj_hisp', 'maj_aian', 'maj_asian', 'min_influence'];
+  // Minority influence metric shown full-width below the 3-column threshold block.
+  // maj_hisp, maj_aian, maj_asian are not produced by the current GA scoring pipeline.
+  const MINORITY_KEYS    = ['min_influence'];
   const ALL_METRIC_GROUPS = [PARTISAN_KEYS, COMPETITIVE_KEYS, GEOGRAPHIC_KEYS, MINORITY_KEYS];
-  const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Other Minority Metrics'];
-
-  // demoThresholdPct / demoThresholdKey removed — each DemoMetricCard manages its own slider.
-
-  let showUploader = $state(false);
+  const GROUP_LABELS = ['Partisan Fairness', 'Political Balance', 'Geographic', 'Additional Minority Metrics'];
 
   // Multi-map comparison
   let comparisonPlans: ScoredPlan[] = $state([]);
@@ -133,7 +128,6 @@
   async function handleMapSaved(meta: MapMeta) {
     maps = [...maps, meta];
     selectedMapId = meta.id;
-    showUploader = false;
   }
 
   async function handleDeleteMap(mapId: string) {

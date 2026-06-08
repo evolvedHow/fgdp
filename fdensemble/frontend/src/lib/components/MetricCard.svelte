@@ -12,10 +12,10 @@
     metric: MetricGrade;
     planMetric?: PlanMetricOverlay | null;
     demoThresholdKey?: string;  // e.g. "0.50", "0.20" — for demographic metrics only
-    compact?: boolean;          // compact column mode (used by 3-column threshold layout)
-    nDistricts?: number;        // max district count for integer histogram (default 14)
   }
-  let { metric, planMetric = null, demoThresholdKey = '', compact = false, nDistricts = 14 }: Props = $props();
+  let { metric, planMetric = null, demoThresholdKey = '' }: Props = $props();
+
+  const nDistricts = 14;  // max district count for integer histogram
 
   // ── Demographic threshold override ────────────────────────────────────────
   // When demoThresholdKey is set and the metric has pre-computed threshold arrays,
@@ -178,7 +178,7 @@
     });
   }
 
-  async function buildChart(filteredCounts: number[] | null = null) {
+  async function buildChart() {
     const { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip } = await import('chart.js');
     Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip);
 
@@ -190,7 +190,7 @@
     const edges   = Array.from(h.edges);
     const labels  = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
     const col     = categoryColor[snap.category] ?? '#888';
-    const barCounts = filteredCounts ?? Array.from(h.counts);
+    const barCounts = Array.from(h.counts);
 
     // Use activeEnacted for the enacted vertical line when threshold is active
     const enactedLineVal = (demoThresholdKey && (metric as any).enacted_by_threshold)
@@ -298,92 +298,14 @@
       if (tk && adv && adv.length) {
         buildIntegerChart(adv, ae);
       } else {
-        buildChart(null);
+        buildChart();
       }
     });
     return () => { if (chart) { chart.destroy(); chart = null; } };
   });
 </script>
 
-{#if compact}
-  <!-- ── Compact column layout (3-column threshold comparison) ─────────────── -->
-  <div class="metric-card" class:is-outlier={displayedGrade === 'F'} bind:this={cardEl}>
-
-    <!-- Header: label + grade + download -->
-    <div class="headline" style="padding:.45rem .75rem;
-         background:{displayedGrade === 'F' ? '#fff5f5' : displayedGrade === 'A' ? '#f5fdf8' : 'var(--light)'};
-         border-bottom:1px solid var(--border);
-         display:flex;align-items:center;justify-content:space-between;gap:.4rem;">
-      <div style="min-width:0;">
-        <div style="font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
-                    color:var(--gray);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          {metric.label}
-        </div>
-        <div style="font-size:.75rem;font-weight:700;color:var(--blue);
-                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-          {metric.headline ?? metric.label}
-        </div>
-      </div>
-      <button class="capture-btn" onclick={doCapture} disabled={capturing} title="Save as PNG" style="flex-shrink:0;">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7,10 12,15 17,10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </button>
-    </div>
-
-    <!-- Grade + stats row -->
-    <div style="padding:.5rem .75rem;display:flex;align-items:center;gap:.55rem;
-                border-bottom:1px solid var(--border);">
-      <!-- Grade circle -->
-      <span style="display:inline-flex;align-items:center;justify-content:center;
-                   width:2rem;height:2rem;border-radius:50%;flex-shrink:0;
-                   background:{gradeColor[displayedGrade] ?? '#888'};
-                   color:#fff;font-weight:800;font-size:.9rem;">{displayedGrade}</span>
-      <!-- Rank + threshold label -->
-      <div style="display:flex;flex-direction:column;gap:.1rem;">
-        <span style="font-size:.68rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile</span>
-        {#if demoThresholdKey}
-          <span style="font-size:.62rem;color:#8e44ad;font-weight:600;">≥{Math.round(+demoThresholdKey*100)}% threshold</span>
-        {/if}
-      </div>
-      <!-- Enacted vs median (compact) -->
-      <div style="margin-left:auto;display:grid;grid-template-columns:1fr 1fr;gap:.1rem .6rem;text-align:right;">
-        <div style="font-size:.57rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Enacted</div>
-        <div style="font-size:.57rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Median</div>
-        <div style="font-weight:700;font-size:.8rem;">{activeEnacted}</div>
-        <div style="font-size:.8rem;">{metric.histogram.p50.toFixed(1)}</div>
-      </div>
-    </div>
-
-    <!-- Histogram -->
-    <div style="padding:.5rem .75rem .3rem;">
-      <div style="height:110px;position:relative;">
-        <canvas bind:this={canvas}></canvas>
-      </div>
-      <div style="font-size:.58rem;color:var(--gray);text-align:center;margin-top:.15rem;">
-        ‒‒ enacted &nbsp;|&nbsp; {activeDrawValues.length.toLocaleString()} neutral maps
-        {#if demoThresholdKey}
-          &nbsp;<span style="color:#8e44ad;font-weight:600;">≥{Math.round(+demoThresholdKey*100)}% BVAP</span>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Takeaway -->
-    {#if metric.takeaway}
-      <div style="border-top:1px solid var(--border);padding:.4rem .75rem;
-           background:{displayedGrade === 'F' ? '#fff0f0' : displayedGrade === 'A' ? '#f0faf4' : '#f8f9fb'};
-           display:flex;align-items:baseline;gap:.4rem;">
-        <span style="font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-                     color:{gradeColor[displayedGrade] ?? '#888'};white-space:nowrap;flex-shrink:0;">→</span>
-        <span style="font-size:.68rem;color:#333;line-height:1.45;">{metric.takeaway}</span>
-      </div>
-    {/if}
-  </div>
-
-{:else}
-  <!-- ── Full-width layout (all non-threshold metrics) ─────────────────────── -->
+<!-- ── Full-width layout ─────────────────────────────────────────────────── -->
   <div class="metric-card" class:is-outlier={metric.grade === 'F'} bind:this={cardEl}>
 
     <!-- Headline -->
@@ -553,7 +475,6 @@
       </div>
     {/if}
   </div>
-{/if}
 
 <style>
   .metric-card {

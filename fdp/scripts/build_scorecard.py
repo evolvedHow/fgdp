@@ -32,8 +32,6 @@ DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main/ensemble"
 # VTD → municipality lookup (built from ALARM RDS via scripts/build_alarm_scorecard.py)
 _VTD_MUNI_PATH = _REPO_ROOT / "fdensemble" / "data" / "vtd_muni.parquet"
 
-MAJORITY_THRESHOLD            = 0.20   # ≥ 20% = influence/coalition district threshold (legacy binary flags)
-BVAP_MAJORITY_THRESHOLD       = 0.20   # same — BVAP 2020 Census PL 94-171 headcounts
 COMPETITIVE_THRESHOLD_DEFAULT = 0.05
 COMPETITIVE_THRESHOLDS_DEFAULT = [0.035, 0.05]  # 7-point and 10-point margins
 INFLUENCE_MIN_THRESHOLD       = 0.37   # minority influence band lower bound (FDGA standard)
@@ -908,7 +906,6 @@ def _build_demographics(
     conn: duckdb.DuckDBPyConnection,
     influence_min: float = INFLUENCE_MIN_THRESHOLD,
     influence_max: float = INFLUENCE_MAX_THRESHOLD,
-    majority_threshold: float = MAJORITY_THRESHOLD,
 ) -> dict | None:
     demo_file = data_dir / f"{run_name}_demographics.parquet"
     if not demo_file.exists():
@@ -1384,8 +1381,6 @@ def build_scorecard(
     base_run_name: str | None = None,
     influence_min: float = INFLUENCE_MIN_THRESHOLD,
     influence_max: float = INFLUENCE_MAX_THRESHOLD,
-    majority_threshold: float = MAJORITY_THRESHOLD,
-    bvap_majority_threshold: float = BVAP_MAJORITY_THRESHOLD,
     # Legacy single-threshold compat (ignored if competitive_thresholds is set)
     competitive_threshold: float | None = None,
 ) -> dict:
@@ -1485,7 +1480,6 @@ def build_scorecard(
         demo_run, data_dir, conn,
         influence_min=influence_min,
         influence_max=influence_max,
-        majority_threshold=majority_threshold,
     )
     print(" done")
 
@@ -1515,8 +1509,7 @@ def build_scorecard(
     # in the scorecard JSON.  They are derived interpretation, not raw data.
     # fdensemble always recomputes them at serve time via _compute_composite_grades()
     # so there is exactly one implementation of grading logic.
-    # _build_composite_grades() is called here only for the build-time summary print.
-    composite_display = _build_composite_grades(elections, demographics, n_districts)
+    # _build_composite_grades() is called once below for the build-time summary print.
 
     # grades dict: demographics metrics + geographic metrics only (no composites)
     grades: dict = {}
@@ -1588,8 +1581,6 @@ def build_scorecard(
             # Configurable threshold values used — surfaced in UI info tooltips
             "config": {
                 "competitive_thresholds":   competitive_thresholds,
-                "majority_threshold":       majority_threshold,
-                "bvap_majority_threshold":  bvap_majority_threshold,
                 "influence_min_threshold":  influence_min,
                 "influence_max_threshold":  influence_max,
             },
@@ -1603,8 +1594,6 @@ def build_scorecard(
         "correlations": correlations,
         "config": {
             "competitive_thresholds":  competitive_thresholds,
-            "majority_threshold":      majority_threshold,
-            "bvap_majority_threshold": bvap_majority_threshold,
             "influence_min_threshold": influence_min,
             "influence_max_threshold": influence_max,
             "grading": {
@@ -1620,8 +1609,6 @@ def build_scorecard(
             },
             "source_locations": {
                 "competitive_thresholds":  "fdp/configs/benchmarks/*.yml → competitiveness.thresholds",
-                "majority_threshold":      "fdp/scripts/build_scorecard.py → MAJORITY_THRESHOLD",
-                "bvap_majority_threshold": "fdp/scripts/build_scorecard.py → BVAP_MAJORITY_THRESHOLD",
                 "influence_min_threshold": "fdp/scripts/build_scorecard.py → INFLUENCE_MIN_THRESHOLD",
                 "influence_max_threshold": "fdp/scripts/build_scorecard.py → INFLUENCE_MAX_THRESHOLD",
             },
@@ -1657,8 +1644,6 @@ def main() -> None:
                     help=f"Minority influence district lower bound (default: {INFLUENCE_MIN_THRESHOLD} = {INFLUENCE_MIN_THRESHOLD*100:.0f}%%)")
     ap.add_argument("--influence-max", type=float, default=INFLUENCE_MAX_THRESHOLD,
                     help=f"Minority influence district upper bound (default: {INFLUENCE_MAX_THRESHOLD} = {INFLUENCE_MAX_THRESHOLD*100:.0f}%%)")
-    ap.add_argument("--majority-threshold", type=float, default=MAJORITY_THRESHOLD,
-                    help=f"Majority-minority threshold (default: {MAJORITY_THRESHOLD} = {MAJORITY_THRESHOLD*100:.0f}%%)")
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir) if args.data_dir else DEFAULT_DATA_DIR
@@ -1671,7 +1656,6 @@ def main() -> None:
         base_run_name=args.base_run_name,
         influence_min=args.influence_min,
         influence_max=args.influence_max,
-        majority_threshold=args.majority_threshold,
     )
 
     out_file.parent.mkdir(parents=True, exist_ok=True)

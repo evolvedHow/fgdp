@@ -390,6 +390,104 @@ are needed, then copies them from the active repo (workspace-aware).
 
 ---
 
+## Benchmark Scoring Pipeline
+
+The scoring pipeline converts GerryChain ensemble parquets into a **scorecard
+JSON** that fdensemble reads directly. All scripts accept a `--config` argument
+pointing to a YAML file in `configs/benchmarks/`.
+
+### Step 1: Build VTD inputs (run once per election cycle)
+
+```bash
+# Aggregate block-level data to VTD level → vtd_composite.parquet + vtd_demographics.parquet
+python scripts/build_vtd_inputs.py \
+    --config configs/benchmarks/ga_congress_2026_v1.yml
+```
+
+This produces the VTD-level election composites and demographics files consumed
+by all downstream scoring scripts.
+
+### Step 2: Score ensemble plans
+
+```bash
+# Compute partisan metrics per draw
+python scripts/score_ensemble_plans.py \
+    --config configs/benchmarks/ga_congress_2026_v1.yml \
+    --plans /path/to/congress_plans.parquet
+
+# Compute demographic metrics per draw
+python scripts/score_ensemble_demographics.py \
+    --config configs/benchmarks/ga_congress_2026_v1.yml \
+    --plans /path/to/congress_plans.parquet
+```
+
+### Step 3: Build the scorecard JSON
+
+```bash
+python scripts/build_scorecard.py \
+    --config configs/benchmarks/ga_congress_2026_v1.yml \
+    --scores /path/to/scored_plans.parquet \
+    --vtd-composite ../fdensemble/data/vtd_composite.parquet \
+    --vtd-demographics ../fdensemble/data/vtd_demographics.parquet \
+    --vtd-muni ../fdensemble/data/vtd_muni.parquet \
+    --output ../fdensemble/input_data/fdga_2026_benchmark_congress_scorecard.json
+```
+
+The output JSON contains pre-computed Princeton grades, histograms, river data,
+proportionality gap, correlation matrix, and demographic threshold arrays for
+every metric. fdensemble reads it at startup — no database required.
+
+### Benchmark Config YAML
+
+Every benchmark run is fully described by a YAML file in `configs/benchmarks/`.
+Nothing is hardcoded in the scoring scripts.
+
+```
+configs/benchmarks/
+├── ga_congress_2026_v1.yml    ← GerryChain ReCom, 99K draws
+├── ga_congress_2026_alarm.yml ← ALARM SMC, 5K draws
+├── ga_senate_2026_v1.yml      ← Senate 56 districts
+└── ga_house_2026_v1.yml       ← House 180 districts
+```
+
+Key YAML sections:
+
+```yaml
+benchmark_id: ga_congress_2026_v1
+chamber:
+  name: congress
+  n_districts: 14
+geography:
+  state: GA
+  geo_level: vtd
+  vintage_year: 2020
+elections:
+  - label: "2018–2024 Composite"
+    composite: true
+    years: [2018, 2020, 2022, 2024]
+demographics:
+  thresholds: [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
+  default_threshold: 0.50
+competitiveness:
+  thresholds: [0.035, 0.05]   # 7pt and 10pt margins
+grading:
+  ensemble_pass_lo: 5
+  ensemble_pass_hi: 95
+```
+
+The `BenchmarkConfig` dataclass in `fdp/benchmark_config/benchmark.py` loads
+these YAMLs and is the single source of truth for all parameters. Import it
+from any scoring script:
+
+```python
+from fdp.benchmark_config.benchmark import BenchmarkConfig
+cfg = BenchmarkConfig.from_yaml("configs/benchmarks/ga_congress_2026_v1.yml")
+print(cfg.chamber.n_districts)   # 14
+print(cfg.benchmark_id)          # "ga_congress_2026_v1"
+```
+
+---
+
 ## Related Projects
 
 | Project | How it uses fdp |
@@ -398,3 +496,4 @@ are needed, then copies them from the active repo (workspace-aware).
 | **fdga-chain** | Python import; `DataPlatform(app="fdga_chain")` resolves all data paths |
 | **lrdb** | `npm run sync` copies GeoJSON + helper CSVs from fdp |
 | **map-compare** | `npm run sync` copies GeoJSON from fdp |
+| **fdensemble** | Reads scorecard JSONs from `input_data/` (built by `build_scorecard.py`); reads VTD parquets from `data/` |
