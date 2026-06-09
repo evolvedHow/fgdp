@@ -70,8 +70,8 @@ export interface MetricGrade {
   description: string;
   takeaway: string;
   grade: string;
-  grade_symmetric?: string;  // retained for VRA floor metrics (lineage)
-  floor?: number;            // 10th-pct floor value for floor-graded metrics
+  grade_symmetric?: string;  // legacy — no longer produced; kept for JSON forward-compat
+  floor?: number;            // legacy — no longer produced; kept for JSON forward-compat
   enacted: number;
   pct_rank: number;
   histogram: Histogram;

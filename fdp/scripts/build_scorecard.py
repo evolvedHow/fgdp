@@ -38,7 +38,7 @@ INFLUENCE_MIN_THRESHOLD       = 0.37   # minority influence band lower bound (FD
 INFLUENCE_MAX_THRESHOLD       = 0.50   # minority influence band upper bound
 
 # Demographic threshold slider — precompute per-draw counts at each step for
-# maj_black, maj_white, min_coal.  Default display uses 0.50 (true VRA majority).
+# maj_black, maj_white, min_coal.  Default display uses 0.50 (demographic majority).
 DEMO_THRESHOLDS        = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
 DEMO_DEFAULT_THRESHOLD = 0.50   # primary display threshold in the UI
 MAJORITY_THRESHOLD = DEMO_DEFAULT_THRESHOLD   # alias imported by build_alarm_scorecard.py
@@ -108,10 +108,10 @@ _METRIC_FORMULAS: dict[str, dict] = {
     },
     "maj_black": {
         "formula":       "count(d : cvap_blk_d / cvap_tot_d ≥ majority_threshold)",
-        "detail":        "Uses 2024 ACS CVAP Special Tabulation (any-part Black CVAP / Total Citizen VAP), aggregated to 2020 VTDs by build_cvap_vtd.py. CVAP is the VRA §2 standard — excludes non-citizen population from the denominator, so Black-opportunity districts correctly show 51-57% rather than 47-49%.",
+        "detail":        "Uses 2024 ACS CVAP Special Tabulation (any-part Black CVAP / Total Citizen VAP), aggregated to 2020 VTDs by build_cvap_vtd.py. CVAP excludes non-citizen population from the denominator, so Black-majority districts correctly show 51-57% rather than 47-49%.",
         "data_source":   "2024 ACS CVAP Special Tabulation (any-part Black CVAP / Total Citizen VAP) — cvap_vtd.parquet",
-        "config_keys":   ["bvap_majority_threshold"],
-        "grading_method": "directional (higher = better; only shortfalls penalized)",
+        "config_keys":   ["majority_threshold"],
+        "grading_method": "symmetric (both tails notable — unusually high or low deviates from neutral geography)",
     },
     "maj_hisp": {
         "formula":       "count(d : bvap_hsp_d / bvap_tot_d ≥ majority_threshold)",
@@ -139,7 +139,7 @@ _METRIC_FORMULAS: dict[str, dict] = {
         "detail":        "Combined non-white VAP share (1 − NH White fraction). A minority-coalition district includes multiple racial groups, none individually a majority.",
         "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["majority_threshold"],
-        "grading_method": "directional (higher = better; only shortfalls penalized)",
+        "grading_method": "symmetric (both tails notable — unusually high or low deviates from neutral geography)",
     },
     "maj_white": {
         "formula":       "count(d : bvap_wht_d / bvap_tot_d ≥ majority_threshold)",
@@ -150,7 +150,7 @@ _METRIC_FORMULAS: dict[str, dict] = {
     },
     "min_influence": {
         "formula":       "count(d : influence_min ≤ (1 − bvap_wht_d / bvap_tot_d) < influence_max)",
-        "detail":        "Districts where communities of color have meaningful electoral influence but do not constitute a majority. Below the majority threshold for direct VRA Section 2 protection, but above the FDGA influence floor where minority voters can meaningfully affect outcomes.",
+        "detail":        "Districts where communities of color collectively hold between the lower influence floor and the majority threshold of Citizen Voting Age Population — above the level where minority voters can meaningfully influence electoral outcomes, but below a demographic majority.",
         "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["influence_min_threshold", "influence_max_threshold"],
         "grading_method": "directional (higher = more influence districts)",
@@ -225,36 +225,33 @@ _METRIC_META: dict[str, tuple] = {
         f"produces fewer competitive districts than neutral alternatives would.",
         True),
     "maj_black": (
-        "Black Community Representation",
-        "Do Black voters have the opportunity to elect representatives of their choice?",
+        "Black Demographic Majority Districts",
+        "How does the map distribute districts with a Black demographic majority?",
         "minority",
         "Counts districts where Black Citizen Voting Age Population (CVAP) meets or exceeds the "
-        "selected threshold. At 50% (default): traditional VRA Section 2 majority standard — "
-        "districts where Black voters can independently elect candidates of their choice. "
-        "Slide the threshold down to 20% to see influence districts, where Black voters "
-        "hold meaningful but not majority electoral power. "
-        "Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that "
-        "dilute minority communities' ability to elect their preferred candidates. "
+        "selected threshold. At 50% (default): districts where Black citizens constitute a "
+        "majority of eligible voters. Slide the threshold down to 20% to see districts where "
+        "Black voters hold meaningful but not majority electoral weight. "
         "The histogram shows how many districts at the selected threshold thousands of "
-        "neutrally drawn alternative maps produce. Directional grading: only enacted maps "
-        "producing fewer majority-Black districts than neutral alternatives are penalized. "
-        "A map that preserves or exceeds the neutral ensemble's Black district count does "
-        "not score down. "
+        "neutrally drawn alternative maps produce. Symmetric grading: both unusually high "
+        "and unusually low counts relative to the neutral ensemble signal that district "
+        "boundaries depart from what geography and demographics alone would produce. "
         "Uses 2024 ACS CVAP Special Tabulation (any-part Black Citizen VAP / Total Citizen VAP). "
-        "CVAP is the VRA §2 standard — excludes non-citizen population from the denominator.",
-        True),
+        "CVAP excludes non-citizen population from the denominator.",
+        None),
     "min_coal": (
-        "Minority Coalition Representation",
-        "Do communities of color collectively hold electoral influence?",
+        "Minority Coalition Majority Districts",
+        "How does the map distribute districts with a non-white demographic majority?",
         "minority",
         "Counts districts where non-white Voting Age Population meets or exceeds the "
         "selected threshold. At 50% (default): districts where communities of color "
-        "collectively hold majority electoral power. At 20%: broader influence districts "
-        "where diverse communities have meaningful but not majority impact. "
-        "Directional grading: only enacted maps producing fewer minority-coalition "
-        "districts than neutral alternatives are penalized. "
+        "collectively constitute a majority of eligible voters. At 20%: broader districts "
+        "where diverse communities have meaningful but not majority electoral weight. "
+        "Symmetric grading: both unusually high and unusually low counts relative to the "
+        "neutral ensemble indicate that district boundaries depart from what geography "
+        "and demographics alone would produce. "
         "Uses 2024 ACS CVAP Special Tabulation (non-white Citizen VAP / Total Citizen VAP).",
-        True),
+        None),
     "muni_splits": (
         "Split Cities & Municipalities",
         "How many cities and towns are divided across different districts?",
@@ -283,15 +280,15 @@ _METRIC_META: dict[str, tuple] = {
         None),
     "min_influence": (
         "Minority Influence Districts",
-        "How many districts give communities of color meaningful electoral influence without a majority?",
+        "How many districts have a significant but sub-majority minority population?",
         "minority",
         "Counts districts where communities of color collectively hold between the FDGA influence "
         f"floor ({INFLUENCE_MIN_THRESHOLD*100:.0f}%) and the majority threshold "
         f"({INFLUENCE_MAX_THRESHOLD*100:.0f}%) of the Citizen Voting Age Population. "
-        "These districts are below the threshold for direct Section 2 Voting Rights Act protection "
-        "but above the level at which minority voters can meaningfully influence electoral outcomes "
-        "and hold candidates accountable. More influence districts indicates broader minority "
-        "electoral participation. Both thresholds are configurable.",
+        "These districts have a significant minority presence — enough to meaningfully "
+        "influence electoral outcomes — without constituting a demographic majority. "
+        "More influence districts indicates broader minority electoral participation "
+        "across the map. Both thresholds are configurable.",
         True),
     "dem_safe_seats": (
         "Safe Democratic Seats",
@@ -416,31 +413,51 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
                     f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
 
     elif key == "maj_black":
-        if pct_rank < 10:
+        if pct_rank < 5:
             return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
-                    f"fewer than {100-pct_rank:.0f}% of neutral maps "
-                    f"(neutral range: {p5:.0f}–{p95:.0f}). "
-                    f"This is significantly below what geography alone would suggest, "
-                    f"raising potential Voting Rights Act concerns.")
-        elif pct_rank > 90:
+                    f"at the {pct_rank:.0f}th percentile, fewer than {100-pct_rank:.0f}% "
+                    f"of neutral maps (neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"This is a statistical outlier: well below what geography and "
+                    f"demographics alone would typically produce.")
+        elif pct_rank > 95:
+            above_pct = min(int(pct_rank), 99)
             return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
-                    f"more than most neutral alternatives (neutral range: {p5:.0f}–{p95:.0f}). "
-                    f"Black communities have strong electoral representation opportunity.")
+                    f"above {above_pct}% of neutral maps (neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"This is a statistical outlier: well above what geography and "
+                    f"demographics alone would typically produce.")
+        elif pct_rank < 25:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
+                    f"below the typical neutral range ({p5:.0f}–{p95:.0f}), "
+                    f"at the {pct_rank:.0f}th percentile.")
+        elif pct_rank > 75:
+            return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
+                    f"above the typical neutral range ({p5:.0f}–{p95:.0f}), "
+                    f"at the {pct_rank:.0f}th percentile.")
         else:
             return (f"The enacted map has {enacted:.0f} majority-Black district(s), "
                     f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")
 
     elif key == "min_coal":
-        if pct_rank < 10:
+        if pct_rank < 5:
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
-                    f"fewer than {100-pct_rank:.0f}% of neutral maps "
-                    f"(neutral range: {p5:.0f}–{p95:.0f}). "
-                    f"Communities of color have less collective electoral influence "
-                    f"than geography alone would support.")
-        elif pct_rank > 90:
+                    f"at the {pct_rank:.0f}th percentile, fewer than {100-pct_rank:.0f}% "
+                    f"of neutral maps (neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"This is a statistical outlier: well below what geography and "
+                    f"demographics alone would typically produce.")
+        elif pct_rank > 95:
+            above_pct = min(int(pct_rank), 99)
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
-                    f"more than most neutral alternatives. Communities of color have "
-                    f"strong collective electoral influence.")
+                    f"above {above_pct}% of neutral maps (neutral range: {p5:.0f}–{p95:.0f}). "
+                    f"This is a statistical outlier: well above what geography and "
+                    f"demographics alone would typically produce.")
+        elif pct_rank < 25:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
+                    f"below the typical neutral range ({p5:.0f}–{p95:.0f}), "
+                    f"at the {pct_rank:.0f}th percentile.")
+        elif pct_rank > 75:
+            return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
+                    f"above the typical neutral range ({p5:.0f}–{p95:.0f}), "
+                    f"at the {pct_rank:.0f}th percentile.")
         else:
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s), "
                     f"within the typical range for neutral maps ({p5:.0f}–{p95:.0f}).")

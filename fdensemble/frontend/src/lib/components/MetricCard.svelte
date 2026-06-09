@@ -407,42 +407,17 @@
           </div>
         {:else}
           <!-- Default: enacted grades -->
-          {#if (metric as any).grade_symmetric !== undefined && (metric as any).grade_symmetric !== metric.grade}
-            <!-- Dual grade: VRA floor + symmetric side by side -->
-            <div style="display:flex;align-items:center;gap:.5rem;">
-              <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;">
-                <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
-                             color:{gradeColor[displayedGrade] ?? '#888'};">VRA Floor</span>
-                <span style="display:inline-flex;align-items:center;justify-content:center;
-                             width:1.7rem;height:1.7rem;border-radius:50%;
-                             background:{gradeColor[displayedGrade] ?? '#888'};
-                             color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{displayedGrade}</span>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;gap:.1rem;opacity:.55;">
-                <span style="font-size:.5rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
-                             color:var(--gray);">Symmetric</span>
-                <span style="display:inline-flex;align-items:center;justify-content:center;
-                             width:1.7rem;height:1.7rem;border-radius:50%;
-                             background:{gradeColor[(metric as any).grade_symmetric] ?? '#888'};
-                             color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{(metric as any).grade_symmetric}</span>
-              </div>
-            </div>
-            <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile
-              {#if demoThresholdKey}<span style="font-size:.6rem;color:#8e44ad;font-style:italic;"> @{Math.round(+demoThresholdKey*100)}%</span>{/if}
-            </span>
-          {:else}
-            <!-- Single grade -->
-            <div style="display:flex;align-items:center;gap:.4rem;">
-              <span style="display:inline-flex;align-items:center;justify-content:center;
-                           width:1.7rem;height:1.7rem;border-radius:50%;
-                           background:{gradeColor[displayedGrade] ?? '#888'};
-                           color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{displayedGrade}</span>
-              <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile</span>
-              {#if demoThresholdKey}
-                <span style="font-size:.6rem;color:#8e44ad;font-style:italic;" title="Grade recomputed at {Math.round(+demoThresholdKey*100)}% BVAP threshold">@{Math.round(+demoThresholdKey*100)}%</span>
-              {/if}
-            </div>
-          {/if}
+          <!-- Single grade -->
+          <div style="display:flex;align-items:center;gap:.4rem;">
+            <span style="display:inline-flex;align-items:center;justify-content:center;
+                         width:1.7rem;height:1.7rem;border-radius:50%;
+                         background:{gradeColor[displayedGrade] ?? '#888'};
+                         color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{displayedGrade}</span>
+            <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile</span>
+            {#if demoThresholdKey}
+              <span style="font-size:.6rem;color:#8e44ad;font-style:italic;" title="Grade recomputed at {Math.round(+demoThresholdKey*100)}% BVAP threshold">@{Math.round(+demoThresholdKey*100)}%</span>
+            {/if}
+          </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
             <div>
               <div style="font-size:.58rem;text-transform:uppercase;letter-spacing:.04em;color:var(--gray);">Enacted</div>
@@ -463,12 +438,6 @@
             </div>
             {/if}
           </div>
-          {#if !planMetric && (metric as any).grade_symmetric !== undefined}
-            <span class="info-tip" style="margin-top:.3rem;">
-              <span class="info-tip-icon" style="color:#8e44ad;">ⓘ VRA floor</span>
-              <span class="info-tip-box">Directional grading: only enacted maps with <em>fewer</em> majority-minority districts than neutral alternatives are penalized. Grade F = below the race-neutral 5th percentile floor. Symmetric grade shown for reference.</span>
-            </span>
-          {/if}
         {/if}
       </div>
 
