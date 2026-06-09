@@ -3,13 +3,9 @@
 # 56 districts | 2020 VTD base | 6 elections | redist Sequential Monte Carlo
 # pop_epsilon: 0.05 (±5% — Reynolds v. Sims constitutional standard)
 #
-# Build the redist_map first:
-#   Rscript fdp/scripts/build_senate_map.R
-#
-# Upload map to Modal volume:
-#   modal volume put fdga-chain-data \
-#       fdensemble/dataverse_files/GA_ss_2020/GA_ss_2020_map.rds \
-#       /maps/GA_ss_2020_map.rds
+# Build the redist_map (no local R install needed — runs inside cached Modal image):
+#   cd fdga-chain
+#   modal run modal_alarm_app.py::build_map --chamber senate
 #
 # Run:
 #   cd fdga-chain

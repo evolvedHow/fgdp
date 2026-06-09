@@ -1383,12 +1383,16 @@ def build_scorecard(
     influence_max: float = INFLUENCE_MAX_THRESHOLD,
     # Legacy single-threshold compat (ignored if competitive_thresholds is set)
     competitive_threshold: float | None = None,
+    source: str | None = None,   # "gerrychain" | "alarm" — auto-detected from run_name if None
 ) -> dict:
     """
-    Build the canonical scorecard JSON for a GerryChain scored run.
+    Build the canonical scorecard JSON for a GerryChain or ALARM SMC scored run.
 
     Returns the scorecard dict (also written to disk by main()).
     """
+    # Auto-detect source from run name if not provided
+    if source is None:
+        source = "alarm" if "_alarm" in run_name.lower() else "gerrychain"
     if competitive_thresholds is None:
         if competitive_threshold is not None:
             competitive_thresholds = [competitive_threshold]
@@ -1560,19 +1564,24 @@ def build_scorecard(
         "run": {
             "id":          _orig_run_name,
             "name":        _orig_run_name.replace("_", " ").title(),
-            "source":      "gerrychain",
+            "source":      source,
             "source_run":  _base,           # underlying parquet prefix
             "chamber":     chamber,
             "n_districts": n_districts,
             "n_draws":     n_draws_total,
             "n_plans":     n_draws_total,  # alias for fdensemble compat
-            "algorithm":   "ReCom",
+            "algorithm":   "SMC" if source == "alarm" else "ReCom",
             "date":        date.today().isoformat(),
             "description": (
-                f"GerryChain ReCom MCMC ensemble — {chamber} redistricting, "
-                f"{n_draws_total:,} draws across {len(elections)} elections."
+                (
+                    f"ALARM SMC ensemble — {chamber} redistricting, "
+                    f"{n_draws_total:,} plans via independent SMC chains across {len(elections)} elections."
+                ) if source == "alarm" else (
+                    f"GerryChain ReCom MCMC ensemble — {chamber} redistricting, "
+                    f"{n_draws_total:,} draws across {len(elections)} elections."
+                )
             ),
-            "tags":        ["gerrychain", "recom", chamber],
+            "tags":        [source, "smc" if source == "alarm" else "recom", chamber],
             "elections":   [
                 {"year": e["year"], "election_type": e["election_type"],
                  "office": e["office"], "label": e["label"]}
@@ -1644,6 +1653,8 @@ def main() -> None:
                     help=f"Minority influence district lower bound (default: {INFLUENCE_MIN_THRESHOLD} = {INFLUENCE_MIN_THRESHOLD*100:.0f}%%)")
     ap.add_argument("--influence-max", type=float, default=INFLUENCE_MAX_THRESHOLD,
                     help=f"Minority influence district upper bound (default: {INFLUENCE_MAX_THRESHOLD} = {INFLUENCE_MAX_THRESHOLD*100:.0f}%%)")
+    ap.add_argument("--source", default=None, choices=["gerrychain", "alarm"],
+                    help="Ensemble source (auto-detected from run_name if omitted: '_alarm' → alarm, else gerrychain)")
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir) if args.data_dir else DEFAULT_DATA_DIR
@@ -1656,6 +1667,7 @@ def main() -> None:
         base_run_name=args.base_run_name,
         influence_min=args.influence_min,
         influence_max=args.influence_max,
+        source=args.source,
     )
 
     out_file.parent.mkdir(parents=True, exist_ok=True)

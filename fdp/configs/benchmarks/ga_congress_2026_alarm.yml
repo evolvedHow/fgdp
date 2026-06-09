@@ -2,8 +2,9 @@
 # Georgia Congressional Benchmark — ALARM SMC
 # 14 districts | 2020 VTD base | 6 elections | redist Sequential Monte Carlo
 #
-# Same geography, elections, grading, and output as ga_congress_2026_v2.yml.
-# Only the algorithm section differs: SMC instead of ReCom MCMC.
+# Same 6-election composite as ga_congress_2026_v2.yml; only the algorithm
+# section differs: SMC instead of ReCom MCMC.  uss_r22 excluded until the
+# 2022-Dec-06 runoff data is loaded into Supabase.
 #
 # Run:
 #   cd fdga-chain
@@ -69,14 +70,6 @@ elections:
     year: 2022
     election_type: general
     office: senate
-    partisan_score: true
-    competitive: true
-
-  - label: uss_r22
-    year: 2022
-    election_type: runoff
-    office: senate
-    candidates: [war, wal]
     partisan_score: true
     competitive: true
 
