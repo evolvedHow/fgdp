@@ -107,9 +107,9 @@ _METRIC_FORMULAS: dict[str, dict] = {
         "grading_method": "directional (lower = fewer splits)",
     },
     "maj_black": {
-        "formula":       "count(d : bvap_blk_d / bvap_tot_d ≥ bvap_majority_threshold)",
+        "formula":       "count(d : cvap_blk_d / cvap_tot_d ≥ majority_threshold)",
         "detail":        "Uses 2024 ACS CVAP Special Tabulation (any-part Black CVAP / Total Citizen VAP), aggregated to 2020 VTDs by build_cvap_vtd.py. CVAP is the VRA §2 standard — excludes non-citizen population from the denominator, so Black-opportunity districts correctly show 51-57% rather than 47-49%.",
-        "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
+        "data_source":   "2024 ACS CVAP Special Tabulation (any-part Black CVAP / Total Citizen VAP) — cvap_vtd.parquet",
         "config_keys":   ["bvap_majority_threshold"],
         "grading_method": "directional (higher = better; only shortfalls penalized)",
     },
@@ -959,8 +959,8 @@ def _build_demographics(
         return None
 
     return {
-        "source":  "bvap",
-        "year":    2020,  # 2020 Census PL 94-171 headcounts
+        "source":  "cvap",
+        "year":    2024,  # 2024 ACS CVAP Special Tabulation (any-part Black)
         "metrics": metrics,
     }
 

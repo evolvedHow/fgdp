@@ -87,6 +87,7 @@ _REPO_ROOT    = _SCRIPT_DIR.parent.parent          # fgdp/
 _FDP_DIR      = _SCRIPT_DIR.parent                 # fgdp/fdp/
 _DATAVERSE    = _REPO_ROOT / "fdensemble" / "dataverse_files" / "GA_cd_2020"
 _VTD_COMPOSITE = _FDP_DIR / "data" / "repos" / "main" / "vtd" / "vtd_composite.parquet"
+_VTD_CVAP      = _FDP_DIR / "data" / "repos" / "main" / "vtd" / "cvap_vtd.parquet"
 _DEFAULT_OUT  = _REPO_ROOT / "fdensemble" / "input_data"
 
 ALARM_RDS     = _DATAVERSE / "GA_cd_2020_map.rds"
@@ -282,6 +283,68 @@ def load_nonpartisan_metrics(stats_csv: Path) -> tuple[pd.DataFrame, pd.DataFram
 
     sampled_df = _minority_counts(sampled_raw)
     enacted_df = _minority_counts(enacted_raw)
+    return sampled_df, enacted_df
+
+
+# ── Step 3b: CVAP-based demographics (replaces BVAP from stats CSV) ───────────
+
+def compute_cvap_demographics(
+    plans_matrix: pd.DataFrame,
+    geoids: list[str],
+    cvap_vtd: pd.DataFrame,
+    n_districts: int = 14,
+    majority_threshold: float = MAJORITY_THRESHOLD,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Vectorised CVAP-based majority-Black / minority-coalition counts per plan.
+
+    Uses 2024 ACS CVAP Special Tabulation (any-part Black CVAP / Total Citizen VAP)
+    from cvap_vtd.parquet — the same source as the GerryChain pipeline.  Replaces
+    the BVAP-from-stats-CSV calculation so both ensembles share a consistent VRA §2
+    denominator.
+
+    Returns (sampled_df, enacted_df) indexed the same as compute_partisan_metrics.
+    """
+    cvap_lookup = cvap_vtd.set_index("GEOID20")[["bvap_tot", "bvap_blk", "bvap_wht"]]
+    aligned = (
+        pd.Series(geoids, name="GEOID20")
+        .to_frame()
+        .join(cvap_lookup, on="GEOID20", how="left")
+        .fillna(0.0)
+    )
+    cvap_tot_vtd = aligned["bvap_tot"].values   # (2698,)
+    cvap_blk_vtd = aligned["bvap_blk"].values
+    cvap_wht_vtd = aligned["bvap_wht"].values
+
+    enacted_col  = plans_matrix["cd_2020"].values.astype(np.int8)
+    sampled_cols = plans_matrix.drop(columns=["cd_2020"]).values.astype(np.int8)
+    n_sampled    = sampled_cols.shape[1]
+
+    def _demo_metrics(assignments_2d: np.ndarray) -> pd.DataFrame:
+        n_plans_local = assignments_2d.shape[1]
+        tot = np.zeros((n_districts + 1, n_plans_local))
+        blk = np.zeros((n_districts + 1, n_plans_local))
+        wht = np.zeros((n_districts + 1, n_plans_local))
+        for d in range(1, n_districts + 1):
+            mask = assignments_2d == d
+            tot[d] = (mask * cvap_tot_vtd[:, np.newaxis]).sum(axis=0)
+            blk[d] = (mask * cvap_blk_vtd[:, np.newaxis]).sum(axis=0)
+            wht[d] = (mask * cvap_wht_vtd[:, np.newaxis]).sum(axis=0)
+        safe_tot  = np.where(tot[1:] > 0, tot[1:], 1.0)
+        frac_blk  = blk[1:] / safe_tot
+        frac_nonw = 1.0 - wht[1:] / safe_tot
+        return pd.DataFrame({
+            "maj_black": (frac_blk  >= majority_threshold).sum(axis=0).astype(float),
+            "min_coal":  (frac_nonw >= majority_threshold).sum(axis=0).astype(float),
+        })
+
+    sampled_df = _demo_metrics(sampled_cols)
+    sampled_df.index = range(1, n_sampled + 1)
+    sampled_df.index.name = "draw"
+
+    enacted_df = _demo_metrics(enacted_col[:, np.newaxis])
+    enacted_df.index = pd.Index(["cd_2020"], name="draw")
+
     return sampled_df, enacted_df
 
 
@@ -569,6 +632,14 @@ def build_alarm_scorecard(
     print(f"  VTD composite: {len(vtd_composite)} VTDs, "
           f"statewide dem 2PV: {vtd_composite['composite_dem_2pv'].mean():.4f}")
 
+    if not _VTD_CVAP.exists():
+        raise FileNotFoundError(
+            f"CVAP parquet not found: {_VTD_CVAP}\n"
+            "  Run build_cvap_vtd.py first."
+        )
+    cvap_vtd = pd.read_parquet(_VTD_CVAP)
+    print(f"  CVAP: {len(cvap_vtd)} VTDs (2024 ACS, any-part Black)")
+
     # ── Partisan metrics ──
     print("\n[2/6] Computing partisan metrics (vectorised)…")
     sampled_partisan, enacted_partisan = compute_partisan_metrics(
@@ -586,6 +657,16 @@ def build_alarm_scorecard(
     sampled_geo, enacted_geo = load_nonpartisan_metrics(STATS_CSV)
     print(f"  Polsby-Popper enacted: {enacted_geo['polsby_popper'].iloc[0]:.3f}  "
           f"county_splits: {enacted_geo['county_splits'].iloc[0]:.0f}")
+
+    # Replace BVAP-based maj_black / min_coal with 2024 ACS CVAP equivalents so
+    # both ALARM and GerryChain ensembles share the same VRA §2 denominator.
+    sampled_cvap, enacted_cvap = compute_cvap_demographics(plans_matrix, geoids, cvap_vtd)
+    sampled_geo["maj_black"] = sampled_cvap["maj_black"].reindex(sampled_geo.index).fillna(0)
+    sampled_geo["min_coal"]  = sampled_cvap["min_coal"].reindex(sampled_geo.index).fillna(0)
+    enacted_geo.loc[:, "maj_black"] = float(enacted_cvap["maj_black"].iloc[0])
+    enacted_geo.loc[:, "min_coal"]  = float(enacted_cvap["min_coal"].iloc[0])
+    print(f"  CVAP maj_black (enacted): {enacted_geo['maj_black'].iloc[0]:.0f}  "
+          f"min_coal: {enacted_geo['min_coal'].iloc[0]:.0f}")
 
     # ── Grade all metrics ──
     print("\n[4/6] Computing Princeton grades…")
@@ -609,8 +690,8 @@ def build_alarm_scorecard(
         },
     }
     demographics = {
-        "source": "ALARM VAP (GA_cd_2020_stats.csv)",
-        "year":   2020,
+        "source": "cvap",
+        "year":   2024,  # 2024 ACS CVAP Special Tabulation (any-part Black)
         "metrics": {
             k: metric_grades[k]
             for k in ["maj_black", "min_coal"]

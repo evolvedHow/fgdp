@@ -43,7 +43,7 @@ import pyarrow.parquet as pq
 _SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = _SCRIPT_DIR.parent / "data/repos/main"
 
-MAJORITY_THRESHOLD = 0.20   # ≥ 20% BVAP = influence/coalition district (configurable)
+MAJORITY_THRESHOLD = 0.50   # ≥ 50% CVAP = VRA majority threshold (configurable via --threshold)
 
 
 # ---------------------------------------------------------------------------
