@@ -1,38 +1,39 @@
 # =============================================================================
-# Georgia Congressional Benchmark — ALARM SMC
-# 14 districts | 2020 VTD base | 6 elections | redist Sequential Monte Carlo
+# Georgia State Senate Benchmark — ALARM SMC
+# 56 districts | 2020 VTD base | 6 elections | redist Sequential Monte Carlo
+# pop_epsilon: 0.05 (±5% — Reynolds v. Sims constitutional standard)
 #
-# Same geography, elections, grading, and output as ga_congress_2026_v2.yml.
-# Only the algorithm section differs: SMC instead of ReCom MCMC.
+# Build the redist_map first:
+#   Rscript fdp/scripts/build_senate_map.R
+#
+# Upload map to Modal volume:
+#   modal volume put fdga-chain-data \
+#       fdensemble/dataverse_files/GA_ss_2020/GA_ss_2020_map.rds \
+#       /maps/GA_ss_2020_map.rds
 #
 # Run:
 #   cd fdga-chain
 #   modal run modal_alarm_app.py::run_alarm_smc \
-#       --run-name fdga_baseline_benchmarks_2601_congress_alarm \
-#       --chamber congress --n-districts 14 --district-col cd_2020 \
-#       --pop-tol 0.01 \
-#       --map-rds-path /data/alarm/GA_cd_2020_map.rds \
+#       --run-name fdga_baseline_benchmarks_2601_senate_alarm \
 #       --n-chains 10 --nsims 10000
 # =============================================================================
 
-benchmark_id: ga_congress_2026_alarm
-description: "Georgia 14-district congressional benchmark — ALARM SMC (redist)"
+benchmark_id: ga_senate_2026_alarm
+description: "Georgia 56-district State Senate benchmark — ALARM SMC (redist)"
 version: "1.0"
 
 geography:
   state: GA
   geo_level: vtd
   vintage_year: 2020
-  # Note: graph_file is not used by the SMC runner (redist reads the RDS map
-  # directly). Kept here for schema compatibility with BenchmarkConfig.
-  graph_file: fdga-chain/data/graphs/ga_congress.json
+  graph_file: fdga-chain/data/graphs/ga_senate.json   # GerryChain graph (not used by SMC runner)
 
 chamber:
-  name: congress
-  n_districts: 14
+  name: senate
+  n_districts: 56
   pop_column: TOTPOP
-  pop_epsilon: 0.01            # ±1% — Princeton/MGGG standard for congressional benchmarks
-  district_col: cd_2020        # enacted plan column in the redist_map RDS
+  pop_epsilon: 0.05            # ±5% — Reynolds v. Sims constitutional standard
+  district_col: SDIST          # enacted plan column in GA_ss_2020_map.rds
 
 elections:
 
@@ -72,14 +73,6 @@ elections:
     partisan_score: true
     competitive: true
 
-  - label: uss_r22
-    year: 2022
-    election_type: runoff
-    office: senate
-    candidates: [war, wal]
-    partisan_score: true
-    competitive: true
-
   - label: pre_2024
     year: 2024
     election_type: general
@@ -110,8 +103,9 @@ demographics:
 
 # ── SMC algorithm parameters ──────────────────────────────────────────────────
 # algorithm: smc        → redist_smc() from the ALARM/redist R package
-# nsims:                → plans per independent chain (not MCMC steps)
+# nsims:                → plans per independent chain
 # n_chains:             → independent SMC chains run in parallel on Modal
+# pop_epsilon:          → population tolerance (0.05 = ±5%)
 # compactness:          → redist_smc compactness weight (1.0 = default)
 # counties_col:         → redist_map column for county-split constraint
 # random_seed:          → base seed; each chain gets seed + chain_idx
@@ -119,7 +113,7 @@ mcmc:
   algorithm: smc
   nsims: 10000           # plans per chain; 10 chains → 100,000 total
   n_chains: 10
-  pop_epsilon: 0.01
+  pop_epsilon: 0.05
   compactness: 1.0
   counties_col: pseudo_county
   random_seed: 42
