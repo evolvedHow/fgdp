@@ -4,7 +4,7 @@ build_alarm_scorecard.py — Re-score the ALARM SMC ensemble with the 2018-2024 
 
 The original ALARM stats CSV uses a 2016-2020 election composite.  This script
 replaces that with the same VTD-level composite used by the GerryChain benchmarks
-(2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov+Senate avg, 2024 Pres),
+(2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov, 2022 Senate, 2024 Pres),
 so that ALARM and GerryChain benchmarks share an identical electoral baseline.
 The only remaining difference between the two benchmarks is the algorithm:
   ALARM  — SMC Sequential Monte Carlo, 2 independent chains × 5,000 plans
@@ -679,8 +679,8 @@ def build_alarm_scorecard(
             "date":        today,
             "description": (
                 f"ALARM Project SMC ensemble for Georgia {chamber} redistricting. "
-                "Re-scored with the 2018–2024 five-election composite (2018 Governor, "
-                "2020 President, 2021 Warnock Senate Runoff, 2022 Governor + Senate avg, "
+                "Re-scored with the 2018–2024 six-election composite (2018 Governor, "
+                "2020 President, 2021 Warnock Senate Runoff, 2022 Governor, 2022 Senate, "
                 "2024 President) to match the GerryChain benchmark electoral baseline. "
                 "Non-partisan metrics (compactness, splits, minority VAP) are from the "
                 "original ALARM stats CSV (ALARM Project via Harvard Dataverse, "

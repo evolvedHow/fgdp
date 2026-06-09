@@ -42,6 +42,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
+import yaml
 
 # ── Config ─────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ def load_elections(
     geoids: list[str],
     race_filter: list[str] | None,
     elections_file: Path,
+    config_race_keys: list[tuple] | None = None,
 ) -> tuple[np.ndarray, list[tuple]]:
     """
     Load election results from local Parquet and return:
@@ -140,17 +142,28 @@ def load_elections(
         )
 
     # Always restrict to priority races unless caller explicitly overrides
-    PRIORITY_OFFICES = ("president", "governor", "senate", "us-house", "state-rep")
-    effective_filter = race_filter if race_filter else list(PRIORITY_OFFICES)
+    PRIORITY_OFFICES = ("president", "governor", "senate", "us-house", "state-rep", "composite")
 
     print(f"\nLoading election results from {elections_file.name} …")
     df = pd.read_parquet(elections_file)
 
-    # Filter to priority offices and dem/rep only
-    df = df[
-        df["party"].isin(["dem", "rep"]) &
-        df["office"].isin(effective_filter)
-    ]
+    # Filter to relevant offices and dem/rep only.
+    # config_race_keys uses row-wise apply (slightly slower than .isin) because
+    # it must match on (year, election_type, office) tuples together, not each column alone.
+    if config_race_keys:
+        # Config-driven: exact (year, election_type, office) tuples
+        race_set = {(y, t, o) for y, t, o in config_race_keys}
+        df = df[
+            df["party"].isin(["dem", "rep"]) &
+            df.apply(
+                lambda r: (int(r["year"]), r["election_type"], r["office"]) in race_set,
+                axis=1,
+            )
+        ]
+    elif race_filter:
+        df = df[df["party"].isin(["dem", "rep"]) & df["office"].isin(race_filter)]
+    else:
+        df = df[df["party"].isin(["dem", "rep"]) & df["office"].isin(list(PRIORITY_OFFICES))]
 
     # Identify unique races
     races = (df[["year","election_type","office"]]
@@ -321,7 +334,9 @@ def main() -> None:
                     help="Path to write scores Parquet. "
                          "Defaults to {data_dir}/ensemble/{run_name}_scores.parquet.")
     ap.add_argument("--config", default=None,
-                    help="(Ignored — reserved for future election filtering from YAML.)")
+                    help="Path to benchmark YAML config (e.g. fdp/configs/benchmarks/ga_congress_2026_v3.yml). "
+                         "When provided, restricts scored elections to those listed in the config's elections: block "
+                         "(by year, election_type, office). The composite election (year=0) is always included.")
     ap.add_argument("--dry-run", action="store_true",
                     help="Compute scores but do not write output")
     ap.add_argument("--races", nargs="*", default=None,
@@ -356,8 +371,27 @@ def main() -> None:
         print(f"    modal volume get fdga-chain-data /ensemble/{PLAN_ID}_plans.parquet .")
         import sys; sys.exit(1)
 
+    # When --config is provided, build race filter from YAML elections block
+    config_race_keys: list[tuple] | None = None
+    if args.config:
+        cfg_path = Path(args.config)
+        if not cfg_path.exists():
+            print(f"ERROR: config file not found: {cfg_path}")
+            import sys; sys.exit(1)
+        cfg = yaml.safe_load(cfg_path.read_text())
+        elections_cfg = cfg.get("elections", [])
+        if elections_cfg:
+            # Build (year, election_type, office) tuples from YAML
+            config_race_keys = [
+                (int(e["year"]), e.get("election_type", "general"), e["office"])
+                for e in elections_cfg
+            ]
+            # Always include the composite election
+            config_race_keys.append((0, "composite", "composite"))
+            print(f"  Config {cfg_path.name}: filtering to {len(config_race_keys)-1} elections + composite")
+
     plan_np, geoids = load_plan_matrix(args.races)
-    elec_np, races  = load_elections(geoids, args.races, elections_file)
+    elec_np, races  = load_elections(geoids, args.races, elections_file, config_race_keys)
     n_rows = score_plans(plan_np, elec_np, races, out_file, dry_run=args.dry_run)
 
     if not args.dry_run:

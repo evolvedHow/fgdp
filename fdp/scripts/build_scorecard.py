@@ -41,6 +41,7 @@ INFLUENCE_MAX_THRESHOLD       = 0.50   # minority influence band upper bound
 # maj_black, maj_white, min_coal.  Default display uses 0.50 (true VRA majority).
 DEMO_THRESHOLDS        = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
 DEMO_DEFAULT_THRESHOLD = 0.50   # primary display threshold in the UI
+MAJORITY_THRESHOLD = DEMO_DEFAULT_THRESHOLD   # alias imported by build_alarm_scorecard.py
 
 # Princeton grading constants (mirrors fdensemble/main.py)
 _GRADE_ORDER = ["A", "B", "C", "F"]
@@ -52,28 +53,28 @@ _METRIC_FORMULAS: dict[str, dict] = {
     "dem_seats": {
         "formula":       "count(d : dem_2pv_d ≥ 0.50)",
         "detail":        "dem_2pv_d = Σ dem_votes_vtd / Σ (dem_votes_vtd + rep_votes_vtd) for all VTDs in district d",
-        "data_source":   "VTD composite — 2018–2024 five-election average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov+Senate avg, 2024 Pres)",
+        "data_source":   "VTD composite — 2018–2024 six-election equal-weight average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov, 2022 Senate, 2024 Pres)",
         "config_keys":   [],
         "grading_method": "seats (directional, one-sided)",
     },
     "efficiency_gap": {
         "formula":       "(Σ wasted_dem − Σ wasted_rep) / Σ total_votes  across all districts",
         "detail":        "wasted_dem = excess Dem votes beyond 50%+1 in Dem wins + all Dem votes in Dem losses; symmetric for Rep",
-        "data_source":   "VTD composite — 2018–2024 composite",
+        "data_source":   "VTD composite — 2018–2024 six-election equal-weight average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov, 2022 Senate, 2024 Pres)",
         "config_keys":   [],
         "grading_method": "symmetric (both tails bad)",
     },
     "mean_median": {
         "formula":       "mean(dem_2pv_d) − median(dem_2pv_d)  across all d",
         "detail":        "Positive → Dem votes distributed less efficiently across districts (Republican structural advantage). Negative → reverse.",
-        "data_source":   "VTD composite — 2018–2024 composite",
+        "data_source":   "VTD composite — 2018–2024 six-election equal-weight average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov, 2022 Senate, 2024 Pres)",
         "config_keys":   [],
         "grading_method": "symmetric (both tails bad)",
     },
     "comp_seats": {
         "formula":       "count(d : |dem_2pv_d − 0.50| ≤ competitive_margin)",
         "detail":        "A district is competitive if the two-party Democratic share falls within ±competitive_margin of 50%",
-        "data_source":   "VTD composite — 2018–2024 composite",
+        "data_source":   "VTD composite — 2018–2024 six-election equal-weight average (2018 Gov, 2020 Pres, 2021 Warnock runoff, 2022 Gov, 2022 Senate, 2024 Pres)",
         "config_keys":   ["competitive_margin"],
         "grading_method": "competitive (higher = more competitive)",
     },
@@ -107,10 +108,10 @@ _METRIC_FORMULAS: dict[str, dict] = {
     },
     "maj_black": {
         "formula":       "count(d : bvap_blk_d / bvap_tot_d ≥ bvap_majority_threshold)",
-        "detail":        "Uses 2020 Census PL 94-171 headcounts (Table P4, P0040006 NH Black alone / P0040001 Total VAP). Headcounts — not ACS estimates.",
+        "detail":        "Uses 2024 ACS CVAP Special Tabulation (any-part Black CVAP / Total Citizen VAP), aggregated to 2020 VTDs by build_cvap_vtd.py. CVAP is the VRA §2 standard — excludes non-citizen population from the denominator, so Black-opportunity districts correctly show 51-57% rather than 47-49%.",
         "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["bvap_majority_threshold"],
-        "grading_method": "symmetric (standard Princeton — both tails evaluated)",
+        "grading_method": "directional (higher = better; only shortfalls penalized)",
     },
     "maj_hisp": {
         "formula":       "count(d : bvap_hsp_d / bvap_tot_d ≥ majority_threshold)",
@@ -138,7 +139,7 @@ _METRIC_FORMULAS: dict[str, dict] = {
         "detail":        "Combined non-white VAP share (1 − NH White fraction). A minority-coalition district includes multiple racial groups, none individually a majority.",
         "data_source":   "2020 Census PL 94-171 VAP (Table P4) — ga_pl2020_vtd.zip",
         "config_keys":   ["majority_threshold"],
-        "grading_method": "symmetric (standard Princeton — both tails evaluated)",
+        "grading_method": "directional (higher = better; only shortfalls penalized)",
     },
     "maj_white": {
         "formula":       "count(d : bvap_wht_d / bvap_tot_d ≥ majority_threshold)",
@@ -227,7 +228,7 @@ _METRIC_META: dict[str, tuple] = {
         "Black Community Representation",
         "Do Black voters have the opportunity to elect representatives of their choice?",
         "minority",
-        "Counts districts where Black Voting Age Population (BVAP) meets or exceeds the "
+        "Counts districts where Black Citizen Voting Age Population (CVAP) meets or exceeds the "
         "selected threshold. At 50% (default): traditional VRA Section 2 majority standard — "
         "districts where Black voters can independently elect candidates of their choice. "
         "Slide the threshold down to 20% to see influence districts, where Black voters "
@@ -235,10 +236,13 @@ _METRIC_META: dict[str, tuple] = {
         "Under Section 2 of the Voting Rights Act, mapmakers must not draw lines that "
         "dilute minority communities' ability to elect their preferred candidates. "
         "The histogram shows how many districts at the selected threshold thousands of "
-        "neutrally drawn alternative maps produce. Standard Princeton symmetric grading "
-        "compares the enacted map to that neutral range. "
-        "Uses 2020 Census PL 94-171 headcounts (not ACS estimates).",
-        None),
+        "neutrally drawn alternative maps produce. Directional grading: only enacted maps "
+        "producing fewer majority-Black districts than neutral alternatives are penalized. "
+        "A map that preserves or exceeds the neutral ensemble's Black district count does "
+        "not score down. "
+        "Uses 2024 ACS CVAP Special Tabulation (any-part Black Citizen VAP / Total Citizen VAP). "
+        "CVAP is the VRA §2 standard — excludes non-citizen population from the denominator.",
+        True),
     "min_coal": (
         "Minority Coalition Representation",
         "Do communities of color collectively hold electoral influence?",
@@ -247,10 +251,10 @@ _METRIC_META: dict[str, tuple] = {
         "selected threshold. At 50% (default): districts where communities of color "
         "collectively hold majority electoral power. At 20%: broader influence districts "
         "where diverse communities have meaningful but not majority impact. "
-        "Standard Princeton symmetric grading compares the enacted map to the neutral "
-        "ensemble range at the selected threshold. "
-        "Uses 2020 Census PL 94-171 headcounts (not ACS estimates).",
-        None),
+        "Directional grading: only enacted maps producing fewer minority-coalition "
+        "districts than neutral alternatives are penalized. "
+        "Uses 2024 ACS CVAP Special Tabulation (non-white Citizen VAP / Total Citizen VAP).",
+        True),
     "muni_splits": (
         "Split Cities & Municipalities",
         "How many cities and towns are divided across different districts?",

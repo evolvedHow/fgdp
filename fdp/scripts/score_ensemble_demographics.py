@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-score_ensemble_demographics.py — BVAP-based demographic scoring for ensemble plans.
+score_ensemble_demographics.py — CVAP-based demographic scoring for ensemble plans.
 
 For each draw × district, computes:
-  - BVAP totals by race (Black, Hispanic, White, Asian) from 2020 Census PL 94-171
+  - CVAP totals by race (Black, Hispanic, White, Asian) from 2024 ACS CVAP Special Tabulation
   - Percentage each group represents of total VAP
   - Majority/influence flags (configurable threshold, default 0.20)
 
-Uses Census headcounts (not ACS estimates). Source: ga_pl2020_vtd.zip.
+Uses 2024 ACS CVAP Special Tabulation (any-part Black / Total Citizen VAP). Source: cvap_vtd.parquet.
 Uses the same vectorized matrix-multiply approach as score_ensemble_plans.py —
 no Python loops over draws.
 
-Requires: build_bvap_vtd.py must have been run once to produce
-          bvap_vtd.parquet in the data directory.
+Requires: build_cvap_vtd.py must have been run once to produce
+          cvap_vtd.parquet in the data directory. Fallback: pass --bvap-file bvap_vtd.parquet to use 2020 Census PL 94-171 headcounts instead.
 
 Usage (from fgdp/ root):
     # Download plans first if needed:
@@ -110,19 +110,19 @@ def load_bvap(geoids: list[str], bvap_file: Path) -> np.ndarray:
     Load BVAP data from local Parquet, aligned to the plan matrix row order.
     Returns (n_vtds × 5) float64 matrix: [tot, blk, wht, hsp, asn]
 
-    bvap_file: path to bvap_vtd.parquet produced by build_bvap_vtd.py.
+    bvap_file: path to cvap_vtd.parquet produced by build_cvap_vtd.py.
     Columns: GEOID20, bvap_tot, bvap_blk, bvap_wht, bvap_hsp, bvap_asn, bvap_coalition
     """
     if not bvap_file.exists():
         raise FileNotFoundError(
             f"BVAP Parquet not found: {bvap_file}\n"
-            "  Run build_bvap_vtd.py first:\n"
-            "    uv run --project fdp python fdp/scripts/build_bvap_vtd.py"
+            "  Run build_cvap_vtd.py first:\n"
+            "    uv run --project fdp python fdp/scripts/build_cvap_vtd.py"
         )
 
     print(f"Loading BVAP from {bvap_file.name}…")
     bvap_df = pd.read_parquet(bvap_file).set_index("GEOID20")
-    print(f"  {len(bvap_df):,} VTDs in BVAP data (2020 Census PL 94-171)")
+    print(f"  {len(bvap_df):,} VTDs in BVAP data (2024 ACS CVAP Special Tabulation (any-part Black))")
 
     # Align to plan matrix row order
     n_vtds = len(geoids)
@@ -255,8 +255,9 @@ def main() -> None:
     ap.add_argument("--data-dir", default=None,
                     help=f"Root data directory (default: {DEFAULT_DATA_DIR})")
     ap.add_argument("--bvap-file", default=None, dest="bvap_file",
-                    help="Path to bvap_vtd.parquet (2020 Census PL 94-171). "
-                         "Defaults to {data_dir}/vtd/bvap_vtd.parquet.")
+                    help="Path to demographic Parquet (same schema as bvap_vtd.parquet). "
+                         "Defaults to {data_dir}/vtd/cvap_vtd.parquet (any-part Black CVAP, ACS 2024). "
+                         "Pass bvap_vtd.parquet to use 2020 Census PL 94-171 headcounts.")
     ap.add_argument("--majority-threshold", type=float, default=MAJORITY_THRESHOLD,
                     dest="majority_threshold",
                     help=f"BVAP fraction threshold for majority/influence flag "
@@ -278,7 +279,7 @@ def main() -> None:
     bvap_file = (
         Path(args.bvap_file).resolve()
         if args.bvap_file
-        else data_dir / "vtd" / "bvap_vtd.parquet"
+        else data_dir / "vtd" / "cvap_vtd.parquet"
     )
     out_file = (
         Path(args.out_file).resolve()
@@ -298,10 +299,10 @@ def main() -> None:
     enacted = df[df.draw == 1].copy()
     threshold_pct = int(args.majority_threshold * 100)
     print(f"\nEnacted plan demographics (draw=1, threshold={threshold_pct}%) — {n_districts} districts:")
-    print(f"  Influence Black             : {enacted.majority_black.sum()}")
-    print(f"  Influence White             : {enacted.majority_white.sum()}")
-    print(f"  Influence Hispanic          : {enacted.majority_hispanic.sum()}")
-    print(f"  Influence Minority Coalition: {enacted.majority_minority_coalition.sum()}")
+    print(f"  {threshold_pct}%+ Black districts        : {enacted.majority_black.sum()}")
+    print(f"  {threshold_pct}%+ White districts         : {enacted.majority_white.sum()}")
+    print(f"  {threshold_pct}%+ Hispanic districts      : {enacted.majority_hispanic.sum()}")
+    print(f"  {threshold_pct}%+ Minority Coalition      : {enacted.majority_minority_coalition.sum()}")
 
     if args.dry_run:
         print(f"\n[dry-run] Would write {len(df):,} rows to {out_file.name}")
