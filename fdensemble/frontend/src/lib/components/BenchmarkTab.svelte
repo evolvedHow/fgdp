@@ -96,7 +96,7 @@
                 color:var(--gray);margin:.8rem 0 .4rem;">Partisan Fairness</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
       {#each allMetrics(PARTISAN_KEYS) as metric}
-        <MetricCard {metric} />
+        <MetricCard {metric} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}
@@ -107,7 +107,7 @@
                 color:var(--gray);margin:.8rem 0 .4rem;">Competitiveness</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
       {#each allMetrics(COMPETITIVE_KEYS) as metric}
-        <MetricCard {metric} />
+        <MetricCard {metric} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}
@@ -118,7 +118,7 @@
                 color:var(--gray);margin:.8rem 0 .4rem;">Geographic</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
       {#each allMetrics(GEOGRAPHIC_KEYS) as metric}
-        <MetricCard {metric} />
+        <MetricCard {metric} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}
@@ -129,7 +129,7 @@
                 color:var(--gray);margin:.8rem 0 .4rem;">Minority Representation</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
       {#each allMetrics(MINORITY_KEYS) as metric}
-        <MetricCard {metric} />
+        <MetricCard {metric} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}

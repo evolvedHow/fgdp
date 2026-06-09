@@ -10,7 +10,7 @@
   let open = $state(false);
 
   const elections: ElectionOption[] = $derived(run.elections ?? []);
-  const nElections = $derived(elections.length > 0 ? elections.length : 7);
+  const nElections = $derived(elections.length);
   const nDraws   = $derived(run.n_plans.toLocaleString());
   const chamber  = $derived((run.chamber ?? run.id).replace(/_/g, ' '));
   const isAlarm  = $derived(run.source === 'alarm');
@@ -58,7 +58,7 @@
           with formal statistical guarantees.
         </p>
         <p style="margin:0;">
-          The result is a neutral baseline of what Georgia's congressional map would
+          The result is a neutral baseline of what Georgia's {chamber} map would
           look like under geography-driven, non-partisan redistricting — against which
           the enacted map is compared. Plans outside the 5th–95th percentile range
           are statistical outliers unlikely to arise from a fair process.
@@ -67,7 +67,7 @@
           Source: ALARM Project via Harvard Dataverse
           (<a href="https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/SLCD3E"
               target="_blank" rel="noopener" style="color:var(--blue);">doi:10.7910/DVN/SLCD3E</a>).
-          Original ensemble: 2 independent chains × 10,000 simulations, thinned to 5,000 plans.
+          This ensemble: {nDraws} plans drawn via independent SMC chains.
         </p>
       </div>
     {:else}
@@ -99,15 +99,9 @@
           {/each}
         </ul>
       {:else}
-        <ul style="margin:.2rem 0 0;padding-left:1.2rem;line-height:1.8;">
-          <li><b>2018 Governor</b> (Kemp vs. Abrams)</li>
-          <li><b>2020 President</b> (Trump vs. Biden)</li>
-          <li><b>2021 Senate Runoff</b> (Warnock vs. Loeffler)</li>
-          <li><b>2022 Governor</b> (Kemp vs. Abrams)</li>
-          <li><b>2022 Senate</b> (Walker vs. Warnock general)</li>
-          <li><b>2022 Senate Runoff</b> (Walker vs. Warnock Dec. 6)</li>
-          <li><b>2024 President</b> (Trump vs. Harris)</li>
-        </ul>
+        <p style="margin:.2rem 0 0;font-size:.71rem;color:var(--gray);font-style:italic;">
+          Election details not available for this run.
+        </p>
       {/if}
       <p style="margin:.4rem 0 0;font-size:.72rem;color:var(--gray);">
         All shares are <em>two-party</em> (third-party candidates excluded from denominator),
@@ -115,8 +109,8 @@
       </p>
       {#if isAlarm}
         <p style="margin:.4rem 0 0;font-size:.72rem;color:var(--gray);">
-          <em>Note:</em> The original ALARM ensemble used a 2016–2020 election composite.
-          It has been re-scored here with the same 2018–2024 composite used by the GerryChain
+          <em>Note:</em> The original ALARM ensemble used a different election composite.
+          It has been re-scored here with the same multi-election composite used by the GerryChain
           benchmark, so both algorithms are compared on an identical electoral baseline.
         </p>
       {/if}
@@ -130,8 +124,8 @@
         <dt style="font-weight:700;white-space:nowrap;">{nDraws}</dt>
         <dd style="margin:0;">neutral maps generated</dd>
         {#if isAlarm}
-          <dt style="font-weight:700;">2 chains</dt>
-          <dd style="margin:0;">independent SMC chains × 10,000 simulations, thinned to 5,000</dd>
+          <dt style="font-weight:700;">SMC</dt>
+          <dd style="margin:0;">independent chains; plans sampled from the full target distribution</dd>
         {/if}
         <dt style="font-weight:700;">{nVTDs.toLocaleString()}</dt>
         <dd style="margin:0;">Georgia VTDs (2020 Census)</dd>

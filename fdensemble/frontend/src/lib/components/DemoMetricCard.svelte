@@ -135,7 +135,7 @@
     <div style="display:flex;align-items:center;gap:.35rem;flex-shrink:0;">
       <div style="text-align:right;line-height:1.3;">
         <div style="font-size:.62rem;color:var(--gray);">{Math.round(pctRank)}th pctile</div>
-        <div style="font-size:.58rem;color:#8e44ad;">≥50% threshold</div>
+        <div style="font-size:.58rem;color:#8e44ad;">≥{Math.round(+THRESHOLD * 100)}% threshold</div>
       </div>
       <span style="display:inline-flex;align-items:center;justify-content:center;
                    width:2.1rem;height:2.1rem;border-radius:50%;flex-shrink:0;
@@ -190,7 +190,7 @@
         <!-- ── X-axis title ── -->
         <text x={SVG_W / 2} y={SVG_H - 1}
           text-anchor="middle" font-size="7.5" fill="#aaa">
-          districts with ≥50% majority
+          districts with ≥{Math.round(+THRESHOLD * 100)}% majority
         </text>
 
       </svg>

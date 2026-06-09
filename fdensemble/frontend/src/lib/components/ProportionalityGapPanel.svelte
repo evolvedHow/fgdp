@@ -3,11 +3,17 @@
 
   interface Props {
     data: ProportionalityGap;
-    /** Total number of districts in this chamber */
+    /** Total number of districts in this chamber — derived from data if not passed */
     nDistricts?: number;
   }
 
-  let { data, nDistricts = 14 }: Props = $props();
+  let { data, nDistricts }: Props = $props();
+
+  // Derive nDistricts from proportional target ÷ dem vote share if not provided by caller
+  const effectiveNDistricts = $derived(
+    nDistricts ??
+    (data.statewide_dem_2pv > 0 ? Math.round(data.proportional_target / data.statewide_dem_2pv) : 14)
+  );
 
   // ── Derived display values ────────────────────────────────────────────────
   const demPct        = $derived((data.statewide_dem_2pv * 100).toFixed(1));
@@ -51,7 +57,7 @@
   const ticks = $derived(
     Array.from({ length: Math.ceil(maxVal) - Math.floor(minVal) + 1 },
       (_, i) => Math.floor(minVal) + i
-    ).filter(v => v >= 0 && v <= nDistricts)
+    ).filter(v => v >= 0 && v <= effectiveNDistricts)
   );
 
   // Color helpers
@@ -72,10 +78,10 @@
       <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
       <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
     </svg>
-    The Proportionality Gap — Why "C" Understates the Problem
+    The Proportionality Gap — Why the Ensemble Grade Understates the Problem
   </div>
   <div style="font-size:.7rem;color:#666;margin-bottom:.9rem;line-height:1.5;">
-    The ensemble grade (C) measures the enacted map <em>relative to the neutral baseline</em>.
+    The ensemble grade measures the enacted map <em>relative to the neutral baseline</em>.
     But the baseline itself is already biased — Democratic voters self-sort into dense cities,
     so even perfectly fair maps fall short of proportional representation.
     Measuring against proportionality exposes the full structural problem.
@@ -98,7 +104,7 @@
               font-size="9" fill="#aaa">{t}</text>
       {/each}
       <text x={SVG_W / 2} y={AXIS_Y + 28} text-anchor="middle"
-            font-size="8.5" fill="#aaa">Democratic-leaning seats (out of {nDistricts})</text>
+            font-size="8.5" fill="#aaa">Democratic-leaning seats (out of {effectiveNDistricts})</text>
 
       <!-- ── Structural gap bracket (prop → neutral) ── -->
       {#if structGap < -0.05}
@@ -194,7 +200,7 @@
       </div>
       <div style="font-size:.67rem;color:#666;margin-top:.2rem;line-height:1.4;">
         Statewide vote share ({demPct}% Dem) implies {propTarget} Democratic
-        seats; the enacted map delivers {enacted}.
+        seats out of {effectiveNDistricts}; the enacted map delivers {enacted}.
         Combined geography + manipulation = {totalAbs}-seat deficit.
       </div>
     </div>
@@ -205,10 +211,10 @@
   <div style="margin-top:.75rem;padding:.5rem .7rem;background:#fffbf0;
               border-left:3px solid {ORANGE};border-radius:0 4px 4px 0;font-size:.68rem;color:#555;line-height:1.5;">
     <b>Why this matters for grading:</b>
-    The C grade reflects the enacted map's position relative to the neutral ensemble —
+    The ensemble grade reflects the enacted map's position relative to the neutral baseline —
     it correctly flags <em>manipulation beyond the baseline</em>.
     But the neutral ensemble itself sits {structAbs} seats below proportionality,
-    meaning the C grade is measured against a floor that already disadvantages Democrats.
+    meaning the grade is measured against a floor that already disadvantages Democrats.
     Measuring from proportionality, the full deficit is {totalAbs} seats —
     {structAbs} from geographic self-sorting that mapmakers could not prevent,
     and {manipAbs} from line-drawing choices they made deliberately.
@@ -216,9 +222,9 @@
 
   <!-- Methodology footnote -->
   <div style="margin-top:.55rem;font-size:.62rem;color:#aaa;line-height:1.4;">
-    Statewide Dem 2pv = VAP-weighted average of composite_dem_pct across 2,698 Georgia VTDs.
-    Composite = 2018 Gov · 2020 Pres · 2021 Warnock runoff · 2022 Gov+Sen avg · 2024 Pres.
-    Proportional target = {demPct}% × {nDistricts} districts = {propTarget} seats.
+    Statewide Dem 2pv = VAP-weighted average of composite_dem_pct across all Georgia VTDs.
+    Composite = multi-election average (see run metadata for elections included).
+    Proportional target = {demPct}% × {effectiveNDistricts} districts = {propTarget} seats.
     Neutral median and enacted values from the Princeton ensemble histogram.
   </div>
 

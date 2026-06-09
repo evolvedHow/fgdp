@@ -427,8 +427,6 @@
                   <div style="margin-top:.3rem;font-size:.66rem;color:var(--gray);
                               font-style:italic;">
                     Live threshold values will appear here once the API config block is populated.
-                    Defaults: competitive thresholds = [0.035, 0.05], majority_threshold = 0.20,
-                    bvap_majority_threshold = 0.20, influence_min = 0.20, influence_max = 0.50.
                   </div>
                 {/if}
               </div>

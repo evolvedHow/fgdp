@@ -85,9 +85,9 @@
 
   // ── Plan loading ─────────────────────────────────────────────────────────────
   function defaultRunId(): string {
-    // Pick the first non-ALARM GerryChain congress run for scoring library maps
+    // Pick the first non-ALARM GerryChain run for scoring library maps
     return (
-      runs.find(r => r.source !== 'alarm' && r.chamber === 'congress')?.id ??
+      runs.find(r => r.source !== 'alarm')?.id ??
       runs[0]?.id ?? ''
     );
   }

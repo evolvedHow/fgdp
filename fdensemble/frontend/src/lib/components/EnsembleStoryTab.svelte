@@ -35,7 +35,15 @@
   };
 
   function detail(run: RunMeta) {
-    return ALGO_DETAIL[run.source ?? ''] ?? ALGO_DETAIL.gerrychain;
+    const base = ALGO_DETAIL[run.source ?? ''] ?? ALGO_DETAIL.gerrychain;
+    const isSubdistrict = run.chamber === 'senate' || run.chamber === 'house';
+    // Congress uses ±0.5% pop tolerance; state legislative chambers use ±5%
+    const popTol = isSubdistrict ? '±5%' : base.popTol;
+    // Use actual plan count from run metadata when available
+    const chains = (run.source === 'alarm' && run.n_plans)
+      ? `${run.n_plans.toLocaleString()} plans via independent SMC chains`
+      : base.chains;
+    return { ...base, popTol, chains };
   }
 
   function chamberLabel(c: string | undefined) {
@@ -54,7 +62,7 @@
     if (run.elections && run.elections.length > 0) {
       return run.elections.map(e => e.label).join(', ');
     }
-    return '2018–2024 Composite';
+    return run.description ?? 'Multi-election composite';
   }
 
   const selectedRun = $derived(runs.find(r => r.id === selectedRunId) ?? null);
@@ -156,9 +164,9 @@
               <!-- Electoral basis -->
               <td style="padding:.5rem .8rem;font-size:.72rem;line-height:1.35;">
                 {electionsList(run)}
-                {#if run.source === 'alarm'}
+                {#if run.source === 'alarm' && run.chamber === 'congress'}
                   <div style="font-size:.65rem;color:var(--gray);font-style:italic;">
-                    re-scored from 2016–2020 original
+                    re-scored from original 2016–2020 composite
                   </div>
                 {/if}
               </td>

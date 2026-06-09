@@ -287,7 +287,7 @@
   }
 
   // Rebuild chart whenever metric, planMetric, demoThresholdKey, or activeDrawValues change.
-  // When threshold data is active, use buildIntegerChart (correct integer bins 0–14).
+  // When threshold data is active, use buildIntegerChart (correct integer bins 0–nDistricts).
   // Otherwise use buildChart with the original histogram.
   $effect(() => {
     const m   = metric;
@@ -430,7 +430,7 @@
                         background:#f8f4ff;border-radius:4px;border-left:2.5px solid #8e44ad;line-height:1.45;">
               <b style="color:#8e44ad;">VRA Floor Grade</b>: Minority representation uses a one-sided test —
               having more minority-opportunity districts than neutral maps is never penalized.
-              Grade F = below the race-neutral VRA floor (10th pct). Symmetric grade shown for reference.
+              Grade F = below the race-neutral VRA floor (5th pct). Symmetric grade shown for reference.
             </div>
           {/if}
         {/if}

@@ -15,6 +15,10 @@
   let cardEl: HTMLElement;
   let capturing = $state(false);
 
+  // Margin threshold: only draw filled bubbles for seats with > this margin
+  // (12pp = clearly safe seat; competitive races show as dots, not bubbles)
+  const SAFE_MARGIN_THRESHOLD = 0.12;
+
   async function doCapture() {
     if (capturing || !cardEl) return;
     capturing = true;
@@ -221,9 +225,9 @@
               const py = y.getPixelForValue(v);
               const margin = Math.abs(v - 0.5);
               const isDem = v >= 0.5;
-              // Only draw filled bubbles for safe seats (>12pp margin); skip close races
-              if (margin < 0.12) return;
-              const r = 4 + (margin - 0.12) * 22;        // starts at 4px at 12pp, ~15px at 50pp
+              // Only draw filled bubbles for safe seats (>SAFE_MARGIN_THRESHOLD); skip close races
+              if (margin < SAFE_MARGIN_THRESHOLD) return;
+              const r = 4 + (margin - SAFE_MARGIN_THRESHOLD) * 22; // starts at 4px at threshold, ~15px at 50pp
               const fill   = isDem ? 'rgba(36,113,163,0.50)' : 'rgba(192,57,43,0.50)';
               const stroke = isDem ? '#1a5276' : '#922b21';
               ctx.beginPath();

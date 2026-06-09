@@ -316,7 +316,7 @@
   {:else if !selectedMapId}
     <div style="background:var(--light);border:1.5px solid var(--border);border-radius:8px;
                 padding:.55rem 1rem;margin-bottom:.8rem;font-size:.78rem;color:var(--gray);">
-      Showing the <b>enacted map</b> — the current {summary?.state_full ?? ''} congressional districts scored against {summary?.n_plans?.toLocaleString() ?? ''} neutral alternatives.
+      Showing the <b>enacted map</b> — the current {summary?.state_full ?? ''} {summary?.run?.chamber ?? summary?.plan_type ?? 'enacted'} districts scored against {summary?.n_plans?.toLocaleString() ?? ''} neutral alternatives.
       Select a map above to compare a different plan.
     </div>
   {/if}
@@ -343,7 +343,7 @@
       {#each THRESHOLD_KEYS as key}
         {#if key in analysis.grades && 'histogram' in (analysis.grades[key] ?? {})}
           {@const m = analysis.grades[key] as any}
-          <DemoMetricCard metric={m} nDistricts={analysis.summary?.n_districts ?? 14} />
+          <DemoMetricCard metric={m} nDistricts={analysis.summary?.n_districts} />
         {/if}
       {/each}
     </div>
@@ -357,7 +357,7 @@
 
       <div style="display:flex;flex-direction:column;gap:.55rem;">
         {#each allMetrics(keys) as {key, metric}}
-          <MetricCard {metric} planMetric={planMetricFor(key)} nDistricts={analysis.summary?.n_districts ?? 14} />
+          <MetricCard {metric} planMetric={planMetricFor(key)} nDistricts={analysis.summary?.n_districts} />
         {/each}
       </div>
     {/if}
@@ -367,7 +367,7 @@
   {#if analysis.proportionality}
     <ProportionalityGapPanel
       data={analysis.proportionality}
-      nDistricts={analysis.summary?.n_districts ?? 14}
+      nDistricts={analysis.summary?.n_districts}
     />
   {/if}
 
@@ -393,7 +393,7 @@
   <!-- Proposed vs Enacted delta table -->
   {#if scoredPlan}
     {@const grades = analysis.grades}
-    {@const nDistricts = analysis.summary?.n_districts ?? 14}
+    {@const nDistricts = analysis.summary?.n_districts}
 
     {@const ROWS = [
       { key: 'dem_seats',      label: 'Dem-Lean Districts',   isInt: true  },

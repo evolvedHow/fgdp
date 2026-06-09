@@ -74,7 +74,7 @@
                      letter-spacing:.05em;color:var(--gray);min-width:130px;">Metric</th>
           <th style="padding:.4rem .6rem;text-align:center;font-size:.62rem;text-transform:uppercase;
                      letter-spacing:.05em;color:var(--gray);white-space:nowrap;">
-            Benchmark<br><span style="font-weight:400;">98% range (p5–p95)</span>
+            Benchmark<br><span style="font-weight:400;">90% range (p5–p95)</span>
           </th>
           <th style="padding:.4rem .6rem;text-align:center;font-size:.62rem;text-transform:uppercase;
                      letter-spacing:.05em;color:#27ae60;white-space:nowrap;">
