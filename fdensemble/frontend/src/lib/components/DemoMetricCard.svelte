@@ -159,8 +159,13 @@
           {/if}
         {/each}
 
+        <!-- ── Enacted position marker (always visible, even if no ensemble bar) ── -->
+        <rect x={PAD_L + enactedVal * SLOT_W} y={CHART_B - Math.max(enactedBarH, 5)}
+          width={BAR_W} height={Math.max(enactedBarH, 5)}
+          fill={gcol} rx="1"/>
+
         <!-- ── Enacted bar label ── -->
-        <text x={enactedBarX} y={CHART_B - Math.max(enactedBarH, 2) - 4}
+        <text x={enactedBarX} y={CHART_B - Math.max(enactedBarH, 5) - 4}
           text-anchor="middle" font-size="10" font-weight="bold"
           fill={gcol}>{enactedVal}</text>
 

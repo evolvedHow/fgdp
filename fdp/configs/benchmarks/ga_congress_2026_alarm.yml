@@ -1,0 +1,125 @@
+# =============================================================================
+# Georgia Congressional Benchmark — ALARM SMC
+# 14 districts | 2020 VTD base | 6 elections | redist Sequential Monte Carlo
+#
+# Same geography, elections, grading, and output as ga_congress_2026_v2.yml.
+# Only the algorithm section differs: SMC instead of ReCom MCMC.
+#
+# Run:
+#   cd fdga-chain
+#   uv run python scripts/run_alarm_ensemble.py \
+#       --run-name congress_2026_alarm_v1 \
+#       --modal
+# =============================================================================
+
+benchmark_id: ga_congress_2026_alarm
+description: "Georgia 14-district congressional benchmark — ALARM SMC (redist)"
+version: "1.0"
+
+geography:
+  state: GA
+  geo_level: vtd
+  vintage_year: 2020
+  # Note: graph_file is not used by the SMC runner (redist reads the RDS map
+  # directly). Kept here for schema compatibility with BenchmarkConfig.
+  graph_file: fdga-chain/data/graphs/ga_congress.json
+
+chamber:
+  name: congress
+  n_districts: 14
+  pop_column: TOTPOP
+  pop_epsilon: 0.01            # ±1% — Princeton/MGGG standard for congressional benchmarks
+  district_col: cd_2020        # enacted plan column in the redist_map RDS
+
+elections:
+
+  - label: gov_2018
+    year: 2018
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+
+  - label: pre_2020
+    year: 2020
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+
+  - label: uss_2021_war
+    year: 2021
+    election_type: runoff
+    office: senate
+    candidates: [war, loe]
+    partisan_score: true
+    competitive: true
+
+  - label: gov_2022
+    year: 2022
+    election_type: general
+    office: governor
+    partisan_score: true
+    competitive: true
+
+  - label: uss_2022
+    year: 2022
+    election_type: general
+    office: senate
+    partisan_score: true
+    competitive: true
+
+  - label: pre_2024
+    year: 2024
+    election_type: general
+    office: president
+    partisan_score: true
+    competitive: true
+
+competitiveness:
+  thresholds: [0.035, 0.05]
+  method: all_independent
+
+demographics:
+  cvap_year: 2024
+  majority_threshold: 0.50
+  groups:
+    - name: black
+      label: "Majority Black (any-part)"
+      cvap_col: CVAP_BLK24
+    - name: white
+      label: "Majority White"
+      cvap_col: CVAP_WHT24
+    - name: hispanic
+      label: "Majority Hispanic"
+      cvap_col: CVAP_HSP24
+    - name: minority_coalition
+      label: "Majority Minority Coalition"
+      formula: "1 - (CVAP_WHT24 / CVAP_TOT24)"
+
+# ── SMC algorithm parameters ──────────────────────────────────────────────────
+# algorithm: smc        → redist_smc() from the ALARM/redist R package
+# nsims:                → plans per independent chain (not MCMC steps)
+# n_chains:             → independent SMC chains run in parallel on Modal
+# compactness:          → redist_smc compactness weight (1.0 = default)
+# counties_col:         → redist_map column for county-split constraint
+# random_seed:          → base seed; each chain gets seed + chain_idx
+mcmc:
+  algorithm: smc
+  nsims: 10000           # plans per chain; 10 chains → 100,000 total
+  n_chains: 10
+  pop_epsilon: 0.01
+  compactness: 1.0
+  counties_col: pseudo_county
+  random_seed: 42
+  save_assignments: true
+
+grading:
+  pass_band: [1, 99]
+  a_band:    [25, 75]
+  b_band:    [10, 90]
+  c_band:    [5, 95]
+  composite: min
+
+output:
+  dir: fdp/data/repos/main/ensemble
