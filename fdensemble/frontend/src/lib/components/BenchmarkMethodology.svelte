@@ -4,16 +4,20 @@
   interface Props {
     run: RunMeta;
     nVTDs?: number;
-    demShare?: number;
   }
-  let { run, nVTDs = 2698, demShare = 49.7 }: Props = $props();
+  let { run, nVTDs = 2698 }: Props = $props();
 
   let open = $state(false);
 
   const elections: ElectionOption[] = $derived(run.elections ?? []);
+  const nElections = $derived(elections.length > 0 ? elections.length : 7);
   const nDraws   = $derived(run.n_plans.toLocaleString());
   const chamber  = $derived((run.chamber ?? run.id).replace(/_/g, ' '));
   const isAlarm  = $derived(run.source === 'alarm');
+  // Use statewide_dem_2pv from the run object (fraction → percent); fall back to null to hide row.
+  const demSharePct = $derived(
+    run.statewide_dem_2pv != null ? (run.statewide_dem_2pv * 100).toFixed(1) : null
+  );
 </script>
 
 <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;margin-bottom:.8rem;overflow:hidden;">
@@ -85,8 +89,8 @@
       <div style="font-weight:700;font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;
                   color:var(--blue);margin-bottom:.35rem;">Composite Election Benchmark</div>
       <p style="margin:0 0 .4rem;">
-        Rather than relying on a single election, this benchmark averages five elections across
-        three electoral cycles, giving a stable picture of Georgia's underlying partisan geography:
+        Rather than relying on a single election, this benchmark averages {nElections} elections across
+        multiple electoral cycles, giving a stable picture of Georgia's underlying partisan geography:
       </p>
       {#if elections.length > 0}
         <ul style="margin:.2rem 0 0;padding-left:1.2rem;line-height:1.8;">
@@ -99,7 +103,9 @@
           <li><b>2018 Governor</b> (Kemp vs. Abrams)</li>
           <li><b>2020 President</b> (Trump vs. Biden)</li>
           <li><b>2021 Senate Runoff</b> (Warnock vs. Loeffler)</li>
-          <li><b>2022 Governor + Senate avg.</b> (Kemp/Abrams + Walker/Warnock)</li>
+          <li><b>2022 Governor</b> (Kemp vs. Abrams)</li>
+          <li><b>2022 Senate</b> (Walker vs. Warnock general)</li>
+          <li><b>2022 Senate Runoff</b> (Walker vs. Warnock Dec. 6)</li>
           <li><b>2024 President</b> (Trump vs. Harris)</li>
         </ul>
       {/if}
@@ -129,9 +135,11 @@
         {/if}
         <dt style="font-weight:700;">{nVTDs.toLocaleString()}</dt>
         <dd style="margin:0;">Georgia VTDs (2020 Census)</dd>
-        <dt style="font-weight:700;">{demShare.toFixed(1)}%</dt>
-        <dd style="margin:0;">statewide composite Dem 2-party vote share</dd>
-        <dt style="font-weight:700;">5 elections</dt>
+        {#if demSharePct !== null}
+          <dt style="font-weight:700;">{demSharePct}%</dt>
+          <dd style="margin:0;">statewide composite Dem 2-party vote share</dd>
+        {/if}
+        <dt style="font-weight:700;">{nElections} elections</dt>
         <dd style="margin:0;">averaged into the composite partisan score</dd>
         {#if isAlarm}
           <dt style="font-weight:700;">VAP</dt>
@@ -148,13 +156,6 @@
         (statistical outliers) and above the 95th percentile as excellent. Plans between the
         5th and 95th are within the normal range for neutral mapmaking.
       </p>
-      {#if isAlarm}
-        <p style="margin:.4rem 0 0;font-size:.72rem;color:var(--blue);font-weight:600;">
-          Both ALARM (SMC) and GerryChain (ReCom) return an Overall grade of A for the
-          enacted congressional map — convergent results from independent algorithms strengthen
-          this finding.
-        </p>
-      {/if}
     </div>
 
   </div>

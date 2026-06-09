@@ -69,6 +69,10 @@ CVAP_CSV = "ga_cvap_2024_2020_b.csv"
 RUNOFF_2021_ZIP = "ga_2020gen_2021runoff_2020blocks_csv.zip"
 RUNOFF_2021_CSV = "ga_2020_gen_2020_blocks.csv"
 
+# 2022 December 6 Senate runoff — Warnock vs Walker head-to-head (no 3rd party)
+RUNOFF_2022_ZIP = "ga_2022_runoff_2020_blocks_csv.zip"
+RUNOFF_2022_CSV = "ga_2022_runoff_2020_blocks.csv"
+
 # ── Column lists ───────────────────────────────────────────────────────────────
 
 # 2020 general election — President only (from the same CSV as 2021 runoff)
@@ -92,6 +96,13 @@ COLS_RUNOFF_2021 = [
     "R21USSDWAR", "R21USSRLOE",
     # PSC District 1 runoff: Blackman vs McDonald
     "R21PSCDBLA", "R21PSCRMCD",
+]
+
+# 2022 December 6 Senate runoff — head-to-head, no 3rd party
+COLS_RUNOFF_2022 = [
+    "GEOID20", "VAP_MOD",
+    "R22USSDWAR",  # Warnock (D)
+    "R22USSRWAL",  # Walker (R)
 ]
 
 # 2022 general election columns (all major candidates)
@@ -370,6 +381,48 @@ def build_elections_2022(input_dir: Path, output_dir: Path, lookup: pd.DataFrame
     return vtd_df
 
 
+# ── Step 3b: Aggregate 2022 Dec runoff ────────────────────────────────────────
+
+def build_elections_2022_runoff(input_dir: Path, output_dir: Path, lookup: pd.DataFrame) -> pd.DataFrame:
+    """
+    Load the December 6, 2022 Senate runoff from the RDH block-level CSV,
+    aggregate to VTD using the existing block→VTD lookup.
+
+    Head-to-head race (Warnock D vs Walker R) with no 3rd-party candidates —
+    cleaner two-party signal than the Nov 8 general (which had Oliver L ~2.1%).
+    """
+    _log("\n[3b] Aggregating 2022 Dec 6 Senate runoff to VTD")
+    out_path = output_dir / "vtd_elections_2022_runoff.parquet"
+
+    _log(f"  Reading CSV from {RUNOFF_2022_ZIP}…")
+    with zipfile.ZipFile(input_dir / RUNOFF_2022_ZIP) as zf:
+        with zf.open(RUNOFF_2022_CSV) as f:
+            df = pd.read_csv(f, usecols=COLS_RUNOFF_2022, dtype={"GEOID20": str})
+    _log(f"  Loaded {len(df):,} blocks")
+
+    df["GEOID20"] = df["GEOID20"].str.zfill(15)
+
+    vote_cols = [c for c in COLS_RUNOFF_2022 if c != "GEOID20"]
+    df[vote_cols] = df[vote_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+
+    df = df.merge(lookup, left_on="GEOID20", right_on="block_GEOID20", how="left")
+    unmatched = df["vtd_GEOID20"].isna().sum()
+    if unmatched:
+        _log(f"  WARNING: {unmatched} blocks have no VTD assignment — dropped from aggregation")
+    df = df.dropna(subset=["vtd_GEOID20"])
+
+    agg_cols = [c for c in COLS_RUNOFF_2022 if c != "GEOID20"]
+    vtd_df = df.groupby("vtd_GEOID20")[agg_cols].sum().reset_index()
+    vtd_df = vtd_df.rename(columns={"vtd_GEOID20": "GEOID20"})
+
+    vtd_df = _add_2pv(vtd_df, "uss_r22", "R22USSDWAR", "R22USSRWAL")
+
+    vtd_df.to_parquet(out_path, index=False)
+    _log(f"  {len(vtd_df):,} VTDs  ×  {len(vtd_df.columns)} columns  →  {out_path}")
+    _check_totals_2022_runoff(vtd_df)
+    return vtd_df
+
+
 # ── Step 3: Aggregate 2024 elections ──────────────────────────────────────────
 
 def build_elections_2024(input_dir: Path, output_dir: Path, lookup: pd.DataFrame) -> pd.DataFrame:
@@ -448,6 +501,7 @@ def build_combined(output_dir: Path,
                    df20_pres: pd.DataFrame,
                    df21_runoff: pd.DataFrame,
                    df22: pd.DataFrame,
+                   df22_runoff: pd.DataFrame,
                    df24: pd.DataFrame,
                    cvap_df: pd.DataFrame) -> pd.DataFrame:
     """Outer-join all VTD tables on GEOID20."""
@@ -465,6 +519,11 @@ def build_combined(output_dir: Path,
     # 2021 runoff
     combined = combined.merge(
         df21_runoff.drop(columns=["VAP_MOD"], errors="ignore"),
+        on="GEOID20", how="outer",
+    )
+    # 2022 Dec runoff
+    combined = combined.merge(
+        df22_runoff.drop(columns=["VAP_MOD"], errors="ignore"),
         on="GEOID20", how="outer",
     )
     # 2024
@@ -511,6 +570,10 @@ _SOS_2022 = {
     "uss_warnock": 1945370,  # Nov 8 general
     "uss_walker":  1908442,
 }
+_SOS_2022_RUNOFF = {
+    "war_warnock": 1_817_551,  # GA SOS certified Dec 6 runoff
+    "wal_walker":  1_719_739,
+}
 _SOS_2024 = {
     "pre_harris": 2197292,
     "pre_trump":  2209525,
@@ -544,6 +607,19 @@ def _check_totals_2021_runoff(df: pd.DataFrame) -> None:
         ("R21USSRLOE", "war_loeffler", _SOS_2021_RUNOFF["war_loeffler"]),
     ]
     _log("  Vote-total check vs GA SOS certified results:")
+    for col, label, expected in checks:
+        got = int(df[col].sum())
+        pct_diff = abs(got - expected) / expected * 100
+        flag = "✓" if pct_diff < 0.5 else "⚠"
+        _log(f"    {flag} {label}: {got:,} vs {expected:,} ({pct_diff:.2f}% diff)")
+
+
+def _check_totals_2022_runoff(df: pd.DataFrame) -> None:
+    checks = [
+        ("R22USSDWAR", "war_warnock", _SOS_2022_RUNOFF["war_warnock"]),
+        ("R22USSRWAL", "wal_walker",  _SOS_2022_RUNOFF["wal_walker"]),
+    ]
+    _log("  Vote-total check vs GA SOS certified results (Dec 6 runoff):")
     for col, label, expected in checks:
         got = int(df[col].sum())
         pct_diff = abs(got - expected) / expected * 100
@@ -592,7 +668,7 @@ def main() -> None:
                     help="Reuse existing block_vtd_lookup.parquet (fastest if it already exists)")
     ap.add_argument("--only",
                     choices=["lookup", "president2020", "runoff2021",
-                             "elections2022", "elections2024", "cvap"],
+                             "elections2022", "runoff2022", "elections2024", "cvap"],
                     help="Run only one step (still requires lookup to exist for non-lookup steps)")
     args = ap.parse_args()
 
@@ -605,8 +681,19 @@ def main() -> None:
         print("Make sure the Google Drive is mounted at /mnt/g/ in WSL.")
         sys.exit(1)
 
-    # Verify required zip files
-    required = [VTD_ZIP, BLOCKS_2022_ZIP, BLOCKS_2024_ZIP, CVAP_ZIP, RUNOFF_2021_ZIP]
+    # Verify required zip files — only check what this run actually needs
+    _STEP_FILES: dict[str | None, list[str]] = {
+        "lookup":        [VTD_ZIP, BLOCKS_2022_ZIP],
+        "president2020": [RUNOFF_2021_ZIP],
+        "runoff2021":    [RUNOFF_2021_ZIP],
+        "elections2022": [BLOCKS_2022_ZIP],
+        "runoff2022":    [RUNOFF_2022_ZIP],
+        "elections2024": [BLOCKS_2024_ZIP],
+        "cvap":          [CVAP_ZIP],
+        None:            [VTD_ZIP, BLOCKS_2022_ZIP, BLOCKS_2024_ZIP,
+                          CVAP_ZIP, RUNOFF_2021_ZIP, RUNOFF_2022_ZIP],
+    }
+    required = _STEP_FILES[args.only]
     missing = [f for f in required if not (input_dir / f).exists()]
     if missing:
         print("ERROR: Missing input files:")
@@ -635,6 +722,9 @@ def main() -> None:
     if args.only == "elections2022":
         build_elections_2022(input_dir, output_dir, lookup)
         return
+    if args.only == "runoff2022":
+        build_elections_2022_runoff(input_dir, output_dir, lookup)
+        return
     if args.only == "elections2024":
         build_elections_2024(input_dir, output_dir, lookup)
         return
@@ -643,12 +733,13 @@ def main() -> None:
         return
 
     # Full run
-    df20  = build_elections_2020_president(input_dir, output_dir, lookup)
-    df21  = build_elections_2021_runoff(input_dir, output_dir, lookup)
-    df22  = build_elections_2022(input_dir, output_dir, lookup)
-    df24  = build_elections_2024(input_dir, output_dir, lookup)
-    cvap  = build_cvap(input_dir, output_dir, lookup)
-    build_combined(output_dir, df20, df21, df22, df24, cvap)
+    df20      = build_elections_2020_president(input_dir, output_dir, lookup)
+    df21      = build_elections_2021_runoff(input_dir, output_dir, lookup)
+    df22      = build_elections_2022(input_dir, output_dir, lookup)
+    df22_roff = build_elections_2022_runoff(input_dir, output_dir, lookup)
+    df24      = build_elections_2024(input_dir, output_dir, lookup)
+    cvap      = build_cvap(input_dir, output_dir, lookup)
+    build_combined(output_dir, df20, df21, df22, df22_roff, df24, cvap)
 
     _log("\nDone. To join into R:")
     _log("  library(arrow); vtd <- read_parquet('data/repos/main/vtd/vtd_combined.parquet')")

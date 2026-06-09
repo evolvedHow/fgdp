@@ -1,6 +1,6 @@
 # =============================================================================
 # Georgia State Senate Benchmark — v1
-# 56 districts | 2020 VTD base | 6 elections | 10,000 MCMC steps
+# 56 districts | 2020 VTD base | 7 elections | 10,000 MCMC steps
 # pop_epsilon: 0.05 (±5% — Reynolds v. Sims constitutional standard)
 # competitiveness: 5% win margin (add 7% after seeing distribution)
 # =============================================================================
@@ -51,6 +51,13 @@ elections:
     year: 2022
     election_type: general
     office: senate
+    partisan_score: true
+    competitive: true
+  - label: uss_r22
+    year: 2022
+    election_type: runoff
+    office: senate
+    candidates: [war, wal]
     partisan_score: true
     competitive: true
   - label: pre_2024

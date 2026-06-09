@@ -69,6 +69,14 @@ elections:
     partisan_score: true
     competitive: true
 
+  - label: uss_r22
+    year: 2022
+    election_type: runoff
+    office: senate
+    candidates: [war, wal]
+    partisan_score: true
+    competitive: true
+
   - label: pre_2024
     year: 2024
     election_type: general

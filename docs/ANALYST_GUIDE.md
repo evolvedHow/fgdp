@@ -45,12 +45,12 @@ lines to help one party win more seats.
 The ensemble benchmark answers: **"Is the enacted map a typical outcome, or an
 extreme outlier?"**
 
-We generate 9,000–10,000 randomly drawn maps that satisfy every legal constraint:
+We generate **100,000 randomly drawn maps** that satisfy every legal constraint:
 - Equal population (within ±1–5% depending on chamber)
 - Geographic contiguity (every district is connected)
 - Reasonable compactness
 
-If the enacted map happens to give Republicans 9 seats when 9,950 out of 10,000
+If the enacted map happens to give Republicans 9 seats when 99,950 out of 100,000
 random maps gave Democrats 5 or more, that's not a coincidence — it's a sign of
 intentional design.
 
@@ -68,28 +68,68 @@ actual flip.
 
 ## 2. Input Data
 
-### Election results (6 elections)
+### The two roles of input data
+
+> **Key concept:** The two data sources play completely separate roles — this is
+> what makes the benchmark rigorous.
+>
+> | Data source | Role | What it's used for |
+> |---|---|---|
+> | **2020 Census** | Drawing the maps | Population balancing, demographics |
+> | **Election results** | Scoring the maps | Partisan outcomes after the fact |
+>
+> **The drawing algorithm sees no election data.** GerryChain and ALARM draw maps
+> using only geography and population — they have no knowledge of how anyone voted.
+> Election results are applied *after* 100,000 maps have already been drawn, to
+> measure what partisan outcome each neutral map would have produced.
+>
+> This separation is what makes the comparison meaningful: the ensemble represents
+> what redistricting looks like when partisanship is genuinely absent, not just
+> claimed to be absent.
+
+### 2020 Census (PL 94-171) — used to DRAW maps
+
+The Census provides two things the drawing algorithm needs:
+
+- **Total population per VTD** — ensures each randomly drawn district has equal
+  population (within the constitutional tolerance for that chamber).
+- **Racial/ethnic breakdown per VTD** (TOTPOP, Black VAP, Hispanic VAP, etc.) —
+  used after drawing to score each map's demographic composition. Also used to
+  apply the prison population adjustment (see below).
+
+### Election results (7 elections) — used to SCORE maps
 
 All elections are from official Georgia Secretary of State certified results,
 processed through the Redistricting Data Hub (RDH) block-disaggregation pipeline.
+Block-level vote counts are aggregated to VTD level using VAP_MOD weights.
+
+For each VTD and each election, we compute the **two-party Democratic vote
+share**: `dem_votes ÷ (dem_votes + rep_votes)`. Third-party candidates are
+excluded from the denominator so the score reflects the underlying Dem/Rep
+partisan balance independently of minor-party vote splitting.
+
+These seven per-VTD partisan lean numbers are then **averaged** into a single
+composite score per VTD — a stable picture of the structural partisan geography
+of Georgia that is not driven by any one election or candidate.
 
 | Label | Election | Candidates | Source |
 |---|---|---|---|
 | `gov_2018` | 2018 General — Governor | Kemp (R) / Abrams (D) | ALARM RDS |
 | `pre_2020` | 2020 General — President | Trump (R) / Biden (D) | RDH block file |
-| `uss_2021_war` | 2021 January 5 Runoff — US Senate | Loeffler (R) / Warnock (D) | RDH block file |
+| `uss_2021_war` | 2021 Jan 5 Runoff — US Senate | Loeffler (R) / Warnock (D) | RDH block file |
 | `gov_2022` | 2022 General — Governor | Kemp (R) / Abrams (D) | RDH block file |
 | `uss_2022` | 2022 General — US Senate | Walker (R) / Warnock (D) | RDH block file |
+| `uss_r22` | 2022 Dec 6 Runoff — US Senate | Walker (R) / Warnock (D) | RDH block file |
 | `pre_2024` | 2024 General — President | Trump (R) / Harris (D) | RDH block file |
 
-**Why these six?** They span three election cycles and two different offices
-(president and governor), which reduces the risk that any single unusual election
-drives the findings. Using both a presidential and gubernatorial race from each
-cycle captures both national and state-level partisan trends.
+**Why these seven?** They span three election cycles and two offices (president
+and governor/senate), which reduces the risk that any single unusual election
+drives the findings. Including both the November general and the December runoff
+for the 2022 Senate race captures the full competitive cycle of that contest.
 
 **Why not state legislative elections?** Down-ballot state legislature races
 are frequently uncontested (no opponent runs), which makes them unsuitable for
-measuring partisan voting patterns across all 14 districts.
+measuring partisan voting patterns across all districts.
 
 ### CVAP (Citizen Voting Age Population)
 
@@ -160,8 +200,11 @@ At each step:
 4. Assign one group to district A and the other to district B
 5. Accept the new map (we use "always accept" — this is a uniform random walk)
 
-After 10,000 steps (with the first 500–2,000 discarded as warm-up), we have a
-sample of 8,000–9,500 distinct maps, each one a legal redistricting plan.
+After enough steps to produce **100,000 samples** (with an initial warm-up
+period discarded), we have 100,000 distinct maps, each one a legal redistricting
+plan. All six benchmarks (GerryChain and ALARM for Congress, State Senate, and
+State House) use the same 100,000-draw standard so results are directly
+comparable across chambers and algorithms.
 
 **Population tolerance (ε):**
 - Congress: ±1.0% (federal constitutional standard)
@@ -173,20 +216,30 @@ directly compared against the simulated draws (2 through N).
 
 ### Step 3 — Score each map
 
+This is where the election data is applied for the first time. For each of the
+100,000 drawn maps, we overlay the per-VTD partisan lean from the seven elections
+and ask: *"If this district map had existed, how would Georgia have voted?"*
+
 For each simulated map × each election × each district, we compute:
-- Total Democratic votes and total Republican votes
+- Total Democratic votes and total Republican votes (sum of VTD-level vote
+  counts for all VTDs assigned to that district)
 - **Two-party vote share (dem_2pv)**: Democratic votes ÷ (Democratic + Republican votes)
 - Winner: `dem` if dem_2pv > 0.5, `rep` if dem_2pv < 0.5
 
-We then aggregate to the draw level for each election to compute the metrics
-described in the next section.
+We also compute a **composite score** — the average dem_2pv across all seven
+elections — which smooths out election-specific swings and reflects the
+underlying structural partisan lean of each district.
+
+We then aggregate to the draw level to compute the metrics described in the
+next section.
 
 ---
 
 ## 4. Metrics — Partisan Fairness
 
-All metrics are computed separately for each of the six benchmark elections.
-This produces six distributions — one per election — which can be compared to
+All metrics are computed separately for each of the seven benchmark elections,
+plus a composite. This produces eight distributions — one per election plus
+the composite — which can be compared to
 see how the enacted map performs across different political environments.
 
 ### 4.1 Democratic Seat Count

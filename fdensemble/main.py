@@ -1291,6 +1291,11 @@ def _build_run_from_scorecard(scorecard_path: Path, election_idx: int = 0, plan_
     # (GerryChain congress/senate/house + ALARM) share the same statewide baseline.
     proportionality = _build_proportionality_gap(grades, run_info.get('n_districts', N_DISTRICTS))
 
+    # Surface statewide_dem_2pv on meta so BenchmarkMethodology can display it
+    # without needing a separate prop from every parent.
+    if proportionality:
+        meta['statewide_dem_2pv'] = proportionality.get('statewide_dem_2pv')
+
     return {
         'meta':            meta,
         'grades':          grades,

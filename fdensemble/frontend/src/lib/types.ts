@@ -129,6 +129,7 @@ export interface RunMeta {
   elections?: ElectionOption[];  // populated for GerryChain scorecard runs
   election_idx?: number;
   plans?: ScoredPlan[];  // plans with full district data
+  statewide_dem_2pv?: number | null;  // composite Dem two-party vote share (0–1), from proportionality gap
 }
 
 export interface Summary {
