@@ -314,10 +314,16 @@
     <div class="headline" style="border-bottom:1px solid var(--border);padding:.55rem 1rem;
          background:{metric.grade === 'F' ? '#fff5f5' : metric.grade === 'A' ? '#f5fdf8' : 'var(--light)'};
          display:flex;align-items:center;justify-content:space-between;gap:.5rem;">
-      <div>
+      <div style="display:flex;align-items:center;gap:.4rem;min-width:0;flex:1;">
         <span style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
-                     color:var(--gray);margin-right:.5rem;">{metric.label}</span>
-        <span style="font-size:.82rem;font-weight:700;color:var(--blue);">{metric.headline ?? metric.label}</span>
+                     color:var(--gray);white-space:nowrap;">{metric.label}</span>
+        <span style="font-size:.82rem;font-weight:700;color:var(--blue);white-space:nowrap;">{metric.headline ?? metric.label}</span>
+        {#if metric.description}
+          <span class="info-tip">
+            <span class="info-tip-icon">ⓘ</span>
+            <span class="info-tip-box">{metric.description}</span>
+          </span>
+        {/if}
       </div>
       <button class="capture-btn" onclick={doCapture} disabled={capturing} title="Save as PNG">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -329,8 +335,8 @@
       </button>
     </div>
 
-    <!-- Body: grade info + histogram + description -->
-    <div style="display:grid;grid-template-columns:190px 200px 1fr;min-width:0;">
+    <!-- Body: grade info + histogram -->
+    <div style="display:grid;grid-template-columns:190px 1fr;min-width:0;">
 
       <!-- Left: grade + numbers -->
       <div style="padding:.7rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem;">
@@ -426,18 +432,16 @@
             {/if}
           </div>
           {#if !planMetric && (metric as any).grade_symmetric !== undefined}
-            <div style="font-size:.62rem;color:var(--gray);margin-top:.4rem;padding:.3rem .5rem;
-                        background:#f8f4ff;border-radius:4px;border-left:2.5px solid #8e44ad;line-height:1.45;">
-              <b style="color:#8e44ad;">VRA Floor Grade</b>: Minority representation uses a one-sided test —
-              having more minority-opportunity districts than neutral maps is never penalized.
-              Grade F = below the race-neutral VRA floor (5th pct). Symmetric grade shown for reference.
-            </div>
+            <span class="info-tip" style="margin-top:.3rem;">
+              <span class="info-tip-icon" style="color:#8e44ad;">ⓘ VRA floor</span>
+              <span class="info-tip-box">Directional grading: only enacted maps with <em>fewer</em> majority-minority districts than neutral alternatives are penalized. Grade F = below the race-neutral 5th percentile floor. Symmetric grade shown for reference.</span>
+            </span>
           {/if}
         {/if}
       </div>
 
-      <!-- Middle: histogram -->
-      <div style="padding:.6rem .8rem;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;">
+      <!-- Histogram -->
+      <div style="padding:.6rem .8rem;display:flex;flex-direction:column;justify-content:center;">
         <div style="height:90px;position:relative;">
           <canvas bind:this={canvas}></canvas>
         </div>
@@ -458,12 +462,6 @@
         </div>
       </div>
 
-      <!-- Right: what this metric measures -->
-      <div style="padding:.7rem 1rem;display:flex;flex-direction:column;justify-content:center;">
-        <div style="font-size:.72rem;font-weight:600;color:var(--gray);text-transform:uppercase;
-                    letter-spacing:.04em;margin-bottom:.3rem;">What this measures</div>
-        <div style="font-size:.73rem;color:#444;line-height:1.6;">{metric.description}</div>
-      </div>
     </div>
 
     <!-- Takeaway -->
@@ -500,8 +498,49 @@
     cursor: pointer;
     font-size: .66rem;
     color: var(--gray);
+    flex-shrink: 0;
   }
   .capture-btn:hover { background: var(--light); }
+
+  /* ── Inline tooltip ─────────────────────────────────────────────────── */
+  .info-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .info-tip-icon {
+    font-size: .68rem;
+    color: var(--gray);
+    cursor: help;
+    padding: 0 .15rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .info-tip-box {
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity .12s;
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 0;
+    width: 300px;
+    background: #1e2226;
+    color: #eee;
+    font-size: .7rem;
+    line-height: 1.55;
+    padding: .6rem .75rem;
+    border-radius: 6px;
+    z-index: 300;
+    pointer-events: none;
+    white-space: normal;
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+    font-weight: 400;
+  }
+  .info-tip:hover .info-tip-box {
+    visibility: visible;
+    opacity: 1;
+  }
+
   @media (max-width: 860px) {
     div[style*="grid-template-columns:190px"] {
       grid-template-columns: 1fr !important;

@@ -22,10 +22,20 @@ uv run --project fdp python fdp/scripts/build_composite_score.py 2>&1 | tee "$LO
 log "Composite rebuild done."
 
 log "=== Phase 2: Rescore demographics (CVAP) — all 4 runs in parallel ==="
+declare -A CONFIG_MAP=(
+  [congress]="fdp/configs/benchmarks/ga_congress_2026_v3.yml"
+  [senate]="fdp/configs/benchmarks/ga_senate_2026.yml"
+  [congress_alarm]="fdp/configs/benchmarks/ga_congress_2026_alarm.yml"
+  [senate_alarm]="fdp/configs/benchmarks/ga_senate_2026_alarm.yml"
+)
 for run in congress senate congress_alarm senate_alarm; do
+  cfg="${CONFIG_MAP[$run]:-}"
+  config_arg=""
+  [[ -f "$cfg" ]] && config_arg="--config $cfg"
   uv run --project fdp python fdp/scripts/score_ensemble_demographics.py \
     --run-name "fdga_baseline_benchmarks_2601_${run}" \
     --plans-file "$ENS/fdga_baseline_benchmarks_2601_${run}_plans.parquet" \
+    $config_arg \
     > "$LOGS/demo_${run}.log" 2>&1 &
 done
 wait

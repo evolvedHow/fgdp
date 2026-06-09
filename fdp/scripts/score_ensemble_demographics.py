@@ -34,6 +34,8 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -258,10 +260,14 @@ def main() -> None:
                     help="Path to demographic Parquet (same schema as bvap_vtd.parquet). "
                          "Defaults to {data_dir}/vtd/cvap_vtd.parquet (any-part Black CVAP, ACS 2024). "
                          "Pass bvap_vtd.parquet to use 2020 Census PL 94-171 headcounts.")
-    ap.add_argument("--majority-threshold", type=float, default=MAJORITY_THRESHOLD,
+    ap.add_argument("--config", default=None,
+                    help="Path to benchmark YAML config. When provided, reads "
+                         "majority_threshold from the demographics.majority_threshold field. "
+                         "CLI --majority-threshold overrides the config value.")
+    ap.add_argument("--majority-threshold", type=float, default=None,
                     dest="majority_threshold",
-                    help=f"BVAP fraction threshold for majority/influence flag "
-                         f"(default: {MAJORITY_THRESHOLD})")
+                    help=f"CVAP majority threshold (default: from config demographics.majority_threshold, "
+                         f"or {MAJORITY_THRESHOLD} if no config)")
     ap.add_argument("--out-file", default=None, dest="out_file",
                     help="Output path. Defaults to "
                          "{data_dir}/ensemble/{run_name}_demographics.parquet.")
@@ -270,6 +276,21 @@ def main() -> None:
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir) if args.data_dir else DEFAULT_DATA_DIR
+
+    # ── Resolve majority_threshold: CLI > config YAML > module default ────────
+    majority_threshold = MAJORITY_THRESHOLD
+    if args.config:
+        cfg_path = Path(args.config)
+        if not cfg_path.exists():
+            print(f"ERROR: config file not found: {cfg_path}")
+            sys.exit(1)
+        cfg = yaml.safe_load(cfg_path.read_text())
+        demo_cfg = cfg.get("demographics", {})
+        if "majority_threshold" in demo_cfg:
+            majority_threshold = float(demo_cfg["majority_threshold"])
+            print(f"  Config {cfg_path.name}: majority_threshold={majority_threshold}")
+    if args.majority_threshold is not None:
+        majority_threshold = args.majority_threshold  # explicit CLI flag wins
 
     plans_path = Path(args.plans_file)
     if not plans_path.exists():
@@ -292,12 +313,12 @@ def main() -> None:
     bvap_np                      = load_bvap(geoids, bvap_file)
     df                           = score_demographics(
         plan_np, bvap_np, n_districts, args.run_name,
-        majority_threshold=args.majority_threshold,
+        majority_threshold=majority_threshold,
     )
 
     # ── Print enacted plan summary (draw=1) ──────────────────────────────────
     enacted = df[df.draw == 1].copy()
-    threshold_pct = int(args.majority_threshold * 100)
+    threshold_pct = int(majority_threshold * 100)
     print(f"\nEnacted plan demographics (draw=1, threshold={threshold_pct}%) — {n_districts} districts:")
     print(f"  {threshold_pct}%+ Black districts        : {enacted.majority_black.sum()}")
     print(f"  {threshold_pct}%+ White districts         : {enacted.majority_white.sum()}")
