@@ -357,7 +357,7 @@
 
       <div style="display:flex;flex-direction:column;gap:.55rem;">
         {#each allMetrics(keys) as {key, metric}}
-          <MetricCard {metric} planMetric={planMetricFor(key)} />
+          <MetricCard {metric} planMetric={planMetricFor(key)} nDistricts={analysis.summary?.n_districts ?? 14} />
         {/each}
       </div>
     {/if}

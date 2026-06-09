@@ -80,7 +80,7 @@
   const gcol     = $derived(gradeColor[grade] ?? '#888');
 
   // ── SVG bar chart geometry ────────────────────────────────────────────────
-  // 15 integer slots (0–14) across a 260px-wide SVG
+  // Adapts to nDistricts: congress(14)=15 slots, senate(56)=57 slots, etc.
   const PAD_L   = 12;
   const PAD_R   = 12;
   const SVG_W   = 260;
@@ -89,9 +89,17 @@
   const CHART_B = 76;    // y of baseline
   const CHART_T = 14;    // y of chart top
   const CHART_H = CHART_B - CHART_T;        // 62px bar area
-  const N_SLOTS = 15;                       // integers 0–14
-  const SLOT_W  = TW / N_SLOTS;            // ≈ 15.73px per slot
-  const BAR_W   = SLOT_W - 2;             // ≈ 13.73px bar width
+  const N_SLOTS = $derived(nDistricts + 1); // integers 0–nDistricts
+  const SLOT_W  = $derived(TW / N_SLOTS);
+  const BAR_W   = $derived(Math.max(SLOT_W - 1, 1.5)); // min 1.5px for large chambers
+
+  // X-axis label step: show fewer labels when districts are many
+  const LABEL_STEP = $derived(
+    nDistricts <= 15  ? 2  :
+    nDistricts <= 30  ? 5  :
+    nDistricts <= 60  ? 10 :
+    nDistricts <= 120 ? 20 : 30
+  );
 
   // Peak bar index: the largest bar that is NOT the enacted value
   const peakIdx = $derived.by((): number => {
@@ -171,9 +179,9 @@
 
         <!-- peak bar label removed — bar height conveys frequency visually -->
 
-        <!-- ── X-axis integer labels (even numbers only) ── -->
+        <!-- ── X-axis integer labels (step adapts to district count) ── -->
         {#each Array.from({length: nDistricts + 1}, (_, i) => i) as i}
-          {#if i % 2 === 0}
+          {#if i % LABEL_STEP === 0}
             <text x={PAD_L + i * SLOT_W + BAR_W / 2} y={CHART_B + 13}
               text-anchor="middle" font-size="8" fill="#bbb">{i}</text>
           {/if}

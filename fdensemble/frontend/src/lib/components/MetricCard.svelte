@@ -12,10 +12,9 @@
     metric: MetricGrade;
     planMetric?: PlanMetricOverlay | null;
     demoThresholdKey?: string;  // e.g. "0.50", "0.20" — for demographic metrics only
+    nDistricts?: number;        // total districts (congress=14, senate=56, house=180)
   }
-  let { metric, planMetric = null, demoThresholdKey = '' }: Props = $props();
-
-  const nDistricts = 14;  // max district count for integer histogram
+  let { metric, planMetric = null, demoThresholdKey = '', nDistricts = 14 }: Props = $props();
 
   // ── Demographic threshold override ────────────────────────────────────────
   // When demoThresholdKey is set and the metric has pre-computed threshold arrays,
@@ -152,8 +151,11 @@
             ticks: {
               font: { size: 8 },
               color: '#888',
-              // Show every other label to avoid crowding
-              callback: (_val: any, idx: number) => (idx % 2 === 0 ? String(idx) : ''),
+              // Adaptive label step: fewer labels when more districts
+              callback: (_val: any, idx: number) => {
+                const step = nDistricts <= 15 ? 2 : nDistricts <= 30 ? 5 : nDistricts <= 60 ? 10 : 20;
+                return idx % step === 0 ? String(idx) : '';
+              },
             },
             grid: { display: false },
             border: { display: false },
