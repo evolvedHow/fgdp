@@ -1,16 +1,13 @@
 <script lang="ts">
   import type { RunMeta, Analysis } from '../types.js';
-  import BenchmarkTab from './BenchmarkTab.svelte';
 
   interface Props {
     runs: RunMeta[];
     selectedRunId: string;
     analysis: Analysis;
-    selectedElectionIdx: number;
     onRunChange?: (id: string) => void;
-    onSwitchElection?: (idx: number) => void;
   }
-  let { runs, selectedRunId, analysis, selectedElectionIdx, onRunChange, onSwitchElection }: Props = $props();
+  let { runs, selectedRunId, analysis, onRunChange }: Props = $props();
 
   const summary = $derived(analysis?.summary ?? null);
 
@@ -179,10 +176,4 @@
     </div>
   </div>
 
-  <!-- Run details for the selected benchmark -->
-  <BenchmarkTab
-    {analysis}
-    {selectedElectionIdx}
-    onSwitchElection={onSwitchElection ?? (() => {})}
-  />
 </div>

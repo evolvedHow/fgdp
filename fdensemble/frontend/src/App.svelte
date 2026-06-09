@@ -8,8 +8,8 @@
   import { getAllScoredPlans, saveScoredPlan, deleteScoredPlan } from './lib/db.js';
   import { apiGet } from './lib/api.js';
 
-  type Tab = 'story' | 'analyze' | 'compare';
-  let tab: Tab = $state('story');
+  type Tab = 'ensemble' | 'compare';
+  let tab: Tab = $state('ensemble');
 
   let runs: RunMeta[]             = $state([]);
   let analysis: Analysis | null   = $state(null);
@@ -95,7 +95,7 @@
   async function addScoredPlan(plan: ScoredPlan) {
     await saveScoredPlan(plan);
     scoredPlans = [scoredPlans[0], plan, ...scoredPlans.slice(1)];
-    tab = 'analyze';
+    tab = 'ensemble';
   }
 
   async function removeScoredPlan(id: string) {
@@ -106,9 +106,8 @@
   const summary = $derived(analysis?.summary ?? null);
 
   const TAB_LABELS: Record<Tab, string> = {
-    story:   'Ensemble',
-    analyze: 'Score a Plan',
-    compare: 'Compare Plans',
+    ensemble: 'Ensemble',
+    compare:  'Compare Plans',
   };
 
   onMount(loadRuns);
@@ -121,7 +120,7 @@
 <!-- Tab bar -->
 <div class="no-print" style="background:var(--card);border-bottom:2px solid var(--border);
      display:flex;gap:0;padding:0 1rem;overflow-x:auto;">
-  {#each (['story', 'analyze', 'compare'] as Tab[]) as t}
+  {#each (['ensemble', 'compare'] as Tab[]) as t}
     <button
       onclick={() => tab = t}
       style="padding:.55rem 1.1rem;border:none;background:transparent;cursor:pointer;
@@ -152,17 +151,16 @@
       {#if summary}· {summary.state_full} {summary.plan_type.toUpperCase()} {summary.plan_year}{/if}
     </div>
 
-    {#if tab === 'story'}
+    {#if tab === 'ensemble'}
+      <!-- Narrative + benchmark registry -->
       <EnsembleStoryTab
         {runs}
         {analysis}
         selectedRunId={selectedRunId}
-        {selectedElectionIdx}
         onRunChange={switchRun}
-        onSwitchElection={switchElection}
       />
 
-    {:else if tab === 'analyze'}
+      <!-- Scoring metrics for the selected benchmark — sits below the registry on the same page -->
       <ScoreTab
         {analysis}
         {companionRunId}
