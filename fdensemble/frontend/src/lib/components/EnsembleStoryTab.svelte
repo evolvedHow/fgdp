@@ -16,12 +16,12 @@
     alarm: {
       chains:      'Independent SMC chains',
       popTol:      '±1% congress / ±5% legislative',
-      constraints: 'Equal population, contiguity, BVAP hinge (VRA §2)',
+      constraints: 'Equal population, contiguity, BVAP hinge',
     },
     gerrychain: {
       chains:      'Single ReCom chain',
       popTol:      '±1% congress / ±5% legislative',
-      constraints: 'Equal population, contiguity, compactness (soft), VRA §2',
+      constraints: 'Equal population, contiguity, compactness (soft)',
     },
   };
 

@@ -77,7 +77,7 @@
         <p style="margin:0;">
           GerryChain uses a Markov chain Monte Carlo (MCMC) random walk to generate thousands of
           redistricting plans that satisfy all legal constraints — equal population, contiguity,
-          compactness, and Voting Rights Act requirements — but are drawn <em>without any partisan intent</em>.
+          compactness, and equal population requirements — but are drawn <em>without any partisan intent</em>.
           This creates a neutral baseline: the range of outcomes you'd see from a fair, geography-driven process.
           Plans that fall outside this range are statistical outliers — unlikely to arise from neutral mapmaking.
         </p>
@@ -138,11 +138,11 @@
         {#if isAlarm}
           <dt style="font-weight:700;">VAP</dt>
           <dd style="margin:0;">minority metrics use 2020 Census Voting Age Population
-            (GerryChain uses 2024 CVAP — citizens only; both are valid VRA measures)</dd>
+            (GerryChain uses 2024 CVAP — citizens only; both are recognized measures of minority representation)</dd>
         {:else}
           <dt style="font-weight:700;">CVAP</dt>
           <dd style="margin:0;">minority metrics use 2024 ACS 5-year Citizen Voting Age Population
-            (citizens only — the legally relevant measure for Voting Rights Act analysis)</dd>
+            (citizens only — the standard measure for minority representation analysis)</dd>
         {/if}
       </dl>
       <p style="margin:.6rem 0 0;font-size:.72rem;color:var(--gray);">

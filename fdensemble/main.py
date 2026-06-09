@@ -325,8 +325,8 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
             return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
                     f"fewer than {100-pct_rank:.0f}% of neutral maps "
                     f"(typical range: {p5:.0f}–{p95:.0f}). "
-                    f"This falls far below what geography alone would support, "
-                    f"raising serious Voting Rights Act concerns.")
+                    f"This falls far below what neutral, geography-driven mapmaking would produce — "
+                    f"a statistical outlier on the low end.")
         elif pct_rank < 50:
             return (f"The enacted map has {enacted:.0f} majority-Black district(s) — "
                     f"below the neutral median of {p50:.0f} (typical: {p5:.0f}–{p95:.0f}). "
@@ -345,8 +345,9 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
         group = groups.get(key, "minority")
         if pct_rank < 5:
             return (f"The enacted map has {enacted:.0f} majority-{group} district(s) — "
-                    f"fewer than {100-pct_rank:.0f}% of neutral maps. "
-                    f"This raises serious Voting Rights Act compliance concerns.")
+                    f"fewer than {100-pct_rank:.0f}% of neutral maps "
+                    f"(typical: {p5:.0f}–{p95:.0f}). "
+                    f"This is a statistical outlier — below what neutral mapmaking would produce.")
         elif pct_rank < 50:
             return (f"The enacted map has {enacted:.0f} majority-{group} district(s) — "
                     f"below the neutral median of {p50:.0f} (typical: {p5:.0f}–{p95:.0f}). "
@@ -365,8 +366,8 @@ def _generate_takeaway(key: str, enacted: float, pct_rank: float, histogram: dic
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
                     f"fewer than {100-pct_rank:.0f}% of neutral maps "
                     f"(typical: {p5:.0f}–{p95:.0f}). Communities of color have "
-                    f"significantly less collective electoral influence than geography would support, "
-                    f"raising Voting Rights Act concerns.")
+                    f"significantly less collective electoral influence than neutral mapmaking would produce — "
+                    f"a statistical outlier on the low end.")
         elif pct_rank < 50:
             return (f"The enacted map has {enacted:.0f} minority-coalition district(s) — "
                     f"below the neutral median of {p50:.0f} (typical: {p5:.0f}–{p95:.0f}). "
@@ -430,7 +431,7 @@ _METRIC_FORMULAS: dict = {
     'maj_asian':      {'formula': 'count(d : bvap_asn_d / bvap_tot_d ≥ majority_threshold)', 'detail': 'Asian American VAP share per district (2020 Census P0040008 NH Asian alone)', 'data_source': '2020 Census PL 94-171 VAP (Table P4)', 'config_keys': ['majority_threshold']},
     'min_coal':       {'formula': 'count(d : (1 − bvap_wht_d / bvap_tot_d) ≥ majority_threshold)', 'detail': 'Combined non-white VAP share (1 − NH White fraction). A minority-coalition district includes multiple racial groups, none individually a majority.', 'data_source': '2020 Census PL 94-171 VAP (Table P4)', 'config_keys': ['majority_threshold']},
     'maj_white':      {'formula': 'count(d : bvap_wht_d / bvap_tot_d ≥ majority_threshold)', 'detail': 'Districts where non-Hispanic white citizens are a majority of the Voting Age Population (2020 Census P0040005). Shown alongside minority metrics to complete the demographic picture.', 'data_source': '2020 Census PL 94-171 VAP (Table P4)', 'config_keys': ['majority_threshold']},
-    'min_influence':  {'formula': 'count(d : influence_min ≤ (1 − bvap_wht_d / bvap_tot_d) < influence_max)', 'detail': 'Districts where communities of color have meaningful electoral influence but do not constitute a majority. Below the majority threshold for direct VRA Section 2 protection, but above the FDGA influence floor.', 'data_source': '2020 Census PL 94-171 VAP (Table P4)', 'config_keys': ['influence_min_threshold', 'influence_max_threshold']},
+    'min_influence':  {'formula': 'count(d : influence_min ≤ (1 − bvap_wht_d / bvap_tot_d) < influence_max)', 'detail': 'Districts where communities of color have meaningful electoral influence but do not constitute a majority — above the FDGA influence floor but below the majority threshold.', 'data_source': '2020 Census PL 94-171 VAP (Table P4)', 'config_keys': ['influence_min_threshold', 'influence_max_threshold']},
     'dem_safe_seats': {'formula': f'count(d : dem_2pv_d > 0.50 + competitive_margin)', 'detail': 'Democratic-leaning districts outside the competitive zone — the margin exceeds the threshold on the Democratic side', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': ['competitive_margin']},
     'rep_safe_seats': {'formula': f'count(d : dem_2pv_d < 0.50 − competitive_margin)', 'detail': 'Republican-leaning districts outside the competitive zone — the margin exceeds the threshold on the Republican side', 'data_source': 'VTD composite — 2018–2024 composite', 'config_keys': ['competitive_margin']},
 }
@@ -535,25 +536,23 @@ _METRIC_META = {
         'Black Community Representation', 'Do Black voters have a fair opportunity to elect representatives of their choice?',
         'minority',
         f'This counts districts where Black citizens make up more than '
-        f'{BVAP_THRESHOLD*100:.0f}% of the Voting Age Population. Under Section 2 of '
-        f'the Voting Rights Act, mapmakers must not dilute minority communities\' '
-        f'electoral influence. The histogram shows how many majority-Black districts '
+        f'{BVAP_THRESHOLD*100:.0f}% of the Voting Age Population. '
+        f'The histogram shows how many majority-Black districts '
         f'thousands of neutrally drawn maps produce. The Princeton ensemble test grades '
-        f'statistical distance from the neutral range in either direction: too few '
-        f'raises VRA dilution concerns; too many is equally anomalous as a statistical '
-        f'outlier. The takeaway text explains the direction and meaning.',
+        f'statistical distance from the neutral range in either direction: both '
+        f'unusually few and unusually many are anomalous relative to what neutral, '
+        f'geography-driven mapmaking would produce. The takeaway text explains the direction and magnitude.',
         None),
     'maj_hisp': (
         'Hispanic Community Representation', 'Do Hispanic voters have a fair opportunity to elect their preferred candidates?',
         'minority',
         f'This counts districts where Hispanic citizens make up more than '
-        f'{MINORITY_THRESHOLD*100:.0f}% of the Voting Age Population. The Voting '
-        f'Rights Act protects Hispanic voters\' ability to elect representatives of '
-        f'their choice. As Georgia\'s Hispanic population has grown significantly, '
-        f'this metric compares the enacted map\'s minority district count against '
+        f'{MINORITY_THRESHOLD*100:.0f}% of the Voting Age Population. '
+        f'As Georgia\'s Hispanic population has grown significantly, '
+        f'this metric compares the enacted map\'s district count against '
         f'what neutral, geography-based alternatives would naturally produce. '
         f'More districts than the neutral baseline indicates stronger representation '
-        f'opportunity; significantly fewer raises Voting Rights Act concerns.',
+        f'opportunity; significantly fewer is a statistical outlier on the low end.',
         True),
     'maj_aian': (
         'Indigenous Community Representation', 'Do American Indian and Alaska Native voters have fair representation?',
@@ -561,8 +560,7 @@ _METRIC_META = {
         'This counts districts where American Indian and Alaska Native citizens '
         'make up more than 50% of the Voting Age Population. These communities '
         'have historically faced some of the most significant barriers to political '
-        'representation in American history and are specifically protected under '
-        'the Voting Rights Act. The comparison against neutral alternatives reveals '
+        'representation in American history. The comparison against neutral alternatives reveals '
         'whether the enacted map preserves or diminishes their electoral opportunity. '
         'More districts than the neutral baseline is the better outcome.',
         True),
@@ -606,8 +604,8 @@ _METRIC_META = {
         f'Counts districts where communities of color collectively hold between '
         f'{INFLUENCE_MIN_THRESHOLD*100:.0f}% and {INFLUENCE_MAX_THRESHOLD*100:.0f}% of the '
         f'Voting Age Population — above the FDGA influence floor but below the majority threshold. '
-        f'These districts are below the threshold for direct VRA Section 2 protection '
-        f'but above the level at which minority voters can meaningfully influence outcomes. '
+        f'These are districts where minority voters can meaningfully influence outcomes '
+        f'without constituting a majority. '
         f'Both thresholds are configurable via env vars INFLUENCE_MIN_THRESHOLD and INFLUENCE_MAX_THRESHOLD.',
         True),
     'dem_safe_seats': (
