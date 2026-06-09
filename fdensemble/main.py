@@ -1344,6 +1344,62 @@ print('Loading runs...')
 _runs = _discover_and_load_runs()
 print(f'Ready — {len(_runs)} run(s): {list(_runs.keys())}')
 
+# ── Pre-score enacted GeoJSONs for Compare tab ───────────────────────────────
+
+_ENACTED_MAP_IDS: dict[str, str] = {
+    'congress': 'congress_enacted_2023',
+    'senate':   'senate_enacted_2023',
+    'house':    'house_enacted_2023',
+}
+
+
+def _preload_enacted_districts() -> None:
+    """Inject per-district data into each run's plans[0] from the seeded enacted GeoJSONs.
+
+    Allows the Compare tab to render district breakdowns for benchmark reference
+    plans without a live /score-map call. Scores once per chamber, caches the result.
+    """
+    cache: dict[str, dict] = {}   # chamber → scored plan result
+
+    for run_id, run in _runs.items():
+        chamber = run['meta'].get('chamber', '')
+        if not chamber or chamber not in _ENACTED_MAP_IDS:
+            continue
+        plans = run['meta'].get('plans', [])
+        if not plans or plans[0].get('districts'):
+            continue  # already populated or no plans slot
+
+        if chamber not in cache:
+            map_id       = _ENACTED_MAP_IDS[chamber]
+            geojson_path = MAPS_DIR / f'{map_id}.geojson'
+            if not geojson_path.exists():
+                print(f'  WARN  enacted {chamber} GeoJSON not found at {geojson_path}')
+                cache[chamber] = {}
+                continue
+            try:
+                _load_vtd_composite()
+                features = json.loads(geojson_path.read_text()).get('features', [])
+                print(f'  Pre-scoring enacted {chamber} ({len(features)} districts)…')
+                cache[chamber] = _score_geojson(features, run_id)
+            except Exception as exc:
+                print(f'  WARN  pre-score enacted {chamber} failed: {exc}')
+                cache[chamber] = {}
+
+        scored = cache.get(chamber)
+        if not scored or not scored.get('districts'):
+            continue
+
+        enacted_label = plans[0].get('label', 'Enacted Map')
+        run['meta']['plans'][0] = {
+            **scored,
+            'id':     'enacted',
+            'label':  enacted_label,
+            'source': 'catalog',
+            'run_id': run_id,
+        }
+        print(f'  Injected {len(scored["districts"])} districts → {run_id} plans[0]')
+
+
 # ── Map library (server-side persistent shapefile catalog) ────────────────────
 
 def _map_slug(label: str) -> str:
@@ -1364,6 +1420,9 @@ def _save_maps_catalog(maps: list):
 
 _maps_catalog: list = _load_maps_catalog()
 print(f'Map library: {len(_maps_catalog)} map(s) in {MAPS_DIR}')
+
+# Pre-score enacted plans so Compare tab can load districts without /score-map.
+# Deferred until after _load_vtd_composite() is defined — called at end of this block.
 
 def _load_vtd_composite():
     global _vtd_df, _vtd_tree, _vtd_points
@@ -1710,6 +1769,9 @@ def _score_geojson(features: list, run_id: str) -> dict:
         'vtd_assignments': vtd_assignments,
         'vtd_details':     vtd_details,
     })
+
+
+_preload_enacted_districts()
 
 
 def _get_run(run_id: str | None) -> dict:

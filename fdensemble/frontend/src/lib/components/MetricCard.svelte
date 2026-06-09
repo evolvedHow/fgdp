@@ -110,22 +110,31 @@
     const N = nDistricts;
 
     // Integer bins 0 … N
-    const labels = Array.from({length: N + 1}, (_, i) => String(i));
+    const allLabels = Array.from({length: N + 1}, (_, i) => String(i));
     const counts = new Array(N + 1).fill(0);
     for (const v of drawVals) {
       const idx = Math.min(Math.max(Math.round(v), 0), N);
       counts[idx]++;
     }
-
     const enactedBin = Math.min(Math.max(Math.round(enactedVal), 0), N);
-    const totalMaps = counts.reduce((a, b) => a + b, 0);
+
+    // Trim to populated range — include enacted bin, add 1-slot buffer each side
+    let first = 0, last = N;
+    while (first < N && counts[first] === 0) first++;
+    while (last > 0 && counts[last] === 0) last--;
+    first = Math.max(0, Math.min(first, enactedBin) - 1);
+    last  = Math.min(N, Math.max(last,  enactedBin) + 1);
+
+    const labels     = allLabels.slice(first, last + 1);
+    const trimCounts = counts.slice(first, last + 1);
+    const enactedTrimBin = enactedBin - first;
 
     chart = new Chart(canvas, {
       type: 'bar',
       data: {
         labels,
         datasets: [{
-          data: counts,
+          data: trimCounts,
           backgroundColor: col + '88',
           borderColor: col,
           borderWidth: 0.5,
@@ -136,7 +145,6 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
-        indexAxis: 'y',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -147,33 +155,26 @@
           },
         },
         scales: {
-          y: {
+          x: {
             display: true,
-            ticks: {
-              font: { size: 8 },
-              color: '#888',
-              callback: (_val: any, idx: number) => {
-                const step = nDistricts <= 15 ? 2 : nDistricts <= 30 ? 5 : nDistricts <= 60 ? 10 : 20;
-                return idx % step === 0 ? String(idx) : '';
-              },
-            },
+            ticks: { font: { size: 8 }, color: '#888' },
             grid: { display: false },
             border: { display: false },
           },
-          x: { display: false },
+          y: { display: false },
         },
       },
       plugins: [{
         id: 'enacted-line',
         afterDraw(ch: any) {
-          const yScale = ch.scales.y;
-          const { ctx, chartArea: { left, right } } = ch;
-          const y = yScale.getPixelForValue(enactedBin);
+          const xScale = ch.scales.x;
+          const { ctx, chartArea: { top, bottom } } = ch;
+          const x = xScale.getPixelForValue(enactedTrimBin);
           ctx.save();
           ctx.strokeStyle = '#111';
           ctx.lineWidth = 2;
           ctx.setLineDash([4, 3]);
-          ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
           ctx.restore();
         },
       }],
@@ -186,12 +187,12 @@
 
     if (chart) { chart.destroy(); chart = null; }
 
-    const snap    = $state.snapshot(metric);
+    const snap     = $state.snapshot(metric);
     const planSnap = planMetric ? $state.snapshot(planMetric) : null;
-    const h       = snap.histogram;
-    const edges   = Array.from(h.edges);
-    const labels  = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
-    const col     = categoryColor[snap.category] ?? '#888';
+    const h        = snap.histogram;
+    const edges    = Array.from(h.edges);
+    const allLabels = edges.slice(0, -1).map((e: number, i: number) => ((e + edges[i + 1]) / 2).toFixed(2));
+    const col      = categoryColor[snap.category] ?? '#888';
     const barCounts = Array.from(h.counts);
 
     // Use activeEnacted for the enacted vertical line when threshold is active
@@ -201,12 +202,39 @@
 
     const aRange = snap.a_grade_range ?? null;
 
+    // Trim to populated range — removes dead space on left/right tails
+    let lo = 0, hi = barCounts.length - 1;
+    while (lo < hi && barCounts[lo] === 0) lo++;
+    while (hi > lo && barCounts[hi] === 0) hi--;
+    lo = Math.max(0, lo - 1);
+    hi = Math.min(barCounts.length - 1, hi + 1);
+    // Ensure enacted and plan values are within the visible window
+    if (enactedLineVal != null) {
+      const ei = binIndex(Array.from(h.edges), enactedLineVal);
+      if (ei >= 0) {
+        lo = Math.min(lo, Math.max(0, ei - 1));
+        hi = Math.max(hi, Math.min(barCounts.length - 1, ei + 1));
+      }
+    }
+    if (planSnap) {
+      const pi = binIndex(Array.from(h.edges), planSnap.value);
+      if (pi >= 0) {
+        lo = Math.min(lo, Math.max(0, pi - 1));
+        hi = Math.max(hi, Math.min(barCounts.length - 1, pi + 1));
+      }
+    }
+    const labels     = allLabels.slice(lo, hi + 1);
+    const trimCounts = barCounts.slice(lo, hi + 1);
+
+    // Map original bin index to trimmed index (offset by lo)
+    const toTrimIdx = (val: number) => binIndex(Array.from(h.edges), val) - lo;
+
     chart = new Chart(canvas, {
       type: 'bar',
       data: {
         labels,
         datasets: [{
-          data:            barCounts,
+          data:            trimCounts,
           backgroundColor: col + '88',
           borderColor:     col,
           borderWidth:     0.5,
@@ -217,7 +245,6 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
-        indexAxis: 'y',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -236,51 +263,53 @@
         id: 'a-grade-band',
         beforeDatasetsDraw(ch: any) {
           if (!aRange) return;
-          const { lo, hi } = aRange;
-          if (lo == null && hi == null) return;
-          const yScale = ch.scales.y;
+          const { lo: grLo, hi: grHi } = aRange;
+          if (grLo == null && grHi == null) return;
+          const xScale = ch.scales.x;
           const { ctx, chartArea: { top, bottom, left, right } } = ch;
-          const bh = edges.length > 2 ? Math.abs(yScale.getPixelForValue(1) - yScale.getPixelForValue(0)) : 10;
+          const bw = edges.length > 2 ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) : 10;
           const edgesArr = Array.from(h.edges);
-          const loIdx = lo != null ? binIndex(edgesArr, lo) : 0;
-          const hiIdx = hi != null ? binIndex(edgesArr, hi) : labels.length - 1;
-          const yTop    = loIdx > 0 ? yScale.getPixelForValue(loIdx) - bh / 2 : top;
-          const yBottom = hiIdx < labels.length - 1 ? yScale.getPixelForValue(hiIdx) + bh / 2 : bottom;
+          const loOrigIdx = grLo != null ? binIndex(edgesArr, grLo) : 0;
+          const hiOrigIdx = grHi != null ? binIndex(edgesArr, grHi) : allLabels.length - 1;
+          const loTrimIdx = loOrigIdx - lo;
+          const hiTrimIdx = hiOrigIdx - lo;
+          const xLeft  = loTrimIdx > 0 ? xScale.getPixelForValue(loTrimIdx) - bw / 2 : left;
+          const xRight = hiTrimIdx < labels.length - 1 ? xScale.getPixelForValue(hiTrimIdx) + bw / 2 : right;
           ctx.save();
           ctx.fillStyle = 'rgba(39, 174, 96, 0.13)';
-          ctx.fillRect(left, yTop, right - left, yBottom - yTop);
+          ctx.fillRect(xLeft, top, xRight - xLeft, bottom - top);
           ctx.restore();
         },
       }, {
         id: 'value-lines',
         afterDraw(ch: any) {
-          const yScale = ch.scales.y;
-          const { ctx, chartArea: { left, right } } = ch;
+          const xScale = ch.scales.x;
+          const { ctx, chartArea: { top, bottom } } = ch;
 
           // Enacted dashed line — uses activeEnacted when threshold is set
           if (enactedLineVal != null) {
-            const idx = binIndex(Array.from(h.edges), enactedLineVal);
-            if (idx >= 0) {
-              const y = yScale.getPixelForValue(idx);
+            const trimIdx = toTrimIdx(enactedLineVal);
+            if (trimIdx >= 0 && trimIdx < labels.length) {
+              const x = xScale.getPixelForValue(trimIdx);
               ctx.save();
               ctx.strokeStyle = '#111';
               ctx.lineWidth   = 2;
               ctx.setLineDash([4, 3]);
-              ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
               ctx.restore();
             }
           }
 
           // Plan overlay — orange solid line
           if (planSnap && (enactedLineVal == null || Math.abs(planSnap.value - enactedLineVal) > 1e-6)) {
-            const idx = binIndex(Array.from(h.edges), planSnap.value);
-            if (idx >= 0) {
-              const y = yScale.getPixelForValue(idx);
+            const trimIdx = toTrimIdx(planSnap.value);
+            if (trimIdx >= 0 && trimIdx < labels.length) {
+              const x = xScale.getPixelForValue(trimIdx);
               ctx.save();
               ctx.strokeStyle = '#e67e22';
               ctx.lineWidth   = 2.5;
               ctx.setLineDash([]);
-              ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
               ctx.restore();
             }
           }
@@ -445,7 +474,7 @@
 
       <!-- Histogram -->
       <div style="padding:.6rem .8rem;display:flex;flex-direction:column;justify-content:center;">
-        <div style="height:110px;position:relative;">
+        <div style="height:90px;position:relative;">
           <canvas bind:this={canvas}></canvas>
         </div>
         <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">

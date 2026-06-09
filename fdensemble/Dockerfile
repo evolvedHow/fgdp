@@ -50,6 +50,9 @@ COPY fdensemble/input_data/ ./input_data/
 # Copy VTD composite parquet (required for map scoring — 287KB, bundled for Railway)
 COPY fdensemble/data/ ./data/
 
+# Copy seeded enacted GeoJSONs so _preload_enacted_districts() can score them at startup
+COPY fdensemble/uploaded_maps/ ./uploaded_maps/
+
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8010
 
