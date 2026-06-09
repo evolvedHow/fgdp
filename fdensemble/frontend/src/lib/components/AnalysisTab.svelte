@@ -25,12 +25,12 @@
   const MODES: { value: Mode; label: string; desc: string }[] = [
     {
       value: 'benchmark',
-      label: 'Score against a Benchmark',
+      label: 'Score a Plan',
       desc:  'Pick any map and see how it scores relative to thousands of neutral plans — Princeton grades, histograms, district breakdown.',
     },
     {
       value: 'compare',
-      label: 'Compare two Maps',
+      label: 'Compare Two Plans',
       desc:  'Pick any two maps (enacted, benchmark reference, or proposed) and see district-by-district differences — lean changes, population shifts, demographic deltas.',
     },
   ];

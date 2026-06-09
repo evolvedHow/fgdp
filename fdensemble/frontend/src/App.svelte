@@ -105,8 +105,8 @@
   const summary = $derived(analysis?.summary ?? null);
 
   const TAB_LABELS: Record<Tab, string> = {
-    story:   '1 · The Ensemble',
-    analyze: '2 · Score & Compare',
+    story:   'Ensemble',
+    analyze: 'Score a Map',
   };
 
   onMount(loadRuns);
@@ -151,7 +151,14 @@
     </div>
 
     {#if tab === 'story'}
-      <EnsembleStoryTab {runs} {analysis} selectedRunId={selectedRunId} onRunChange={switchRun} />
+      <EnsembleStoryTab
+        {runs}
+        {analysis}
+        selectedRunId={selectedRunId}
+        {selectedElectionIdx}
+        onRunChange={switchRun}
+        onSwitchElection={switchElection}
+      />
 
     {:else if tab === 'analyze'}
       <AnalysisTab

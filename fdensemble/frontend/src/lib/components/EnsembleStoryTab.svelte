@@ -1,47 +1,39 @@
 <script lang="ts">
   import type { RunMeta, Analysis } from '../types.js';
-  import BenchmarkMethodology from './BenchmarkMethodology.svelte';
+  import BenchmarkTab from './BenchmarkTab.svelte';
 
   interface Props {
     runs: RunMeta[];
     selectedRunId: string;
     analysis: Analysis;
+    selectedElectionIdx: number;
     onRunChange?: (id: string) => void;
+    onSwitchElection?: (idx: number) => void;
   }
-  let { runs, selectedRunId, analysis, onRunChange }: Props = $props();
+  let { runs, selectedRunId, analysis, selectedElectionIdx, onRunChange, onSwitchElection }: Props = $props();
 
   const summary = $derived(analysis?.summary ?? null);
 
-  // Per-algorithm detail rows (facts that don't live in the scorecard JSON yet)
-  const ALGO_DETAIL: Record<string, { full: string; chains: string; popTol: string; constraints: string }> = {
+  // Per-algorithm display helpers (registry table only)
+  const ALGO_DETAIL: Record<string, { chains: string; popTol: string; constraints: string }> = {
     alarm: {
-      full:        'Sequential Monte Carlo (SMC)',
-      chains:      '2 independent chains × 10,000 simulations, thinned to 5,000',
-      popTol:      '±0.5%',
-      constraints: 'Equal population, contiguity, BVAP hinge constraints (VRA §2)',
+      chains:      'Independent SMC chains',
+      popTol:      '±1% congress / ±5% legislative',
+      constraints: 'Equal population, contiguity, BVAP hinge (VRA §2)',
     },
     gerrychain: {
-      full:        'Markov chain Monte Carlo — ReCom random walk',
-      chains:      'Single chain; each draw perturbs the previous plan',
-      popTol:      '±0.5%',
-      constraints: 'Equal population, contiguity, compactness (ReCom soft), VRA §2',
-    },
-    scorecard: {
-      full:        'Markov chain Monte Carlo — ReCom random walk',
-      chains:      'Single chain; each draw perturbs the previous plan',
-      popTol:      '±0.5%',
-      constraints: 'Equal population, contiguity, compactness (ReCom soft), VRA §2',
+      chains:      'Single ReCom chain',
+      popTol:      '±1% congress / ±5% legislative',
+      constraints: 'Equal population, contiguity, compactness (soft), VRA §2',
     },
   };
 
   function detail(run: RunMeta) {
     const base = ALGO_DETAIL[run.source ?? ''] ?? ALGO_DETAIL.gerrychain;
     const isSubdistrict = run.chamber === 'senate' || run.chamber === 'house';
-    // Congress uses ±0.5% pop tolerance; state legislative chambers use ±5%
-    const popTol = isSubdistrict ? '±5%' : base.popTol;
-    // Use actual plan count from run metadata when available
+    const popTol = isSubdistrict ? '±5%' : '±1%';
     const chains = (run.source === 'alarm' && run.n_plans)
-      ? `${run.n_plans.toLocaleString()} plans via independent SMC chains`
+      ? `${run.n_plans.toLocaleString()} plans, independent SMC`
       : base.chains;
     return { ...base, popTol, chains };
   }
@@ -64,8 +56,6 @@
     }
     return run.description ?? 'Multi-election composite';
   }
-
-  const selectedRun = $derived(runs.find(r => r.id === selectedRunId) ?? null);
 </script>
 
 <div>
@@ -183,14 +173,16 @@
       {#if onRunChange}
         <div style="padding:.3rem .8rem;font-size:.64rem;color:var(--gray);border-top:1px solid var(--border);
                     background:var(--light);">
-          Click a row to switch the active benchmark in Score a Map and Compare Maps.
+          Click a row to switch the active benchmark.
         </div>
       {/if}
     </div>
   </div>
 
-  <!-- Methodology accordion (for the currently selected benchmark) -->
-  {#if selectedRun}
-    <BenchmarkMethodology run={selectedRun} />
-  {/if}
+  <!-- Run details for the selected benchmark -->
+  <BenchmarkTab
+    {analysis}
+    {selectedElectionIdx}
+    onSwitchElection={onSwitchElection ?? (() => {})}
+  />
 </div>

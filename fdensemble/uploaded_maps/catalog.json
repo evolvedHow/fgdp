@@ -4,5 +4,26 @@
     "label": "GA 2024 General Election Precinct Level Results & Boundaries",
     "n_districts": 2720,
     "created": "2026-06-06"
+  },
+  {
+    "id": "congress_enacted_2023",
+    "label": "2023 Enacted Congressional Districts (14 districts)",
+    "chamber": "congress",
+    "n_districts": 14,
+    "created": "2026-06-09"
+  },
+  {
+    "id": "senate_enacted_2023",
+    "label": "2023 Enacted State Senate Districts (56 districts)",
+    "chamber": "senate",
+    "n_districts": 56,
+    "created": "2026-06-09"
+  },
+  {
+    "id": "house_enacted_2023",
+    "label": "2023 Enacted State House Districts (180 districts)",
+    "chamber": "house",
+    "n_districts": 180,
+    "created": "2026-06-09"
   }
 ]

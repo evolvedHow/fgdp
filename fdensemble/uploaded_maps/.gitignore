@@ -1,0 +1,7 @@
+# User-uploaded maps are ephemeral — ignore everything except the seeded enacted plans and catalog
+*
+!.gitignore
+!catalog.json
+!congress_enacted_2023.geojson
+!senate_enacted_2023.geojson
+!house_enacted_2023.geojson
