@@ -66,30 +66,18 @@ These are already at VTD level — no processing needed.
    - Check RDH for block-disaggregated runoff version.
    - Target columns: `uss_r22_dem_war`, `uss_r22_rep_wal`
 
-### Have at Block Level — Need VTD Aggregation
-From `ga_2022_gen_2020_blocks.shp`:
-| Target ALARM column | Source column(s) | Notes |
-|---------------------|-----------------|-------|
-| `gov_22_dem_abr` | `G22GOVDABR` | |
-| `gov_22_rep_kem` | `G22GOVRKEM` | |
-| `gov_22_lib_haz` | `G22GOVLHAZ` | Hazel (Lib) ~1% |
-| `uss_22_dem_war` | `G22USSDWAR` | Nov 8 general |
-| `uss_22_rep_wal` | `G22USSRWAL` | |
-| `uss_22_lib_oli` | `G22USSLOLI` | Oliver (Lib) ~2.1% forced runoff |
-| `atg_22_dem_jor` | `G22ATGDJOR` | |
-| `atg_22_rep_car` | `G22ATGRCAR` | |
-| `sos_22_dem_ngu` | `G22SOSDNGU` | |
-| `sos_22_rep_raf` | `G22SOSRRAF` | |
-| `ltg_22_dem_bai` | `G22LTGDBAI` | |
-| `ltg_22_rep_jon` | `G22LTGRJON` | |
+### Aggregated to VTD — Done ✅
+Script: `fdp/scripts/build_vtd_inputs.py`  
+Block→VTD lookup cache: `fdp/data/repos/main/vtd/block_vtd_lookup.parquet` (232,717 blocks → 2,698 VTDs)
 
-From `ga_2024_gen_2020_blocks.shp`:
-| Target ALARM column | Source column(s) | Notes |
-|---------------------|-----------------|-------|
-| `pre_24_dem_har` | `G24PREDHAR` | |
-| `pre_24_rep_tru` | `G24PRERTRU` | |
-| `pre_24_lib_oli` | `G24PRELOLI` | Chase Oliver |
-| `pre_24_grn_ste` | `G24PREGSTE` | Stein |
+| Election | VTD output | Accuracy vs SOS certified |
+|----------|------------|--------------------------|
+| 2022 Gov (Abrams/Kemp) + USS + statewide | `election_results` parquet | 0.01–0.04% ✓ |
+| 2024 President (Harris/Trump) | `election_results` parquet | 0.01–0.03% ✓ |
+| 2021 USS Runoff (Warnock/Loeffler) | `election_results` parquet | 0.00% ✓ |
+| CVAP 2024 ACS 5-yr | `cvap_vtd.parquet` | — |
+
+**Election scope rule:** Score president, governor, senate, us-house, state-rep only — exclude AG, SoS, LtGov, PSC etc.
 
 ---
 
@@ -142,12 +130,11 @@ Or extract DBF to Parquet first to avoid re-reading geometry.
 
 | Item | Action |
 |------|--------|
-| 2021 Jan 5 runoff (block-level) | Request from RDH or process from precinct shapefile |
-| 2022 Dec 6 runoff (block-level) | Request from RDH or process from precinct shapefile |
-| Current 2026 precinct boundaries | Download from GA Reapportionment Office: `legis.ga.gov/joint-office/reapportionment` |
-| VTD aggregation script | Build Python pipeline (block shapefiles → VTD CSV → join to R map) |
-| CVAP VTD aggregation | Same pipeline as elections |
-| Score ensemble plans | After all elections joined, compute partisan scores per draw |
+| 2022 Dec 6 runoff (block-level) | Request from RDH — Nov 8 general already aggregated; Dec 6 head-to-head separate file |
+| 2021 Jan 5 runoff (block-level) | Request from RDH — Warnock/Loeffler race (already have R21USSDWAR/R21USSRLOE from gen) |
+| 2026 precinct boundaries | Download from GA Reapportionment Office: `legis.ga.gov/joint-office/reapportionment` |
+| House GerryChain run | Config built (`ga_house_2026_v1.yml`), not yet run on Modal |
+| House ALARM ensemble | `build_house_map.R` not written yet |
 
 ---
 
@@ -160,12 +147,25 @@ Or extract DBF to Parquet first to avoid re-reading geometry.
 
 ---
 
-## Next Steps (Suggested Order)
-1. Run block→VTD aggregation script for 2022 elections, 2024 elections, and CVAP
-2. Join all aggregated VTD tables to `GA_cd_2020_map.rds`
-3. Acquire 2021 runoff and 2022 Dec runoff data
-4. Add 2021/2022 runoff after aggregation
-5. Download 2026 precinct boundaries from GA Reapportionment Office
-6. Verify vote totals match Secretary of State certified results
-7. Score existing 5001-plan ensemble on new election columns
-8. Run fresh GerryChain ensemble if needed on updated map
+## Active Benchmark Scorecards
+
+Four production scorecards in `fdensemble/input_data/`, all using 2024 ACS CVAP for demographics:
+
+| File | Algorithm | Draws | Chamber |
+|------|-----------|-------|---------|
+| `fdga_baseline_benchmarks_2601_congress_scorecard.json` | GerryChain/ReCom | 99,001 | Congress (14D) |
+| `fdga_baseline_benchmarks_2601_congress_alarm_scorecard.json` | ALARM/SMC | 100,001 | Congress (14D) |
+| `fdga_baseline_benchmarks_2601_senate_scorecard.json` | GerryChain/ReCom | ~450,000 | Senate (56D) |
+| `fdga_baseline_benchmarks_2601_senate_alarm_scorecard.json` | ALARM/SMC | 100,001 | Senate (56D) |
+
+Configs: `fdp/configs/benchmarks/ga_{congress,senate}_2026{_v3,_alarm}.yml`  
+Rebuild pipeline: `bash rebuild_pipeline.sh` (from fgdp/ root)
+
+## Next Steps
+
+1. Acquire 2022 Dec 6 runoff + 2021 Jan 5 runoff block files from RDH
+2. Run House GerryChain ensemble on Modal (`ga_house_2026_v1.yml`)
+3. Build `build_house_map.R` for ALARM house ensemble
+4. Tighten congress pop_epsilon 0.02 → 0.01 for published legal use
+5. Switch GerryChain from `recom` to `reversible_recom` for published runs
+6. Acquire 2026 precinct boundaries from GA Reapportionment Office

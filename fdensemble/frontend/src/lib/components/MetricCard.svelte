@@ -136,6 +136,7 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        indexAxis: 'y',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -146,12 +147,11 @@
           },
         },
         scales: {
-          x: {
+          y: {
             display: true,
             ticks: {
               font: { size: 8 },
               color: '#888',
-              // Adaptive label step: fewer labels when more districts
               callback: (_val: any, idx: number) => {
                 const step = nDistricts <= 15 ? 2 : nDistricts <= 30 ? 5 : nDistricts <= 60 ? 10 : 20;
                 return idx % step === 0 ? String(idx) : '';
@@ -160,20 +160,20 @@
             grid: { display: false },
             border: { display: false },
           },
-          y: { display: false },
+          x: { display: false },
         },
       },
       plugins: [{
         id: 'enacted-line',
         afterDraw(ch: any) {
-          const xScale = ch.scales.x;
-          const { ctx, chartArea: { top, bottom } } = ch;
-          const x = xScale.getPixelForValue(enactedBin);
+          const yScale = ch.scales.y;
+          const { ctx, chartArea: { left, right } } = ch;
+          const y = yScale.getPixelForValue(enactedBin);
           ctx.save();
           ctx.strokeStyle = '#111';
           ctx.lineWidth = 2;
           ctx.setLineDash([4, 3]);
-          ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
           ctx.restore();
         },
       }],
@@ -217,6 +217,7 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,
+        indexAxis: 'y',
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -237,33 +238,35 @@
           if (!aRange) return;
           const { lo, hi } = aRange;
           if (lo == null && hi == null) return;
-          const xScale = ch.scales.x;
+          const yScale = ch.scales.y;
           const { ctx, chartArea: { top, bottom, left, right } } = ch;
-          const bw = edges.length > 2 ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) : 10;
+          const bh = edges.length > 2 ? Math.abs(yScale.getPixelForValue(1) - yScale.getPixelForValue(0)) : 10;
           const edgesArr = Array.from(h.edges);
-          const xLeft  = lo != null ? xScale.getPixelForValue(binIndex(edgesArr, lo)) - bw / 2 : left;
-          const xRight = hi != null ? xScale.getPixelForValue(binIndex(edgesArr, hi)) + bw / 2 : right;
+          const loIdx = lo != null ? binIndex(edgesArr, lo) : 0;
+          const hiIdx = hi != null ? binIndex(edgesArr, hi) : labels.length - 1;
+          const yTop    = loIdx > 0 ? yScale.getPixelForValue(loIdx) - bh / 2 : top;
+          const yBottom = hiIdx < labels.length - 1 ? yScale.getPixelForValue(hiIdx) + bh / 2 : bottom;
           ctx.save();
           ctx.fillStyle = 'rgba(39, 174, 96, 0.13)';
-          ctx.fillRect(xLeft, top, xRight - xLeft, bottom - top);
+          ctx.fillRect(left, yTop, right - left, yBottom - yTop);
           ctx.restore();
         },
       }, {
         id: 'value-lines',
         afterDraw(ch: any) {
-          const xScale = ch.scales.x;
-          const { ctx, chartArea: { top, bottom } } = ch;
+          const yScale = ch.scales.y;
+          const { ctx, chartArea: { left, right } } = ch;
 
           // Enacted dashed line — uses activeEnacted when threshold is set
           if (enactedLineVal != null) {
             const idx = binIndex(Array.from(h.edges), enactedLineVal);
             if (idx >= 0) {
-              const x = xScale.getPixelForValue(idx);
+              const y = yScale.getPixelForValue(idx);
               ctx.save();
               ctx.strokeStyle = '#111';
               ctx.lineWidth   = 2;
               ctx.setLineDash([4, 3]);
-              ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
               ctx.restore();
             }
           }
@@ -272,12 +275,12 @@
           if (planSnap && (enactedLineVal == null || Math.abs(planSnap.value - enactedLineVal) > 1e-6)) {
             const idx = binIndex(Array.from(h.edges), planSnap.value);
             if (idx >= 0) {
-              const x = xScale.getPixelForValue(idx);
+              const y = yScale.getPixelForValue(idx);
               ctx.save();
               ctx.strokeStyle = '#e67e22';
               ctx.lineWidth   = 2.5;
               ctx.setLineDash([]);
-              ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
               ctx.restore();
             }
           }
@@ -442,7 +445,7 @@
 
       <!-- Histogram -->
       <div style="padding:.6rem .8rem;display:flex;flex-direction:column;justify-content:center;">
-        <div style="height:90px;position:relative;">
+        <div style="height:110px;position:relative;">
           <canvas bind:this={canvas}></canvas>
         </div>
         <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">

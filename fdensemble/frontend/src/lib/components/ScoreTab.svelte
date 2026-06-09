@@ -4,7 +4,6 @@
   import { STATIC_MODE, LIVE_SERVER_URL, apiPost, apiDelete } from '../api.js';
   import GradePanel              from './GradePanel.svelte';
   import MetricCard              from './MetricCard.svelte';
-  import DemoMetricCard          from './DemoMetricCard.svelte';
   import RiverChart              from './RiverChart.svelte';
   import MultiMapScorecard       from './MultiMapScorecard.svelte';
   import UrbanCrackPanel         from './UrbanCrackPanel.svelte';
@@ -333,18 +332,13 @@
     planGrades={scoredPlan ? scoredPlan.grades : null}
   />
 
-  <!-- ── Demographic Representation — 3-column White / Black / Minority Coalition ── -->
-  {#if THRESHOLD_KEYS.some(k => k in analysis.grades && 'histogram' in (analysis.grades[k] ?? {}))}
+  <!-- ── Demographic Representation — vertical stack like other metric groups ── -->
+  {#if allMetrics(THRESHOLD_KEYS).length}
     <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-                color:var(--gray);margin:.8rem 0 .5rem;">Demographic Representation</div>
-
-    <!-- 3-column grid: White | Black | Minority Coalition -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.6rem;">
-      {#each THRESHOLD_KEYS as key}
-        {#if key in analysis.grades && 'histogram' in (analysis.grades[key] ?? {})}
-          {@const m = analysis.grades[key] as any}
-          <DemoMetricCard metric={m} nDistricts={analysis.summary?.n_districts} />
-        {/if}
+                color:var(--gray);margin:.8rem 0 .4rem;">Demographic Representation</div>
+    <div style="display:flex;flex-direction:column;gap:.55rem;margin-bottom:.6rem;">
+      {#each allMetrics(THRESHOLD_KEYS) as {key, metric}}
+        <MetricCard {metric} planMetric={planMetricFor(key)} demoThresholdKey="0.50" nDistricts={analysis.summary?.n_districts} />
       {/each}
     </div>
   {/if}
