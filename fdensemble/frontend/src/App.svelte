@@ -3,11 +3,12 @@
   import type { RunMeta, Analysis, ScoredPlan } from './lib/types.js';
   import Header            from './lib/components/Header.svelte';
   import EnsembleStoryTab  from './lib/components/EnsembleStoryTab.svelte';
-  import AnalysisTab       from './lib/components/AnalysisTab.svelte';
+  import ScoreTab          from './lib/components/ScoreTab.svelte';
+  import CompareTab        from './lib/components/CompareTab.svelte';
   import { getAllScoredPlans, saveScoredPlan, deleteScoredPlan } from './lib/db.js';
   import { apiGet } from './lib/api.js';
 
-  type Tab = 'story' | 'analyze';
+  type Tab = 'story' | 'analyze' | 'compare';
   let tab: Tab = $state('story');
 
   let runs: RunMeta[]             = $state([]);
@@ -106,7 +107,8 @@
 
   const TAB_LABELS: Record<Tab, string> = {
     story:   'Ensemble',
-    analyze: 'Score a Map',
+    analyze: 'Score a Plan',
+    compare: 'Compare Plans',
   };
 
   onMount(loadRuns);
@@ -119,7 +121,7 @@
 <!-- Tab bar -->
 <div class="no-print" style="background:var(--card);border-bottom:2px solid var(--border);
      display:flex;gap:0;padding:0 1rem;overflow-x:auto;">
-  {#each (['story', 'analyze'] as Tab[]) as t}
+  {#each (['story', 'analyze', 'compare'] as Tab[]) as t}
     <button
       onclick={() => tab = t}
       style="padding:.55rem 1.1rem;border:none;background:transparent;cursor:pointer;
@@ -161,16 +163,17 @@
       />
 
     {:else if tab === 'analyze'}
-      <AnalysisTab
-        {runs}
+      <ScoreTab
         {analysis}
-        {companionAnalysis}
         {companionRunId}
         selectedRunId={selectedRunId}
         {selectedElectionIdx}
         onSwitchElection={switchElection}
         onAddPlan={addScoredPlan}
       />
+
+    {:else if tab === 'compare'}
+      <CompareTab {runs} selectedRunId={selectedRunId} />
     {/if}
 
   {:else}

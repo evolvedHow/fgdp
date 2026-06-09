@@ -7,8 +7,9 @@
 
   interface Props {
     runs: RunMeta[];
+    selectedRunId: string;
   }
-  let { runs }: Props = $props();
+  let { runs, selectedRunId }: Props = $props();
 
   // ── Map library ──────────────────────────────────────────────────────────────
   let libraryMaps: MapMeta[] = $state([]);
@@ -51,9 +52,13 @@
     house:    'GA House',
   };
 
+  // Seeded enacted maps appear in "Enacted Reference Plans" via the scorecard.
+  // Suppress them from the library group to avoid showing the same plan twice.
+  const SEEDED_ENACTED = new Set(['congress_enacted_2023', 'senate_enacted_2023', 'house_enacted_2023']);
+
   const options: MapOption[] = $derived.by(() => {
-    // One enacted map per chamber — prefer non-ALARM (has demographics).
-    // These are the current REAL enacted maps, not benchmark-specific.
+    // One enacted reference plan per chamber — prefer non-ALARM (has full VTD + demographic detail).
+    // These are the pre-scored enacted plans embedded in each benchmark scorecard.
     const seen = new Set<string>();
     const enactedOpts = runs
       .filter(r => r.plans && r.plans.length > 0 && r.chamber)
@@ -70,26 +75,44 @@
       })
       .map(r => ({
         value: `enacted:${r.id}`,
-        label: `${CHAMBER_LABEL[r.chamber!] ?? r.chamber} — Current Enacted Map`,
-        group: 'Current Enacted Maps',
+        label: `${CHAMBER_LABEL[r.chamber!] ?? r.chamber} — 2023 Enacted Map`,
+        group: 'Enacted Reference Plans',
       }));
 
-    const libraryOpts = libraryMaps.map(m => ({
-      value: `library:${m.id}`,
-      label: `${m.label}  (${m.n_districts} districts · uploaded ${m.created})`,
-      group: 'Proposed / Alternative Maps',
-    }));
+    // Library maps (uploaded or seeded) — skip seeded enacted maps already in the group above.
+    const libraryOpts = libraryMaps
+      .filter(m => !SEEDED_ENACTED.has(m.id))
+      .map(m => ({
+        value: `library:${m.id}`,
+        label: `${m.label}  (${m.n_districts} districts · ${m.created})`,
+        group: 'Proposed / Alternative Maps',
+      }));
 
     return [...enactedOpts, ...libraryOpts];
   });
 
   // ── Plan loading ─────────────────────────────────────────────────────────────
-  function defaultRunId(): string {
-    // Pick the first non-ALARM GerryChain run for scoring library maps
-    return (
-      runs.find(r => r.source !== 'alarm')?.id ??
-      runs[0]?.id ?? ''
-    );
+
+  /** Pick the best benchmark run to score a library map against.
+   *  Priority:
+   *  1. Currently-selected benchmark, if its chamber matches the map's chamber.
+   *  2. Any non-ALARM run whose chamber matches the map's chamber (has full VTD+demo data).
+   *  3. Any run whose chamber matches.
+   *  4. The currently-selected benchmark (fallback — score will still work if district count matches).
+   */
+  function scoringRunFor(mapId: string): string {
+    const map = libraryMaps.find(m => m.id === mapId);
+    const chamber = map?.chamber;
+    if (chamber) {
+      const selected = runs.find(r => r.id === selectedRunId);
+      if (selected?.chamber === chamber) return selectedRunId;
+      return (
+        runs.find(r => r.chamber === chamber && r.source !== 'alarm')?.id ??
+        runs.find(r => r.chamber === chamber)?.id ??
+        selectedRunId
+      );
+    }
+    return selectedRunId;
   }
 
   async function loadPlan(key: string): Promise<ScoredPlan | null> {
@@ -105,7 +128,7 @@
 
     if (key.startsWith('library:')) {
       const mapId = key.slice(8);
-      const runId = defaultRunId();
+      const runId = scoringRunFor(mapId);
       if (!runId) return null;
       const plan = await apiPost<ScoredPlan>('/score-map', { map_id: mapId, run_id: runId });
       plan.source = 'library';
@@ -187,7 +210,7 @@
     <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:.75rem 1rem;">
       <label style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
                     color:var(--gray);display:block;margin-bottom:.35rem;">
-        Map {side} — {side === 'A' ? 'Reference / Current' : 'Proposed / Alternative'}
+        Map {side}
       </label>
       <select
         value={sel}
@@ -196,7 +219,7 @@
                border-radius:4px;background:var(--card);color:inherit;cursor:pointer;"
       >
         <option value="">— select a map —</option>
-        {#each ['Current Enacted Maps', 'Proposed / Alternative Maps'] as group}
+        {#each ['Enacted Reference Plans', 'Proposed / Alternative Maps'] as group}
           {@const grpOpts = options.filter(o => o.group === group)}
           {#if grpOpts.length}
             <optgroup label={group}>
@@ -240,9 +263,13 @@
               background:var(--card);border:1.5px solid var(--border);border-radius:8px;">
     <div style="font-size:1.4rem;margin-bottom:.6rem;">↕</div>
     Select two maps above to compare them district by district.
-    <div style="margin-top:.5rem;font-size:.76rem;">
-      Compare any combination: current enacted map vs. a proposed alternative,
-      two proposed maps against each other, or any mix. No benchmark scoring required.
+    <div style="margin-top:.5rem;font-size:.76rem;line-height:1.55;">
+      Compare any combination: <b>enacted vs. proposed</b>, <b>benchmark reference vs. proposed</b>,
+      two proposed maps, or any mix across chambers.<br>
+      <span style="color:var(--gray);">
+        "Enacted Reference Plans" are the current enacted maps pre-scored within each benchmark.
+        "Proposed / Alternative Maps" are scored on demand against the matching benchmark.
+      </span>
     </div>
   </div>
 
