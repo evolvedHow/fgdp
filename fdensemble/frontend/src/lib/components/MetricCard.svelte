@@ -10,11 +10,12 @@
   }
   interface Props {
     metric: MetricGrade;
+    metricKey?: string;         // scorecard key, e.g. "dem_seats" — used for partisan lean
     planMetric?: PlanMetricOverlay | null;
     demoThresholdKey?: string;  // e.g. "0.50", "0.20" — for demographic metrics only
     nDistricts?: number;        // total districts (congress=14, senate=56, house=180)
   }
-  let { metric, planMetric = null, demoThresholdKey = '', nDistricts = 14 }: Props = $props();
+  let { metric, metricKey = '', planMetric = null, demoThresholdKey = '', nDistricts = 14 }: Props = $props();
 
   // ── Demographic threshold override ────────────────────────────────────────
   // When demoThresholdKey is set and the metric has pre-computed threshold arrays,
@@ -86,6 +87,40 @@
     geographic:  '#7f8c8d',
     minority:    '#8e44ad',
   };
+
+  // ── Partisan lean: R = Republican advantage, D = Democrat advantage, neutral ────
+  function getPartisanLean(): 'R' | 'D' | 'neutral' {
+    if (!metricKey) return 'neutral';
+    const pct  = metric.pct_rank;
+    const hib  = (metric as any).higher_is_better as boolean | null;
+    const val  = metric.enacted;
+    const med  = metric.histogram.p50;
+    const BAND = 15; // ±15 pctile of median = neutral zone
+
+    if (hib === true) {
+      if (Math.abs(pct - 50) <= BAND) return 'neutral';
+      return pct < 50 ? 'R' : 'D';
+    }
+    if (hib === false) {
+      if (Math.abs(pct - 50) <= BAND) return 'neutral';
+      return pct > 50 ? 'R' : 'D';
+    }
+    // hib === null: metric-specific direction
+    if (Math.abs(pct - 50) <= BAND) return 'neutral';
+    switch (metricKey) {
+      case 'dem_seats':      return val < med ? 'R' : 'D';
+      case 'rep_safe_seats': return val > med ? 'R' : 'D';
+      case 'dem_safe_seats': return val > med ? 'R' : 'D'; // D vote packing = R benefit
+      case 'efficiency_gap': return val > med ? 'R' : 'D';
+      case 'mean_median':    return val > med ? 'R' : 'D';
+      case 'partisan_bias':  return val > med ? 'R' : 'D';
+      case 'maj_black':      return val < med ? 'R' : 'D';
+      case 'min_coal':       return val < med ? 'R' : 'D';
+      case 'maj_white':      return val > med ? 'R' : 'neutral';
+      default:               return 'neutral';
+    }
+  }
+  const lean = $derived(getPartisanLean());
 
   function binIndex(edges: number[], val: number): number {
     let idx = edges.findIndex((e: number, i: number) => val >= e && val < edges[i + 1]);
@@ -340,11 +375,11 @@
 </script>
 
 <!-- ── Full-width layout ─────────────────────────────────────────────────── -->
-  <div class="metric-card" class:is-outlier={metric.grade === 'F'} bind:this={cardEl}>
+  <div class="metric-card" bind:this={cardEl}>
 
     <!-- Headline -->
     <div class="headline" style="border-bottom:1px solid var(--border);padding:.55rem 1rem;
-         background:{metric.grade === 'F' ? '#fff5f5' : metric.grade === 'A' ? '#f5fdf8' : 'var(--light)'};
+         background:var(--light);
          display:flex;align-items:center;justify-content:space-between;gap:.5rem;">
       <div style="display:flex;align-items:center;gap:.4rem;min-width:0;flex:1;">
         <span style="font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
@@ -374,12 +409,15 @@
       <div style="padding:.7rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem;">
         {#if planMetric}
           <!-- Plan overlay mode -->
-          <div style="display:flex;align-items:center;gap:.4rem;">
-            <span style="display:inline-flex;align-items:center;justify-content:center;
-                         width:1.7rem;height:1.7rem;border-radius:50%;
-                         background:{gradeColor[planMetric.grade] ?? '#888'};
-                         color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{planMetric.grade}</span>
-            <span style="font-size:.7rem;color:var(--gray);">{planMetric.pct_rank}th percentile</span>
+          <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+            {#if lean === 'R'}
+              <span style="font-size:1.1rem;line-height:1;" title="Republican advantage">🐘</span>
+            {:else if lean === 'D'}
+              <span style="font-size:1.1rem;line-height:1;" title="Democrat advantage">🫏</span>
+            {:else}
+              <span style="font-size:1.1rem;line-height:1;" title="Neutral / Bipartisan">🇺🇸</span>
+            {/if}
+            <span style="font-size:.95rem;font-weight:800;color:var(--blue);">{planMetric.pct_rank}</span><span style="font-size:.65rem;color:var(--gray);">th pctile</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
             <div>
@@ -406,16 +444,18 @@
             {/if}
           </div>
         {:else}
-          <!-- Default: enacted grades -->
-          <!-- Single grade -->
-          <div style="display:flex;align-items:center;gap:.4rem;">
-            <span style="display:inline-flex;align-items:center;justify-content:center;
-                         width:1.7rem;height:1.7rem;border-radius:50%;
-                         background:{gradeColor[displayedGrade] ?? '#888'};
-                         color:#fff;font-weight:800;font-size:.85rem;flex-shrink:0;">{displayedGrade}</span>
-            <span style="font-size:.7rem;color:var(--gray);">{Math.round(displayedPctRank)}th percentile</span>
+          <!-- Default: enacted percentile rank + partisan lean -->
+          <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+            {#if lean === 'R'}
+              <span style="font-size:1.1rem;line-height:1;" title="Republican advantage">🐘</span>
+            {:else if lean === 'D'}
+              <span style="font-size:1.1rem;line-height:1;" title="Democrat advantage">🫏</span>
+            {:else}
+              <span style="font-size:1.1rem;line-height:1;" title="Neutral / Bipartisan">🇺🇸</span>
+            {/if}
+            <span style="font-size:.95rem;font-weight:800;color:var(--blue);">{Math.round(displayedPctRank)}</span><span style="font-size:.65rem;color:var(--gray);">th pctile</span>
             {#if demoThresholdKey}
-              <span style="font-size:.6rem;color:#8e44ad;font-style:italic;" title="Grade recomputed at {Math.round(+demoThresholdKey*100)}% BVAP threshold">@{Math.round(+demoThresholdKey*100)}%</span>
+              <span style="font-size:.6rem;color:#8e44ad;font-style:italic;">@{Math.round(+demoThresholdKey*100)}%</span>
             {/if}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
@@ -468,10 +508,10 @@
     <!-- Takeaway -->
     {#if metric.takeaway}
       <div style="border-top:1px solid var(--border);padding:.5rem 1rem;
-           background:{metric.grade === 'F' ? '#fff0f0' : metric.grade === 'A' ? '#f0faf4' : '#f8f9fb'};
+           background:#f8f9fb;
            display:flex;align-items:baseline;gap:.5rem;">
         <span style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
-                     color:{gradeColor[metric.grade] ?? '#888'};white-space:nowrap;flex-shrink:0;">Finding →</span>
+                     color:var(--gray);white-space:nowrap;flex-shrink:0;">Finding →</span>
         <span style="font-size:.74rem;color:#333;line-height:1.5;font-weight:500;">{metric.takeaway}</span>
       </div>
     {/if}
@@ -485,10 +525,7 @@
     box-shadow: var(--shadow);
     overflow: hidden;
   }
-  .is-outlier {
-    border-color: #e8a0a0;
-  }
-  .capture-btn {
+.capture-btn {
     display: flex;
     align-items: center;
     gap: .25rem;

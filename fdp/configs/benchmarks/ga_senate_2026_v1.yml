@@ -1,7 +1,7 @@
 # =============================================================================
 # Georgia State Senate Benchmark — v1
 # 56 districts | 2020 VTD base | 7 elections | 10,000 MCMC steps
-# pop_epsilon: 0.05 (±5% — Reynolds v. Sims constitutional standard)
+# pop_epsilon: 0.01 (±1%)
 # competitiveness: 5% win margin (add 7% after seeing distribution)
 # =============================================================================
 
@@ -19,7 +19,7 @@ chamber:
   name: senate
   n_districts: 56                    # ✅  GA has 56 State Senate districts
   pop_column: TOTPOP
-  pop_epsilon: 0.05                  # ✅  ±5% — constitutional standard (Reynolds v. Sims)
+  pop_epsilon: 0.01                  # ±1%
 
 elections:
   - label: gov_2018
@@ -95,7 +95,7 @@ mcmc:
   # GUIDANCE: State Senate has 56 districts — harder to mix than Congress.
   #   Discard first 1,000 steps as warm-up. Net usable draws: 9,000.
   n_chains: 5                        # ❓ TBD — 1 standard; 5 for convergence diagnostics
-  pop_epsilon: 0.05
+  pop_epsilon: 0.01
   random_seed: null
   save_assignments: true
 

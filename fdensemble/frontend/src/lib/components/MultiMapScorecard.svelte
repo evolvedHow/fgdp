@@ -8,10 +8,6 @@
   }
   let { analysis, plans, onRemovePlan }: Props = $props();
 
-  const gradeColor: Record<string, string> = {
-    A: '#27ae60', B: '#2980b9', C: '#d68910', D: '#e67e22', F: '#c0392b',
-  };
-
   interface ScorecardRow {
     key: string;
     label: string;
@@ -50,9 +46,35 @@
     return isInt ? Math.round(v).toString() : v.toFixed(3);
   }
 
-  function gradeBadge(grade: string) {
-    return grade ?? '?';
+  function leanIcon(key: string, mg: MetricGrade): string {
+    const pct  = mg.pct_rank;
+    const hib  = (mg as any).higher_is_better as boolean | null;
+    const val  = mg.enacted;
+    const med  = mg.histogram.p50;
+    const BAND = 15;
+    let lean: 'R' | 'D' | 'neutral' = 'neutral';
+    if (hib === true) {
+      if (Math.abs(pct - 50) > BAND) lean = pct < 50 ? 'R' : 'D';
+    } else if (hib === false) {
+      if (Math.abs(pct - 50) > BAND) lean = pct > 50 ? 'R' : 'D';
+    } else {
+      if (Math.abs(pct - 50) > BAND) {
+        switch (key) {
+          case 'dem_seats':      lean = val < med ? 'R' : 'D'; break;
+          case 'rep_safe_seats': lean = val > med ? 'R' : 'D'; break;
+          case 'dem_safe_seats': lean = val > med ? 'R' : 'D'; break;
+          case 'efficiency_gap': lean = val > med ? 'R' : 'D'; break;
+          case 'mean_median':    lean = val > med ? 'R' : 'D'; break;
+          case 'partisan_bias':  lean = val > med ? 'R' : 'D'; break;
+          case 'maj_black':      lean = val < med ? 'R' : 'D'; break;
+          case 'min_coal':       lean = val < med ? 'R' : 'D'; break;
+          case 'maj_white':      lean = val > med ? 'R' : 'neutral'; break;
+        }
+      }
+    }
+    return lean === 'R' ? '🐘' : lean === 'D' ? '🫏' : '🇺🇸';
   }
+
 </script>
 
 <div style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;overflow:hidden;margin-top:1rem;">
@@ -135,12 +157,8 @@
                   <span style="font-family:monospace;font-size:.78rem;font-weight:600;">
                     {fmt(mg.enacted, row.isInt)}
                   </span>
-                  <span style="display:inline-flex;align-items:center;justify-content:center;
-                               width:1.3rem;height:1.3rem;border-radius:50%;
-                               background:{gradeColor[mg.grade] ?? '#888'};
-                               color:#fff;font-weight:800;font-size:.62rem;flex-shrink:0;">
-                    {gradeBadge(mg.grade)}
-                  </span>
+                  <span style="font-size:.75rem;line-height:1;" title={mg.pct_rank + 'th pctile'}>{leanIcon(row.key, mg)}</span>
+                  <span style="font-size:.65rem;font-weight:800;color:var(--blue);">{mg.pct_rank}th</span>
                 </div>
               </td>
 
@@ -153,12 +171,7 @@
                       <span style="font-family:monospace;font-size:.78rem;font-weight:600;">
                         {fmt(pm.value, row.isInt)}
                       </span>
-                      <span style="display:inline-flex;align-items:center;justify-content:center;
-                                   width:1.3rem;height:1.3rem;border-radius:50%;
-                                   background:{gradeColor[pm.grade] ?? '#888'};
-                                   color:#fff;font-weight:800;font-size:.62rem;flex-shrink:0;">
-                        {gradeBadge(pm.grade)}
-                      </span>
+                      <span style="font-size:.65rem;font-weight:800;color:var(--blue);">{pm.pct_rank}th</span>
                     </div>
                   {:else}
                     <span style="color:var(--gray);">—</span>
@@ -172,6 +185,6 @@
     </table>
   </div>
   <div style="padding:.3rem .8rem;font-size:.62rem;color:var(--gray);border-top:1px solid var(--border);background:var(--light);">
-    Benchmarks from the neutral ensemble distribution. Grade reflects percentile rank vs. {analysis.summary?.n_plans?.toLocaleString() ?? ''} neutral maps.
+    Benchmarks from the neutral ensemble distribution. Bold number = percentile rank vs. {analysis.summary?.n_plans?.toLocaleString() ?? ''} neutral maps.
   </div>
 </div>

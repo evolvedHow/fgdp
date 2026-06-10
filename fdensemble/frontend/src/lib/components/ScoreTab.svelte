@@ -2,7 +2,6 @@
   import { onMount } from 'svelte';
   import type { Analysis, ElectionOption, MetricGrade, Grades, ScoredPlan, MapMeta } from '../types.js';
   import { STATIC_MODE, LIVE_SERVER_URL, apiPost, apiDelete } from '../api.js';
-  import GradePanel              from './GradePanel.svelte';
   import MetricCard              from './MetricCard.svelte';
   import RiverChart              from './RiverChart.svelte';
   import MultiMapScorecard       from './MultiMapScorecard.svelte';
@@ -326,11 +325,6 @@
     {#if summary}· {summary.state_full} {summary.plan_type.toUpperCase()} {summary.plan_year}{/if}
   </div>
 
-  <!-- Composite grade cards -->
-  <GradePanel
-    grades={analysis.grades}
-    planGrades={scoredPlan ? scoredPlan.grades : null}
-  />
 
   <!-- ── Demographic Representation — vertical stack like other metric groups ── -->
   {#if allMetrics(THRESHOLD_KEYS).length}
@@ -338,7 +332,7 @@
                 color:var(--gray);margin:.8rem 0 .4rem;">Demographic Representation</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;margin-bottom:.6rem;">
       {#each allMetrics(THRESHOLD_KEYS) as {key, metric}}
-        <MetricCard {metric} planMetric={planMetricFor(key)} demoThresholdKey="0.50" nDistricts={analysis.summary?.n_districts} />
+        <MetricCard {metric} metricKey={key} planMetric={planMetricFor(key)} demoThresholdKey="0.50" nDistricts={analysis.summary?.n_districts} />
       {/each}
     </div>
   {/if}
@@ -351,7 +345,7 @@
 
       <div style="display:flex;flex-direction:column;gap:.55rem;">
         {#each allMetrics(keys) as {key, metric}}
-          <MetricCard {metric} planMetric={planMetricFor(key)} nDistricts={analysis.summary?.n_districts} />
+          <MetricCard {metric} metricKey={key} planMetric={planMetricFor(key)} nDistricts={analysis.summary?.n_districts} />
         {/each}
       </div>
     {/if}

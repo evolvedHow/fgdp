@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { Analysis, ElectionOption, MetricGrade } from '../types.js';
-  import GradePanel           from './GradePanel.svelte';
   import MetricCard           from './MetricCard.svelte';
   import RiverChart           from './RiverChart.svelte';
   import BenchmarkMethodology from './BenchmarkMethodology.svelte';
@@ -18,11 +17,11 @@
   const GEOGRAPHIC_KEYS  = ['polsby_popper', 'county_splits', 'muni_splits'];
   const MINORITY_KEYS    = ['maj_black', 'maj_hisp', 'maj_aian', 'maj_asian', 'min_coal'];
 
-  function allMetrics(keys: string[]): MetricGrade[] {
+  function allMetrics(keys: string[]): {key: string; metric: MetricGrade}[] {
     return keys
       .filter(k => k in analysis.grades && !k.startsWith('_'))
-      .map(k => analysis.grades[k] as MetricGrade)
-      .filter(m => m && 'histogram' in m);
+      .map(k => ({ key: k, metric: analysis.grades[k] as MetricGrade }))
+      .filter(({metric}) => metric && 'histogram' in metric);
   }
 
   const summary           = $derived(analysis.summary);
@@ -87,16 +86,14 @@
     {#if summary}· {summary.state_full} {summary.plan_type.toUpperCase()} {summary.plan_year}{/if}
   </div>
 
-  <!-- Composite grade cards -->
-  <GradePanel {grades} />
 
   <!-- Partisan metrics -->
   {#if allMetrics(PARTISAN_KEYS).length}
     <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                 color:var(--gray);margin:.8rem 0 .4rem;">Partisan Fairness</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
-      {#each allMetrics(PARTISAN_KEYS) as metric}
-        <MetricCard {metric} nDistricts={summary?.n_districts} />
+      {#each allMetrics(PARTISAN_KEYS) as {key, metric}}
+        <MetricCard {metric} metricKey={key} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}
@@ -106,8 +103,8 @@
     <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                 color:var(--gray);margin:.8rem 0 .4rem;">Competitiveness</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
-      {#each allMetrics(COMPETITIVE_KEYS) as metric}
-        <MetricCard {metric} nDistricts={summary?.n_districts} />
+      {#each allMetrics(COMPETITIVE_KEYS) as {key, metric}}
+        <MetricCard {metric} metricKey={key} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}
@@ -117,8 +114,8 @@
     <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                 color:var(--gray);margin:.8rem 0 .4rem;">Geographic</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
-      {#each allMetrics(GEOGRAPHIC_KEYS) as metric}
-        <MetricCard {metric} nDistricts={summary?.n_districts} />
+      {#each allMetrics(GEOGRAPHIC_KEYS) as {key, metric}}
+        <MetricCard {metric} metricKey={key} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}
@@ -128,8 +125,8 @@
     <div style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
                 color:var(--gray);margin:.8rem 0 .4rem;">Minority Representation</div>
     <div style="display:flex;flex-direction:column;gap:.55rem;">
-      {#each allMetrics(MINORITY_KEYS) as metric}
-        <MetricCard {metric} nDistricts={summary?.n_districts} />
+      {#each allMetrics(MINORITY_KEYS) as {key, metric}}
+        <MetricCard {metric} metricKey={key} nDistricts={summary?.n_districts} />
       {/each}
     </div>
   {/if}

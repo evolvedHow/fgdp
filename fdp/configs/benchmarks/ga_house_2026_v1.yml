@@ -22,7 +22,7 @@ chamber:
   name: house
   n_districts: 180                   # ✅  GA has 180 State House districts
   pop_column: TOTPOP
-  pop_epsilon: 0.05                  # ✅  ±5% — constitutional standard
+  pop_epsilon: 0.01                  # ±1%
 
 elections:
   - label: gov_2018
@@ -95,7 +95,7 @@ mcmc:
   # GUIDANCE: With 180 districts, a single chain is much more likely to get stuck.
   #   5 independent chains × 2,000 steps allows Gelman-Rubin convergence check.
   #   Run in parallel on Modal — same wall-clock time as 1 chain × 10,000.
-  pop_epsilon: 0.05
+  pop_epsilon: 0.01
   random_seed: null
   save_assignments: true
 

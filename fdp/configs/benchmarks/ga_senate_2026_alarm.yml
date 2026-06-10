@@ -1,7 +1,7 @@
 # =============================================================================
 # Georgia State Senate Benchmark — ALARM SMC
 # 56 districts | 2020 VTD base | 6 elections | redist Sequential Monte Carlo
-# pop_epsilon: 0.05 (±5% — Reynolds v. Sims constitutional standard)
+# pop_epsilon: 0.01 (±1%)
 #
 # Build the redist_map (no local R install needed — runs inside cached Modal image):
 #   cd fdga-chain
@@ -28,7 +28,7 @@ chamber:
   name: senate
   n_districts: 56
   pop_column: TOTPOP
-  pop_epsilon: 0.05            # ±5% — Reynolds v. Sims constitutional standard
+  pop_epsilon: 0.01            # ±1%
   district_col: SDIST          # enacted plan column in GA_ss_2020_map.rds
 
 elections:
@@ -101,7 +101,7 @@ demographics:
 # algorithm: smc        → redist_smc() from the ALARM/redist R package
 # nsims:                → plans per independent chain
 # n_chains:             → independent SMC chains run in parallel on Modal
-# pop_epsilon:          → population tolerance (0.05 = ±5%)
+# pop_epsilon:          → population tolerance (0.01 = ±1%)
 # compactness:          → redist_smc compactness weight (1.0 = default)
 # counties_col:         → redist_map column for county-split constraint
 # random_seed:          → base seed; each chain gets seed + chain_idx
@@ -109,7 +109,7 @@ mcmc:
   algorithm: smc
   nsims: 10000           # plans per chain; 10 chains → 100,000 total
   n_chains: 10
-  pop_epsilon: 0.05
+  pop_epsilon: 0.01
   compactness: 1.0
   counties_col: pseudo_county
   random_seed: 42

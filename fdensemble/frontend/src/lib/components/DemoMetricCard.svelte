@@ -116,12 +116,12 @@
 </script>
 
 <div style="background:var(--card);border-radius:8px;overflow:hidden;
-            border:1.5px solid {grade === 'F' ? '#e8a0a0' : 'var(--border)'};
+            border:1.5px solid var(--border);
             box-shadow:var(--shadow);">
 
   <!-- ── Header: metric name + grade ──────────────────────────────────────── -->
   <div style="padding:.5rem .8rem;
-       background:{grade === 'F' ? '#fff5f5' : grade === 'A' ? '#f5fdf8' : 'var(--light)'};
+       background:var(--light);
        border-bottom:1px solid var(--border);
        display:flex;align-items:center;justify-content:space-between;gap:.5rem;">
     <div style="min-width:0;">
@@ -134,12 +134,10 @@
     </div>
     <div style="display:flex;align-items:center;gap:.35rem;flex-shrink:0;">
       <div style="text-align:right;line-height:1.3;">
-        <div style="font-size:.62rem;color:var(--gray);">{Math.round(pctRank)}th pctile</div>
+        <div style="font-size:.85rem;font-weight:800;color:var(--blue);">{Math.round(pctRank)}<sup style="font-size:.5rem;font-weight:700;">th</sup></div>
+        <div style="font-size:.58rem;color:var(--gray);">percentile</div>
         <div style="font-size:.58rem;color:#8e44ad;">≥{Math.round(+THRESHOLD * 100)}% threshold</div>
       </div>
-      <span style="display:inline-flex;align-items:center;justify-content:center;
-                   width:2.1rem;height:2.1rem;border-radius:50%;flex-shrink:0;
-                   background:{gcol};color:#fff;font-weight:800;font-size:.95rem;">{grade}</span>
     </div>
   </div>
 
@@ -161,7 +159,7 @@
             <rect
               x={bx} y={CHART_B - bh}
               width={BAR_W} height={bh}
-              fill={i === enactedVal ? gcol : catColor + '66'}
+              fill={i === enactedVal ? catColor : catColor + '66'}
               rx="1"
             />
           {/if}
@@ -170,12 +168,12 @@
         <!-- ── Enacted position marker (always visible, even if no ensemble bar) ── -->
         <rect x={PAD_L + enactedVal * SLOT_W} y={CHART_B - Math.max(enactedBarH, 5)}
           width={BAR_W} height={Math.max(enactedBarH, 5)}
-          fill={gcol} rx="1"/>
+          fill={catColor} rx="1"/>
 
         <!-- ── Enacted bar label ── -->
         <text x={enactedBarX} y={CHART_B - Math.max(enactedBarH, 5) - 4}
           text-anchor="middle" font-size="10" font-weight="bold"
-          fill={gcol}>{enactedVal}</text>
+          fill={catColor}>{enactedVal}</text>
 
         <!-- peak bar label removed — bar height conveys frequency visually -->
 
@@ -214,10 +212,10 @@
   <!-- ── Takeaway ──────────────────────────────────────────────────────── -->
   {#if metric.takeaway}
     <div style="border-top:1px solid var(--border);padding:.4rem .8rem;
-         background:{grade === 'F' ? '#fff0f0' : grade === 'A' ? '#f0faf4' : '#f8f9fb'};
+         background:#f8f9fb;
          font-size:.67rem;color:#333;line-height:1.45;">
       <span style="font-size:.59rem;font-weight:700;text-transform:uppercase;
-                   letter-spacing:.04em;color:{gcol};margin-right:.3rem;">Finding →</span>{metric.takeaway}
+                   letter-spacing:.04em;color:var(--gray);margin-right:.3rem;">Finding →</span>{metric.takeaway}
     </div>
   {/if}
 </div>
