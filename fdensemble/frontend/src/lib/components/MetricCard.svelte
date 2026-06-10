@@ -409,14 +409,7 @@
       <div style="padding:.7rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem;">
         {#if planMetric}
           <!-- Plan overlay mode -->
-          <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
-            {#if lean === 'R'}
-              <span style="font-size:1.1rem;line-height:1;" title="Republican advantage">🐘</span>
-            {:else if lean === 'D'}
-              <span style="font-size:1.1rem;line-height:1;" title="Democrat advantage">🫏</span>
-            {:else}
-              <span style="font-size:1.1rem;line-height:1;" title="Neutral / Bipartisan">🇺🇸</span>
-            {/if}
+          <div style="display:flex;align-items:center;gap:.3rem;">
             <span style="font-size:.95rem;font-weight:800;color:var(--blue);">{planMetric.pct_rank}</span><span style="font-size:.65rem;color:var(--gray);">th pctile</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:.15rem .5rem;margin-top:.2rem;">
@@ -444,15 +437,8 @@
             {/if}
           </div>
         {:else}
-          <!-- Default: enacted percentile rank + partisan lean -->
-          <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
-            {#if lean === 'R'}
-              <span style="font-size:1.1rem;line-height:1;" title="Republican advantage">🐘</span>
-            {:else if lean === 'D'}
-              <span style="font-size:1.1rem;line-height:1;" title="Democrat advantage">🫏</span>
-            {:else}
-              <span style="font-size:1.1rem;line-height:1;" title="Neutral / Bipartisan">🇺🇸</span>
-            {/if}
+          <!-- Default: enacted percentile rank -->
+          <div style="display:flex;align-items:center;gap:.3rem;">
             <span style="font-size:.95rem;font-weight:800;color:var(--blue);">{Math.round(displayedPctRank)}</span><span style="font-size:.65rem;color:var(--gray);">th pctile</span>
             {#if demoThresholdKey}
               <span style="font-size:.6rem;color:#8e44ad;font-style:italic;">@{Math.round(+demoThresholdKey*100)}%</span>
