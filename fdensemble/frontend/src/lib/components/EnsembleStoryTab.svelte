@@ -15,20 +15,19 @@
   const ALGO_DETAIL: Record<string, { chains: string; popTol: string; constraints: string }> = {
     alarm: {
       chains:      'Independent SMC chains',
-      popTol:      '±1% congress / ±5% legislative',
+      popTol:      '±1%',
       constraints: 'Equal population, contiguity',
     },
     gerrychain: {
       chains:      'Single ReCom chain',
-      popTol:      '±1% congress / ±5% legislative',
+      popTol:      '±1%',
       constraints: 'Equal population, contiguity, compactness (soft)',
     },
   };
 
   function detail(run: RunMeta) {
     const base = ALGO_DETAIL[run.source ?? ''] ?? ALGO_DETAIL.gerrychain;
-    const isSubdistrict = run.chamber === 'senate' || run.chamber === 'house';
-    const popTol = isSubdistrict ? '±5%' : '±1%';
+    const popTol = base.popTol;
     const chains = (run.source === 'alarm' && run.n_plans)
       ? `${run.n_plans.toLocaleString()} plans, independent SMC`
       : base.chains;
