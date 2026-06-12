@@ -107,4 +107,4 @@ grading:
   composite: min                     # ❓ TBD — see guidance in congress config
 
 output:
-  dir: fdp/data/repos/main/ensemble
+  dir: data/repos/main/ensemble

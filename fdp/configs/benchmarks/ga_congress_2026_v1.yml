@@ -186,7 +186,7 @@ grading:
 # OUTPUT
 # -----------------------------------------------------------------------------
 output:
-  dir: fdp/data/repos/main/ensemble
+  dir: data/repos/main/ensemble
   # Files written (all named {benchmark_id}_*.parquet):
   #   ga_congress_2026_v1_plans.parquet       — raw VTD→district per draw (10k draws × 2698 VTDs)
   #   ga_congress_2026_v1_scores.parquet      — partisan scores per draw×district×election

@@ -1,28 +1,38 @@
 # =============================================================================
-# Georgia State House Benchmark — v1
-# 180 districts | 2020 VTD base | 6 elections | 10,000 MCMC steps
+# Georgia State House Benchmark — ALARM SMC
+# 180 districts | 2020 VTD base | 6 elections | redist Sequential Monte Carlo
 #
-# NOTE: State House (180 districts) is the hardest chamber to sample well.
-#   - Chain mixing is slowest → higher burn_in recommended
-#   - Multiple chains strongly recommended for convergence diagnostics
-#   - Estimated Modal runtime: ~2 hours for 1 chain
+# Same 6-election composite as ga_house_2026_v1.yml; algorithm section uses
+# SMC instead of ReCom MCMC.
+#
+# Run:
+#   cd fdga-chain
+#   modal run modal_alarm_app.py::build_map --chamber house   # one-time map build
+#   modal run modal_alarm_app.py::run_alarm_smc \
+#       --run-name fdga_baseline_benchmarks_2601_house_alarm \
+#       --chamber house --n-districts 180 --district-col HDIST \
+#       --pop-tol 0.01 \
+#       --map-rds-path /data/maps/GA_sh_2020_map.rds \
+#       --n-chains 10 --nsims 10000
 # =============================================================================
 
-benchmark_id: ga_house_2026_v1
-description: "Georgia 180-district State House benchmark for 2026 redistricting process"
+benchmark_id: ga_house_2026_alarm
+description: "Georgia 180-district State House benchmark — ALARM SMC (redist)"
 version: "1.0"
 
 geography:
   state: GA
   geo_level: vtd
   vintage_year: 2020
-  graph_file: fdga-chain/data/graphs/ga_house.json   # ✅ pre-built, 2698 nodes
+  # graph_file unused by SMC runner — kept for schema compatibility
+  graph_file: fdga-chain/data/graphs/ga_house.json
 
 chamber:
   name: house
-  n_districts: 180                   # ✅  GA has 180 State House districts
+  n_districts: 180
   pop_column: TOTPOP
-  pop_epsilon: 0.01                  # ±1%
+  pop_epsilon: 0.01
+  district_col: HDIST
 
 elections:
   - label: gov_2018
@@ -64,7 +74,7 @@ elections:
     competitive: true
 
 competitiveness:
-  thresholds: [0.035, 0.05]         # 7-point margin (±3.5pp) and 10-point margin (±5pp)
+  thresholds: [0.035, 0.05]
   method: all_independent
 
 demographics:
@@ -84,27 +94,23 @@ demographics:
       label: "Majority Minority Coalition"
       formula: "1 - (CVAP_WHT24 / CVAP_TOT24)"
 
+# ── SMC algorithm parameters ──────────────────────────────────────────────────
 mcmc:
-  algorithm: recom                   # ❓ TBD — reversible_recom strongly recommended for 180-district chamber
-  n_steps: 10000                     # ✅
-  burn_in: 2000                      # ❓ TBD — 2000 strongly recommended for State House
-  # GUIDANCE: 180-district chamber has the slowest chain mixing.
-  #   Discard first 2,000 steps. Net usable draws: 8,000.
-  #   Consider: n_steps: 12000, burn_in: 2000 → 10,000 usable plans.
-  n_chains: 5                        # ❓ TBD — 5 chains × 2,000 steps STRONGLY recommended for House
-  # GUIDANCE: With 180 districts, a single chain is much more likely to get stuck.
-  #   5 independent chains × 2,000 steps allows Gelman-Rubin convergence check.
-  #   Run in parallel on Modal — same wall-clock time as 1 chain × 10,000.
+  algorithm: smc
+  nsims: 10000           # plans per chain; 10 chains → 100,000 total
+  n_chains: 10
   pop_epsilon: 0.01
-  random_seed: null
+  compactness: 1.0
+  counties_col: pseudo_county
+  random_seed: 42
   save_assignments: true
 
 grading:
   pass_band: [1, 99]
-  a_band:    [25, 75]                # ❓ TBD — confirm after seeing distribution
+  a_band:    [25, 75]
   b_band:    [10, 90]
   c_band:    [5, 95]
-  composite: min                     # ❓ TBD
+  composite: min
 
 output:
   dir: data/repos/main/ensemble

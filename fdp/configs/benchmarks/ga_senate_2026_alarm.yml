@@ -123,4 +123,4 @@ grading:
   composite: min
 
 output:
-  dir: fdp/data/repos/main/ensemble
+  dir: data/repos/main/ensemble
