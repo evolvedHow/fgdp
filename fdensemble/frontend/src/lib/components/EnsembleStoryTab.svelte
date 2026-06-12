@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { RunMeta, Analysis } from '../types.js';
+  import CityIntegrityPanel from './CityIntegrityPanel.svelte';
 
   interface Props {
     runs: RunMeta[];
@@ -9,7 +10,9 @@
   }
   let { runs, selectedRunId, analysis, onRunChange }: Props = $props();
 
-  const summary = $derived(analysis?.summary ?? null);
+  const summary     = $derived(analysis?.summary ?? null);
+  const selectedRun = $derived(runs.find(r => r.id === selectedRunId) ?? null);
+  const selectedSource = $derived(selectedRun?.source ?? 'gerrychain');
 
   // Per-algorithm display helpers (registry table only)
   const ALGO_DETAIL: Record<string, { chains: string; popTol: string; constraints: string }> = {
@@ -174,5 +177,8 @@
       {/if}
     </div>
   </div>
+
+  <!-- City integrity panel — unnecessary municipal splits in the enacted map -->
+  <CityIntegrityPanel runId={selectedRunId} source={selectedSource} />
 
 </div>

@@ -1957,6 +1957,53 @@ def _find_scorecard_path(run_id: str) -> Path | None:
     return None
 
 
+@app.get('/api/city-integrity/{run_id}')
+def get_city_integrity(run_id: str, threshold: int = Query(default=190000)):
+    """
+    Return city integrity data for the enacted plan of a run.
+
+    For each named GA municipality with population <= threshold, reports whether
+    it was split across multiple districts in the enacted map.
+
+    The data is pre-computed by fdp/scripts/build_city_integrity_lookup.py and
+    stored as {run_id}_city_integrity.json alongside the scorecard JSON.
+    """
+    # Locate pre-computed city integrity file
+    integrity_path: Path | None = None
+    for scan_dir in [Path('input_data'), RUNS_DIR]:
+        p = scan_dir / f'{run_id}_city_integrity.json'
+        if p.exists():
+            integrity_path = p
+            break
+
+    if integrity_path is None:
+        raise HTTPException(
+            404,
+            f'City integrity data not found for {run_id!r}. '
+            'Run fdp/scripts/build_city_integrity_lookup.py to generate it.'
+        )
+
+    data   = json.loads(integrity_path.read_text())
+    cities = data.get('cities', [])
+
+    # Filter to cities that could fit in one district (pop <= threshold)
+    fittable      = [c for c in cities if c['pop'] <= threshold]
+    split_cities  = [c for c in fittable if c['is_split']]
+    intact_cities = [c for c in fittable if not c['is_split']]
+    total         = len(fittable)
+    split_count   = len(split_cities)
+
+    return {
+        'run_id':       run_id,
+        'threshold':    threshold,
+        'total_fittable': total,
+        'split_count':  split_count,
+        'split_pct':    round(split_count / total * 100, 1) if total else 0.0,
+        'split_cities': split_cities,
+        'intact_cities': intact_cities,
+    }
+
+
 @app.get('/api/maps')
 def get_maps():
     """List all maps in the server-side map library."""
