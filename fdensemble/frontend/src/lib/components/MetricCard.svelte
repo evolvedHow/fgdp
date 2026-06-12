@@ -164,6 +164,11 @@
     const trimCounts = counts.slice(first, last + 1);
     const enactedTrimBin = enactedBin - first;
 
+    // p5/p95 bin indices for neutral-band shading
+    const sortedVals = [...drawVals].map(v => Math.min(Math.max(Math.round(v), 0), N)).sort((a,b)=>a-b);
+    const p5bin  = sortedVals[Math.floor(sortedVals.length * 0.05)] - first;
+    const p95bin = sortedVals[Math.floor(sortedVals.length * 0.95)] - first;
+
     chart = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -172,8 +177,10 @@
           data: trimCounts,
           backgroundColor: col + '88',
           borderColor: col,
-          borderWidth: 0.5,
-          borderRadius: 1,
+          borderWidth: 0,
+          borderRadius: 2,
+          barPercentage: 0.85,
+          categoryPercentage: 0.9,
         }],
       },
       options: {
@@ -194,22 +201,46 @@
             display: true,
             ticks: { font: { size: 8 }, color: '#888' },
             grid: { display: false },
+            border: { display: true, color: 'rgba(0,0,0,0.15)' },
+          },
+          y: {
+            display: true,
+            ticks: { display: false },
+            grid: { color: 'rgba(0,0,0,0.05)', drawTicks: false },
             border: { display: false },
           },
-          y: { display: false },
         },
       },
       plugins: [{
+        id: 'neutral-band',
+        beforeDatasetsDraw(ch: any) {
+          const xScale = ch.scales.x;
+          const { ctx, chartArea: { top, bottom, left, right } } = ch;
+          const bw = labels.length > 1 ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) : 10;
+          const xLeft  = p5bin  > 0              ? xScale.getPixelForValue(p5bin)  - bw / 2 : left;
+          const xRight = p95bin < labels.length - 1 ? xScale.getPixelForValue(p95bin) + bw / 2 : right;
+          ctx.save();
+          ctx.fillStyle = 'rgba(61, 119, 187, 0.08)';
+          ctx.fillRect(xLeft, top, xRight - xLeft, bottom - top);
+          ctx.restore();
+        },
+      }, {
         id: 'enacted-line',
         afterDraw(ch: any) {
           const xScale = ch.scales.x;
-          const { ctx, chartArea: { top, bottom } } = ch;
+          const { ctx, chartArea: { top, bottom, right } } = ch;
           const x = xScale.getPixelForValue(enactedTrimBin);
           ctx.save();
-          ctx.strokeStyle = '#111';
-          ctx.lineWidth = 2;
-          ctx.setLineDash([4, 3]);
+          ctx.strokeStyle = '#d32f2f';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([]);
           ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+          const labelText = `Enacted (${enactedBin})`;
+          ctx.font = 'bold 8px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.fillStyle = '#d32f2f';
+          const lw = ctx.measureText(labelText).width;
+          const lx = (x + lw + 6 < right) ? x + 4 : x - lw - 4;
+          ctx.fillText(labelText, lx, top + 9);
           ctx.restore();
         },
       }],
@@ -272,8 +303,10 @@
           data:            trimCounts,
           backgroundColor: col + '88',
           borderColor:     col,
-          borderWidth:     0.5,
-          borderRadius:    1,
+          borderWidth:     0,
+          borderRadius:    2,
+          barPercentage:   0.85,
+          categoryPercentage: 0.9,
         }],
       },
       options: {
@@ -285,13 +318,23 @@
           tooltip: {
             callbacks: {
               title: (items: any[]) => `~${labels[items[0].dataIndex]}`,
-              label: (item: any) => `${item.raw} plans`,
+              label: (item: any) => `${(item.raw as number).toLocaleString()} plans`,
             },
           },
         },
         scales: {
-          x: { display: false },
-          y: { display: false },
+          x: {
+            display: true,
+            ticks: { display: false },
+            grid: { display: false },
+            border: { display: true, color: 'rgba(0,0,0,0.15)' },
+          },
+          y: {
+            display: true,
+            ticks: { display: false },
+            grid: { color: 'rgba(0,0,0,0.05)', drawTicks: false },
+            border: { display: false },
+          },
         },
       },
       plugins: [{
@@ -316,21 +359,45 @@
           ctx.restore();
         },
       }, {
+        id: 'neutral-band',
+        beforeDatasetsDraw(ch: any) {
+          if (h.p5 == null || h.p95 == null) return;
+          const xScale = ch.scales.x;
+          const { ctx, chartArea: { top, bottom, left, right } } = ch;
+          const edgesArr = Array.from(h.edges);
+          const bw = labels.length > 1 ? Math.abs(xScale.getPixelForValue(1) - xScale.getPixelForValue(0)) : 10;
+          const p5TrimIdx  = binIndex(edgesArr, h.p5)  - lo;
+          const p95TrimIdx = binIndex(edgesArr, h.p95) - lo;
+          const xLeft  = p5TrimIdx  > 0              ? xScale.getPixelForValue(p5TrimIdx)  - bw / 2 : left;
+          const xRight = p95TrimIdx < labels.length - 1 ? xScale.getPixelForValue(p95TrimIdx) + bw / 2 : right;
+          ctx.save();
+          ctx.fillStyle = 'rgba(61, 119, 187, 0.08)';
+          ctx.fillRect(xLeft, top, xRight - xLeft, bottom - top);
+          ctx.restore();
+        },
+      }, {
         id: 'value-lines',
         afterDraw(ch: any) {
           const xScale = ch.scales.x;
-          const { ctx, chartArea: { top, bottom } } = ch;
+          const { ctx, chartArea: { top, bottom, right } } = ch;
 
-          // Enacted dashed line — uses activeEnacted when threshold is set
+          // Enacted line — crimson hero, with direct label
           if (enactedLineVal != null) {
             const trimIdx = toTrimIdx(enactedLineVal);
             if (trimIdx >= 0 && trimIdx < labels.length) {
               const x = xScale.getPixelForValue(trimIdx);
               ctx.save();
-              ctx.strokeStyle = '#111';
-              ctx.lineWidth   = 2;
-              ctx.setLineDash([4, 3]);
+              ctx.strokeStyle = '#d32f2f';
+              ctx.lineWidth   = 2.5;
+              ctx.setLineDash([]);
               ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+              const fmt = (v: number) => Number.isInteger(v) ? String(v) : v.toFixed(2);
+              const labelText = `Enacted (${fmt(enactedLineVal)})`;
+              ctx.font = 'bold 8px -apple-system, BlinkMacSystemFont, sans-serif';
+              ctx.fillStyle = '#d32f2f';
+              const lw = ctx.measureText(labelText).width;
+              const lx = (x + lw + 6 < right) ? x + 4 : x - lw - 4;
+              ctx.fillText(labelText, lx, top + 9);
               ctx.restore();
             }
           }
@@ -403,7 +470,7 @@
     </div>
 
     <!-- Body: grade info + histogram -->
-    <div style="display:grid;grid-template-columns:190px 1fr;min-width:0;">
+    <div style="display:grid;grid-template-columns:150px 1fr;min-width:0;">
 
       <!-- Left: grade + numbers -->
       <div style="padding:.7rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem;">
@@ -469,7 +536,7 @@
 
       <!-- Histogram -->
       <div style="padding:.6rem .8rem;display:flex;flex-direction:column;justify-content:center;">
-        <div style="height:90px;position:relative;">
+        <div style="height:115px;position:relative;">
           <canvas bind:this={canvas}></canvas>
         </div>
         <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">
@@ -496,9 +563,9 @@
       <div style="border-top:1px solid var(--border);padding:.5rem 1rem;
            background:#f8f9fb;
            display:flex;align-items:baseline;gap:.5rem;">
-        <span style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+        <span style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
                      color:var(--gray);white-space:nowrap;flex-shrink:0;">Finding →</span>
-        <span style="font-size:.74rem;color:#333;line-height:1.5;font-weight:500;">{metric.takeaway}</span>
+        <span style="font-size:.82rem;color:#222;line-height:1.5;font-weight:600;">{metric.takeaway}</span>
       </div>
     {/if}
   </div>
@@ -565,8 +632,8 @@
     opacity: 1;
   }
 
-  @media (max-width: 860px) {
-    div[style*="grid-template-columns:190px"] {
+  @media (max-width: 700px) {
+    div[style*="grid-template-columns:150px"] {
       grid-template-columns: 1fr !important;
     }
   }
