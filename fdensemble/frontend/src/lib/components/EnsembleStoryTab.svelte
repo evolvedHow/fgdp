@@ -179,6 +179,6 @@
   </div>
 
   <!-- City integrity panel — unnecessary municipal splits in the enacted map -->
-  <CityIntegrityPanel runId={selectedRunId} source={selectedSource} />
+  <CityIntegrityPanel runId={selectedRunId} source={selectedSource} chamber={selectedRun?.chamber ?? ''} />
 
 </div>

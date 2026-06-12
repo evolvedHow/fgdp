@@ -20,15 +20,23 @@
     intact_cities:   CityRecord[];
   }
 
-  interface Props {
-    runId:  string;
-    source: string;   // 'alarm' | 'gerrychain'
-  }
-  let { runId, source }: Props = $props();
+  // Georgia ideal district population by chamber (10,711,908 total pop)
+  const CHAMBER_THRESHOLD: Record<string, number> = {
+    congress: 765_000,   // 10.7M / 14
+    senate:   191_000,   // 10.7M / 56
+    house:     59_500,   // 10.7M / 180
+  };
 
-  const DEFAULT_THRESHOLD = 190_000;
-  let threshold  = $state(DEFAULT_THRESHOLD);
-  let inputValue = $state(String(DEFAULT_THRESHOLD));
+  interface Props {
+    runId:   string;
+    source:  string;   // 'alarm' | 'gerrychain'
+    chamber: string;   // 'congress' | 'senate' | 'house'
+  }
+  let { runId, source, chamber }: Props = $props();
+
+  const defaultThreshold = $derived(CHAMBER_THRESHOLD[chamber] ?? 191_000);
+  let threshold  = $state(CHAMBER_THRESHOLD[chamber] ?? 191_000);
+  let inputValue = $state(String(CHAMBER_THRESHOLD[chamber] ?? 191_000));
   let data: IntegrityData | null = $state(null);
   let loading    = $state(false);
   let error      = $state('');
@@ -69,9 +77,12 @@
     return name.replace(/ (city|town|CDP|village|borough)$/i, '');
   }
 
-  // Load on mount and whenever runId changes
+  // Reset threshold and reload when run (chamber) changes
   $effect(() => {
     runId;
+    const t = CHAMBER_THRESHOLD[chamber] ?? 191_000;
+    threshold  = t;
+    inputValue = String(t);
     data = null;
     load();
   });
