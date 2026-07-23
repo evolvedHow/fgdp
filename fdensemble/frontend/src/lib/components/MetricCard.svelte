@@ -469,8 +469,8 @@
       </button>
     </div>
 
-    <!-- Body: grade info + histogram -->
-    <div style="display:grid;grid-template-columns:150px 1fr;min-width:0;">
+    <!-- Body: grade info + histogram + finding -->
+    <div class="metric-body">
 
       <!-- Left: grade + numbers -->
       <div style="padding:.7rem .9rem;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem;">
@@ -535,39 +535,37 @@
       </div>
 
       <!-- Histogram -->
-      <div style="padding:.6rem .8rem;display:flex;flex-direction:column;justify-content:center;">
+      <div style="padding:.6rem .7rem;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--border);">
         <div style="height:115px;position:relative;">
           <canvas bind:this={canvas}></canvas>
         </div>
         <div style="font-size:.58rem;color:var(--gray);margin-top:.25rem;text-align:center;">
           {#if planMetric}
             <span style="color:#e67e22;font-weight:700;">—</span> this plan &nbsp;
-            <span style="color:#111;">‒‒</span> enacted &nbsp;|&nbsp; {metric.histogram.counts.reduce((a:number,b:number)=>a+b,0).toLocaleString()} neutral maps
+            <span style="color:#d32f2f;">—</span> enacted &nbsp;|&nbsp; {metric.histogram.counts.reduce((a:number,b:number)=>a+b,0).toLocaleString()} neutral maps
           {:else}
-            ‒‒ enacted &nbsp;|&nbsp; {metric.histogram.counts.reduce((a:number,b:number)=>a+b,0).toLocaleString()} neutral maps
+            <span style="color:#d32f2f;">—</span> enacted &nbsp;|&nbsp; {metric.histogram.counts.reduce((a:number,b:number)=>a+b,0).toLocaleString()} neutral maps
             {#if demoThresholdKey}&nbsp;<span style="color:#8e44ad;font-weight:600;">≥{Math.round(+demoThresholdKey*100)}% BVAP</span>{/if}
           {/if}
           {#if metric.a_grade_range}
             &nbsp;|&nbsp; <span style="color:#27ae60;">█</span> A zone
             <span
-              title="The green band marks the A-grade threshold — what excellent looks like. For this metric, earning an A means the enacted map performs better than roughly 95% of randomly drawn fair maps. The black dashed line shows where the enacted map falls relative to that standard."
+              title="The green band marks the A-grade threshold — what excellent looks like. For this metric, earning an A means the enacted map performs better than roughly 95% of randomly drawn fair maps. The crimson line shows where the enacted map falls relative to that standard."
               style="cursor:help;color:#27ae60;font-size:.68rem;vertical-align:super;margin-left:1px;line-height:1;">ⓘ</span>
           {/if}
         </div>
       </div>
 
-    </div>
-
-    <!-- Takeaway -->
-    {#if metric.takeaway}
-      <div style="border-top:1px solid var(--border);padding:.5rem 1rem;
-           background:#f8f9fb;
-           display:flex;align-items:baseline;gap:.5rem;">
-        <span style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
-                     color:var(--gray);white-space:nowrap;flex-shrink:0;">Finding →</span>
-        <span style="font-size:.82rem;color:#222;line-height:1.5;font-weight:600;">{metric.takeaway}</span>
+      <!-- Finding — right column -->
+      <div style="padding:.8rem 1rem;display:flex;flex-direction:column;justify-content:center;background:#f8f9fb;">
+        {#if metric.takeaway}
+          <div style="font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+                      color:var(--gray);margin-bottom:.35rem;">Finding →</div>
+          <div style="font-size:.88rem;color:#1a1a1a;line-height:1.55;font-weight:500;">{metric.takeaway}</div>
+        {/if}
       </div>
-    {/if}
+
+    </div>
   </div>
 
 <style>
@@ -632,9 +630,15 @@
     opacity: 1;
   }
 
+  .metric-body {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1.15fr);
+    min-width: 0;
+  }
+
   @media (max-width: 700px) {
-    div[style*="grid-template-columns:150px"] {
-      grid-template-columns: 1fr !important;
+    .metric-body {
+      grid-template-columns: 1fr;
     }
   }
 </style>

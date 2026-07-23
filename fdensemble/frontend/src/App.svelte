@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { RunMeta, Analysis } from './lib/types.js';
+  import type { RunMeta, Analysis, CityIntegrityData } from './lib/types.js';
   import Header                from './lib/components/Header.svelte';
   import EnsembleStoryTab      from './lib/components/EnsembleStoryTab.svelte';
   import ScoreTab              from './lib/components/ScoreTab.svelte';
@@ -11,6 +11,7 @@
   let runs: RunMeta[]           = $state([]);
   let analysis: Analysis | null = $state(null);
   let companionAnalysis: Analysis | null = $state(null);
+  let cityIntegrity: CityIntegrityData | null = $state(null);
   let selectedRunId             = $state('');
   let selectedElectionIdx       = $state(0);
   let loading                   = $state(false);
@@ -71,6 +72,22 @@
     } finally {
       loading = false;
     }
+    // Load city integrity alongside companion analysis (non-blocking)
+    cityIntegrity = null;
+    const run = runs.find(r => r.id === runId);
+    if (run) {
+      const CHAMBER_THRESHOLD: Record<string, number> = { congress: 765_000, senate: 191_000, house: 59_500 };
+      const thresh = CHAMBER_THRESHOLD[run.chamber ?? ''] ?? 191_000;
+      try {
+        const ci = await apiGet<CityIntegrityData>('/city-integrity/' + runId, { threshold: String(thresh) });
+        console.log('[CI-APP] cityIntegrity loaded:', ci?.split_count, 'splits,', ci?.total_fittable, 'fittable');
+        cityIntegrity = ci;
+      } catch (e) {
+        console.error('[CI-APP] cityIntegrity fetch failed:', e);
+        cityIntegrity = null;
+      }
+    }
+
     const paired = getCompanionRunId(runId);
     if (paired) {
       try {
@@ -225,6 +242,7 @@
         {analysis}
         selectedRunId={selectedRunId}
         onRunChange={switchRun}
+        {cityIntegrity}
       />
 
       <ScoreTab

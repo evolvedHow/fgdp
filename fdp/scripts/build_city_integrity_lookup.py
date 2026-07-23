@@ -90,6 +90,8 @@ def compute_run_integrity(run_id: str, source: str, lookup: pd.DataFrame) -> dic
     conn.register("enacted", tbl.to_pandas())
     conn.register("vtd_muni", pd.read_parquet(_VTD_MUNI))
 
+    conn.register("vtd_demo", pd.read_parquet(_VTD_DEMO))
+
     city_splits = conn.execute("""
         SELECT m.muni_id,
                COUNT(DISTINCT e.district) AS n_districts,
@@ -99,19 +101,35 @@ def compute_run_integrity(run_id: str, source: str, lookup: pd.DataFrame) -> dic
         GROUP BY m.muni_id
     """).df()
 
+    # Per-district population for each city (exact, using VTD demographics)
+    dist_pops = conn.execute("""
+        SELECT m.muni_id, e.district, SUM(d.pop) AS district_pop
+        FROM vtd_muni m
+        JOIN enacted e ON m.geoid = e.geoid
+        JOIN vtd_demo d ON m.geoid = d.geoid
+        GROUP BY m.muni_id, e.district
+    """).df()
+    # Build lookup: muni_id -> {district_str: pop}
+    dp_lookup: dict[int, dict[str, int]] = {}
+    for _, r in dist_pops.iterrows():
+        mid = int(r["muni_id"])
+        dp_lookup.setdefault(mid, {})[str(int(r["district"]))] = int(r["district_pop"])
+
     # Join with lookup (name + pop)
     merged = lookup.merge(city_splits, on="muni_id", how="inner")
     merged = merged.sort_values("total_pop", ascending=False)
 
     cities = []
     for _, row in merged.iterrows():
+        mid = int(row["muni_id"])
         cities.append({
-            "muni_id":    int(row["muni_id"]),
-            "name":       row["name"],
-            "pop":        int(row["total_pop"]),
-            "n_districts": int(row["n_districts"]),
-            "is_split":   bool(row["n_districts"] > 1),
-            "districts":  sorted([int(d) for d in row["district_list"]]),
+            "muni_id":      mid,
+            "name":         row["name"],
+            "pop":          int(row["total_pop"]),
+            "n_districts":  int(row["n_districts"]),
+            "is_split":     bool(row["n_districts"] > 1),
+            "districts":    sorted([int(d) for d in row["district_list"]]),
+            "district_pops": dp_lookup.get(mid, {}),
         })
 
     split_count = sum(1 for c in cities if c["is_split"])

@@ -1,71 +1,41 @@
 <script lang="ts">
-  import { apiGet, STATIC_MODE } from '../api.js';
+  import type { CityIntegrityData } from '../types.js';
 
-  interface CityRecord {
-    muni_id:     number;
-    name:        string;
-    pop:         number;
-    n_districts: number;
-    is_split:    boolean;
-    districts:   number[];
-  }
-
-  interface IntegrityData {
-    run_id:          string;
-    threshold:       number;
-    total_fittable:  number;
-    split_count:     number;
-    split_pct:       number;
-    split_cities:    CityRecord[];
-    intact_cities:   CityRecord[];
-  }
-
-  // Georgia ideal district population by chamber (10,711,908 total pop)
   const CHAMBER_THRESHOLD: Record<string, number> = {
-    congress: 765_000,   // 10.7M / 14
-    senate:   191_000,   // 10.7M / 56
-    house:     59_500,   // 10.7M / 180
+    congress: 765_000,
+    senate:   191_000,
+    house:     59_500,
+  };
+
+  const CHAMBER_LABEL: Record<string, string> = {
+    congress: 'U.S. Congressional district',
+    senate:   'GA Senate district',
+    house:    'GA House district',
   };
 
   interface Props {
-    runId:   string;
-    source:  string;   // 'alarm' | 'gerrychain'
-    chamber: string;   // 'congress' | 'senate' | 'house'
+    data:    CityIntegrityData | null;
+    chamber: string;
   }
-  let { runId, source, chamber }: Props = $props();
+  let { data, chamber }: Props = $props();
 
-  const defaultThreshold = $derived(CHAMBER_THRESHOLD[chamber] ?? 191_000);
-  let threshold  = $state(CHAMBER_THRESHOLD[chamber] ?? 191_000);
-  let inputValue = $state(String(CHAMBER_THRESHOLD[chamber] ?? 191_000));
-  let data: IntegrityData | null = $state(null);
-  let loading    = $state(false);
-  let error      = $state('');
+  const threshold = $derived(CHAMBER_THRESHOLD[chamber] ?? 191_000);
+
   let showIntact = $state(false);
 
-  async function load() {
-    if (!runId || STATIC_MODE) return;
-    loading = true;
-    error   = '';
-    try {
-      data = await apiGet<IntegrityData>(`/city-integrity/${runId}`, { threshold: String(threshold) });
-    } catch (e: any) {
-      error = e.message ?? 'Failed to load city integrity data';
-    } finally {
-      loading = false;
+  // district → split city names that span it
+  const splitsByDistrict = $derived.by(() => {
+    const m = new Map<number, string[]>();
+    if (!data) return m;
+    for (const c of data.split_cities) {
+      for (const d of c.districts) {
+        const existing = m.get(d) ?? [];
+        existing.push(cleanName(c.name));
+        m.set(d, existing);
+      }
     }
-  }
-
-  function applyThreshold() {
-    const n = parseInt(inputValue, 10);
-    if (!isNaN(n) && n > 0) {
-      threshold = n;
-      load();
-    }
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') applyThreshold();
-  }
+    return m;
+  });
 
   function fmtPop(n: number) {
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
@@ -76,53 +46,21 @@
   function cleanName(name: string) {
     return name.replace(/ (city|town|CDP|village|borough)$/i, '');
   }
-
-  // Reset threshold and reload when run (chamber) changes
-  $effect(() => {
-    runId;
-    const t = CHAMBER_THRESHOLD[chamber] ?? 191_000;
-    threshold  = t;
-    inputValue = String(t);
-    data = null;
-    load();
-  });
 </script>
 
 <div class="panel">
   <div class="panel-header">
     <div class="panel-title">City Integrity</div>
     <div class="panel-subtitle">
-      Incorporated municipalities that were split despite being small enough to fit in one district
+      Incorporated municipalities with population ≤ {threshold.toLocaleString()}
+      <span class="threshold-badge">≤ 1 {CHAMBER_LABEL[chamber] ?? 'district'}</span>
+      — could fit entirely within a single district
     </div>
   </div>
 
-  <!-- Threshold control -->
-  <div class="threshold-row">
-    <label class="threshold-label" for="ci-threshold">Population threshold</label>
-    <div class="threshold-input-group">
-      <input
-        id="ci-threshold"
-        class="threshold-input"
-        type="number"
-        min="1000"
-        max="1000000"
-        step="10000"
-        bind:value={inputValue}
-        onkeydown={handleKeydown}
-      />
-      <button class="threshold-btn" onclick={applyThreshold}>Apply</button>
-    </div>
-    <span class="threshold-hint">
-      Cities with pop ≤ {threshold.toLocaleString()} could fit in one district
-    </span>
-  </div>
-
-  {#if loading}
+  {#if !data}
     <div class="loading">Loading…</div>
-  {:else if error}
-    <div class="error">{error}</div>
-  {:else if data}
-    <!-- Headline stat -->
+  {:else}
     <div class="headline">
       {#if data.split_count === 0}
         <span class="stat-good">All {data.total_fittable} fittable cities kept intact</span>
@@ -141,10 +79,17 @@
           <div class="city-card split">
             <div class="city-name">{cleanName(city.name)}</div>
             <div class="city-meta">
-              {fmtPop(city.pop)} pop
+              {fmtPop(city.pop)} total pop
               · split into {city.n_districts} districts
               ({city.districts.join(', ')})
             </div>
+            {#if city.district_pops}
+              <div class="city-dp">
+                {#each city.districts as d}
+                  <span class="dp-chip">Dist.{d}: {fmtPop(city.district_pops[String(d)] ?? 0)}</span>
+                {/each}
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -157,9 +102,19 @@
       {#if showIntact}
         <div class="city-grid intact-grid">
           {#each data.intact_cities as city}
+            {@const cohabitants = splitsByDistrict.get(city.districts[0]) ?? []}
             <div class="city-card intact">
-              <div class="city-name">{cleanName(city.name)}</div>
-              <div class="city-meta">{fmtPop(city.pop)} pop · district {city.districts[0]}</div>
+              <div class="card-body">
+                <div class="city-name">{cleanName(city.name)}</div>
+                <div class="city-meta">{fmtPop(city.pop)} pop · district {city.districts[0]}</div>
+              </div>
+              {#if cohabitants.length > 0}
+                <div class="cohabitants">
+                  {#each cohabitants as sc}
+                    <div class="cohabitant-name">{sc}</div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -188,55 +143,24 @@
     font-size: .72rem;
     color: var(--gray);
     margin-top: .15rem;
-  }
-
-  .threshold-row {
     display: flex;
     align-items: center;
-    gap: .6rem;
+    gap: .4rem;
     flex-wrap: wrap;
-    margin-bottom: .9rem;
-    padding: .5rem .7rem;
+  }
+  .threshold-badge {
+    display: inline-block;
     background: var(--light);
     border: 1px solid var(--border);
-    border-radius: 6px;
-  }
-  .threshold-label {
-    font-size: .7rem;
+    border-radius: 4px;
+    padding: .05rem .35rem;
+    font-size: .66rem;
     font-weight: 600;
-    color: var(--gray);
+    color: var(--blue);
     white-space: nowrap;
-  }
-  .threshold-input-group { display: flex; gap: 0; }
-  .threshold-input {
-    width: 110px;
-    padding: .22rem .45rem;
-    font-size: .78rem;
-    border: 1.5px solid var(--border);
-    border-right: none;
-    border-radius: 4px 0 0 4px;
-    background: var(--card);
-    color: var(--text);
-  }
-  .threshold-btn {
-    padding: .22rem .55rem;
-    font-size: .75rem;
-    font-weight: 600;
-    border: 1.5px solid var(--blue);
-    border-radius: 0 4px 4px 0;
-    background: var(--blue);
-    color: #fff;
-    cursor: pointer;
-  }
-  .threshold-hint {
-    font-size: .68rem;
-    color: var(--gray);
-    flex: 1;
   }
 
   .loading { padding: 1rem; color: var(--gray); font-size: .82rem; text-align: center; }
-  .error   { padding: .7rem; background: #fef0f0; border: 1px solid #f5a9a9;
-              border-radius: 6px; color: var(--red); font-size: .8rem; }
 
   .headline {
     font-size: .9rem;
@@ -260,7 +184,7 @@
 
   .city-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
     gap: .4rem;
     margin-bottom: .8rem;
   }
@@ -270,9 +194,15 @@
     padding: .4rem .6rem;
     border-radius: 5px;
     border: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: .3rem;
   }
   .city-card.split  { background: #fef5f5; border-color: #f5c6c6; }
   .city-card.intact { background: #f5fef7; border-color: #b8e0bf; }
+
+  .card-body { flex: 1; min-width: 0; }
 
   .city-name {
     font-size: .76rem;
@@ -284,6 +214,33 @@
     color: var(--gray);
     margin-top: .1rem;
     line-height: 1.3;
+  }
+
+  .cohabitants {
+    flex-shrink: 0;
+    text-align: right;
+  }
+  .cohabitant-name {
+    font-size: .6rem;
+    color: #c0392b;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+  .city-dp {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .2rem;
+    margin-top: .25rem;
+  }
+  .dp-chip {
+    font-size: .62rem;
+    background: #fde8e8;
+    border: 1px solid #f5c6c6;
+    border-radius: 3px;
+    padding: .05rem .3rem;
+    color: #c0392b;
+    font-weight: 600;
   }
 
   .toggle-intact {

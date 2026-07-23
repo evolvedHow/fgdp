@@ -18,8 +18,10 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "@types/d3-sankey": "^0.12.5",
     "buffer": "^6.0.3",
     "chart.js": "^4.4.0",
+    "d3-sankey": "^0.12.3",
     "html2canvas": "^1.4.1",
     "idb": "^8.0.0",
     "shpjs": "^4.0.4"

@@ -197,6 +197,26 @@ export interface BenchmarkConfig {
   source_locations: Record<string, string>;
 }
 
+export interface CityRecord {
+  muni_id:       number;
+  name:          string;
+  pop:           number;
+  n_districts:   number;
+  is_split:      boolean;
+  districts:     number[];
+  district_pops?: Record<string, number>;
+}
+
+export interface CityIntegrityData {
+  run_id:         string;
+  threshold:      number;
+  total_fittable: number;
+  split_count:    number;
+  split_pct:      number;
+  split_cities:   CityRecord[];
+  intact_cities:  CityRecord[];
+}
+
 export interface Analysis {
   summary: Summary;
   grades: Grades;

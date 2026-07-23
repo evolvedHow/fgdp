@@ -1,14 +1,15 @@
 <script lang="ts">
-  import type { RunMeta, Analysis } from '../types.js';
+  import type { RunMeta, Analysis, CityIntegrityData } from '../types.js';
   import CityIntegrityPanel from './CityIntegrityPanel.svelte';
 
   interface Props {
     runs: RunMeta[];
     selectedRunId: string;
     analysis: Analysis;
+    cityIntegrity?: CityIntegrityData | null;
     onRunChange?: (id: string) => void;
   }
-  let { runs, selectedRunId, analysis, onRunChange }: Props = $props();
+  let { runs, selectedRunId, analysis, cityIntegrity = null, onRunChange }: Props = $props();
 
   const summary     = $derived(analysis?.summary ?? null);
   const selectedRun = $derived(runs.find(r => r.id === selectedRunId) ?? null);
@@ -178,7 +179,7 @@
     </div>
   </div>
 
-  <!-- City integrity panel — unnecessary municipal splits in the enacted map -->
-  <CityIntegrityPanel runId={selectedRunId} source={selectedSource} chamber={selectedRun?.chamber ?? ''} />
+  <!-- City integrity panel — data loaded in App.svelte, passed as prop -->
+  <CityIntegrityPanel data={cityIntegrity} chamber={selectedRun?.chamber ?? ''} />
 
 </div>
