@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fdensemble-frontend",
+      "runtimeExecutable": "wsl",
+      "runtimeArgs": ["-d", "ubuntu", "-e", "bash", "-c", "cd ~/codebox/fgdp/fdensemble/frontend && npm run dev -- --port 5174"],
+      "port": 5174
+    }
+  ]
+}
