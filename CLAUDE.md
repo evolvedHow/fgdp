@@ -103,6 +103,44 @@ vtd_agg = joined.groupby("GEOID20_right")[election_cols].sum()
 Alternative: Census 2020 Block Assignment File (BAF) for Georgia at:
 `census.gov/geographies/reference-files/time-series/geo/block-assignment-files.html`
 
+### District Plan Scoring — Block-Weighted (Critical)
+`fdp/scripts/enrich_plan_geojson.py` writes the six election shares and the
+`partisan` mean onto every plan GeoJSON in `data/repos/main/boundaries/`.
+Votes are assigned to districts **at block level**, using the Census-published
+internal point (`INTPTLAT20`/`INTPTLON20`) — a coordinate guaranteed to lie
+inside the block, unlike a computed centroid.
+
+**Never assign whole VTDs to districts.** VTDs are larger than a rural state
+house district, so centroid-in-polygon assignment can starve a district: under
+the old method HD-177 of the enacted house map captured 1 VTD and 1,710 votes
+against a VAP of 46,014 (2018 share 0.880 D vs a true ~0.59), while HD-175
+captured 166% of its VAP. Congress and senate were largely unaffected — this
+bites hardest where districts are smaller than VTDs.
+
+Vote sources by cycle:
+- **2022 (gov, USS) and 2024 (pres)** — real block-level counts from
+  `data/repos/main/block/`. No estimation.
+- **2018, 2020, 2021** — published only at VTD level; each VTD's votes are
+  spread across its blocks by `VAP_MOD` share. Exact at the VTD level,
+  approximate only *within* a split VTD.
+
+Prerequisite: `fdp/scripts/build_block_points.py` builds
+`data/repos/main/block/block_points.parquet` from the TIGER/Line 2020 PL
+tabblock20 shapefile (`data/raw/boundaries/tl_2020_13_tabblock20.zip`,
+gitignored — re-download from census.gov if absent).
+
+Validation test to re-run after any change to the assignment method: sum block
+`VAP_MOD` per district and divide by the district's published `tvap`. The ratio
+should sit near 0.989 (VAP_MOD excludes correctional population) with **sd
+below 0.02** across all 180 house districts. The old VTD-centroid method scored
+sd 0.121 with a range of 0.096–1.662.
+
+```bash
+uv run python scripts/build_block_points.py     # once, ~170MB download
+uv run python scripts/enrich_plan_geojson.py    # idempotent
+bash ../fdex/scripts/sync_data.sh
+```
+
 ### CVAP Aggregation
 Same block→VTD join, then sum these key columns:
 - `CVAP_TOT24` — Total CVAP
