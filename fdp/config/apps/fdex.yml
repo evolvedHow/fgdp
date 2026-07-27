@@ -30,6 +30,15 @@ plans:
     - id: congress_remedy_2
       label: "GHDC & GSDC Congressional Remedy (2023)"
       file: "boundaries/congress/congress_remedy_2.geojson"
+    - id: congress12_census20
+      label: "Congressional Map, 2011–2021 (2020 Census Boundaries)"
+      file: "boundaries/congress/congress12_census20.geojson"
+    - id: congress21_census20
+      label: "2021 Congressional Proposal (2020 Census Boundaries)"
+      file: "boundaries/congress/congress21_census20.geojson"
+    - id: congress21_p2
+      label: "2021 Congressional Proposal 2"
+      file: "boundaries/congress/congress21_p2.geojson"
   house:
     - id: house_enacted_24
       label: "2024 Enacted House Map"
@@ -46,6 +55,9 @@ plans:
     - id: house_prop2_rep
       label: "State House Proposal 2 (Rep)"
       file: "boundaries/house/house_prop2_rep.geojson"
+    - id: house15_census20
+      label: "State House Map, 2015–2021 (2020 Census Boundaries)"
+      file: "boundaries/house/house15_census20.geojson"
   senate:
     - id: senate_enacted_24
       label: "2024 Enacted Senate Map"
@@ -65,6 +77,9 @@ plans:
     - id: senate_prop2_rep
       label: "State Senate Proposal 2 (Rep)"
       file: "boundaries/senate/senate_prop2_rep.geojson"
+    - id: senate14_census20
+      label: "State Senate Map, 2014–2021 (2020 Census Boundaries)"
+      file: "boundaries/senate/senate14_census20.geojson"
 
 overlays:
   - id: bvap
