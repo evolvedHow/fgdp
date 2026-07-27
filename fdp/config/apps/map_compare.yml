@@ -10,41 +10,116 @@ app:
 map:
   zoom: 6.0
 
-# Plans available in the preset library (mirrors fdex; single source of truth)
+# Plan catalogue — mirrors map-compare/public/data-catalog.json, which is the
+# app's own source of truth for its preset library. Every file the catalogue
+# lists must appear here, or sync-app leaves a stale copy in public/data/ that
+# never picks up rescored elections.
 plans:
   congress:
-    - id: congress_enacted_24
-      label: "2024 Enacted"
-      file: "boundaries/congress/congress_enacted_24_2024update.geojson"
-    - id: congress_remedy_a
-      label: "Remedy A"
-      file: "boundaries/congress/congress_remedy_a.geojson"
-    - id: congress_remedy_b
-      label: "Remedy B"
-      file: "boundaries/congress/congress_remedy_b.geojson"
     - id: congress12_census20
-      label: "2011 Plan"
+      label: "GA Congress — 2012 Plan (2020 Census data)"
       file: "boundaries/congress/congress12_census20.geojson"
     - id: congress21_census20
-      label: "2021 Plan"
+      label: "GA Congress — 2021 Plan (2020 Census data)"
       file: "boundaries/congress/congress21_census20.geojson"
-  house:
-    - id: house_enacted_24
-      label: "2024 Enacted"
-      file: "boundaries/house/house_enacted_24_2024update.geojson"
-    - id: house_remedy_a
-      label: "Remedy A"
-      file: "boundaries/house/house_remedy_a.geojson"
-    - id: house_remedy_b
-      label: "Remedy B"
-      file: "boundaries/house/house_remedy_b.geojson"
+    - id: congress21_p2
+      label: "GA Congress — 2021 Plan v2"
+      file: "boundaries/congress/congress21_p2.geojson"
+    - id: congress_cooper
+      label: "GA Congress — Cooper Remedial Plan"
+      file: "boundaries/congress/congress_cooper.geojson"
+    - id: congress_enacted_2123_2024update
+      label: "GA Congress — Enacted 2021-23 (2024 update)"
+      file: "boundaries/congress/congress_enacted_2123_2024update.geojson"
+    - id: congress_enacted_24_2024update
+      label: "GA Congress — Enacted 2024 (2024 update)"
+      file: "boundaries/congress/congress_enacted_24_2024update.geojson"
+    - id: congress_proposed3
+      label: "GA Congress — Proposed Plan 3"
+      file: "boundaries/congress/congress_proposed3.geojson"
+    - id: congress_remedy_1
+      label: "GA Congress — Remedy Plan 1"
+      file: "boundaries/congress/congress_remedy_1.geojson"
+    - id: congress_remedy_1_2024update
+      label: "GA Congress — Remedy Plan 1 (2024 update)"
+      file: "boundaries/congress/congress_remedy_1_2024update.geojson"
+    - id: congress_remedy_2
+      label: "GA Congress — Remedy Plan 2"
+      file: "boundaries/congress/congress_remedy_2.geojson"
+    - id: enacted_congress22
+      label: "GA Congress — Enacted 2022"
+      file: "boundaries/congress/enacted_congress22.geojson"
   senate:
-    - id: senate_enacted_24
-      label: "2024 Enacted"
+    - id: enacted_senate22
+      label: "GA Senate — Enacted 2022"
+      file: "boundaries/senate/enacted_senate22.geojson"
+    - id: enacted_senate22_2024update
+      label: "GA Senate — Enacted 2022 (2024 update)"
+      file: "boundaries/senate/enacted_senate22_2024update.geojson"
+    - id: senate14_census20
+      label: "GA Senate — 2014 Plan (2020 Census data)"
+      file: "boundaries/senate/senate14_census20.geojson"
+    - id: senate_enacted_2123_2024update
+      label: "GA Senate — Enacted 2021-23 (2024 update)"
+      file: "boundaries/senate/senate_enacted_2123_2024update.geojson"
+    - id: senate_enacted_24_2024update
+      label: "GA Senate — Enacted 2024 (2024 update)"
       file: "boundaries/senate/senate_enacted_24_2024update.geojson"
+    - id: senate_prop1_dem
+      label: "GA Senate — Proposed Plan 1 (Democratic)"
+      file: "boundaries/senate/senate_prop1_dem.geojson"
+    - id: senate_prop2_rep
+      label: "GA Senate — Proposed Plan 2 (Republican)"
+      file: "boundaries/senate/senate_prop2_rep.geojson"
+    - id: senate_prop3_rep
+      label: "GA Senate — Proposed Plan 3 (Republican)"
+      file: "boundaries/senate/senate_prop3_rep.geojson"
     - id: senate_remedy
-      label: "Remedy"
+      label: "GA Senate — Remedy Plan"
       file: "boundaries/senate/senate_remedy.geojson"
+    - id: senate_remedy_2
+      label: "GA Senate — Remedy Plan 2"
+      file: "boundaries/senate/senate_remedy_2.geojson"
+    - id: senate_remedy_40pct
+      label: "GA Senate — Remedy 40% Plan"
+      file: "boundaries/senate/senate_remedy_40pct.geojson"
+    - id: senate_remedy_40pct_2024update
+      label: "GA Senate — Remedy 40% Plan (2024 update)"
+      file: "boundaries/senate/senate_remedy_40pct_2024update.geojson"
+  house:
+    - id: enacted_house22
+      label: "GA House — Enacted 2022"
+      file: "boundaries/house/enacted_house22.geojson"
+    - id: enacted_house22_2024update
+      label: "GA House — Enacted 2022 (2024 update)"
+      file: "boundaries/house/enacted_house22_2024update.geojson"
+    - id: house15_census20
+      label: "GA House — 2015 Plan (2020 Census data)"
+      file: "boundaries/house/house15_census20.geojson"
+    - id: house_enacted_2123_2024update
+      label: "GA House — Enacted 2021-23 (2024 update)"
+      file: "boundaries/house/house_enacted_2123_2024update.geojson"
+    - id: house_enacted_24_2024update
+      label: "GA House — Enacted 2024 (2024 update)"
+      file: "boundaries/house/house_enacted_24_2024update.geojson"
+    - id: house_prop1_dem
+      label: "GA House — Proposed Plan 1 (Democratic)"
+      file: "boundaries/house/house_prop1_dem.geojson"
+    - id: house_prop2_rep
+      label: "GA House — Proposed Plan 2 (Republican)"
+      file: "boundaries/house/house_prop2_rep.geojson"
+    - id: house_prop3_rep
+      label: "GA House — Proposed Plan 3 (Republican)"
+      file: "boundaries/house/house_prop3_rep.geojson"
+    - id: house_remedy_1
+      label: "GA House — Remedy Plan 1"
+      file: "boundaries/house/house_remedy_1.geojson"
+    - id: house_remedy_1_2024update
+      label: "GA House — Remedy Plan 1 (2024 update)"
+      file: "boundaries/house/house_remedy_1_2024update.geojson"
+    - id: house_remedy_2
+      label: "GA House — Remedy Plan 2"
+      file: "boundaries/house/house_remedy_2.geojson"
 
 reference_layers:
   county: "boundaries/reference/county.geojson"
