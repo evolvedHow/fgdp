@@ -15,49 +15,56 @@ map:
 
 # Plan catalogue: each entry references a file inside the active data repo.
 # Path is relative to the repo root (data_layout keys resolved by the platform).
+#
+# Keep this list aligned with fdex/config/maps.yml — every plan fdex renders
+# must appear here, or sync-app leaves fdex/data/ holding a stale copy that
+# never picks up newly scored elections (e.g. p24_pct_dem).
 plans:
   congress:
     - id: congress_enacted_24
       label: "2024 Enacted Congressional Map"
       file: "boundaries/congress/congress_enacted_24_2024update.geojson"
-    - id: congress_remedy_a
-      label: "Congressional Remedy A"
-      file: "boundaries/congress/congress_remedy_a.geojson"
-    - id: congress_remedy_b
-      label: "Congressional Remedy B"
-      file: "boundaries/congress/congress_remedy_b.geojson"
-    - id: congress12_census20
-      label: "2011 Congressional (2020 Census Boundaries)"
-      file: "boundaries/congress/congress12_census20.geojson"
-    - id: congress14_census20
-      label: "2013 Congressional (2020 Census Boundaries)"
-      file: "boundaries/congress/congress14_census20.geojson"
-    - id: congress21_census20
-      label: "2021 Congressional (2020 Census Boundaries)"
-      file: "boundaries/congress/congress21_census20.geojson"
+    - id: congress_enacted_2123
+      label: "Congressional Map, 2021–2024"
+      file: "boundaries/congress/congress_enacted_2123_2024update.geojson"
+    - id: congress_remedy_2
+      label: "GHDC & GSDC Congressional Remedy (2023)"
+      file: "boundaries/congress/congress_remedy_2.geojson"
   house:
     - id: house_enacted_24
       label: "2024 Enacted House Map"
       file: "boundaries/house/house_enacted_24_2024update.geojson"
-    - id: house_remedy_a
-      label: "House Remedy A"
-      file: "boundaries/house/house_remedy_a.geojson"
-    - id: house_remedy_b
-      label: "House Remedy B"
-      file: "boundaries/house/house_remedy_b.geojson"
-    - id: house15_census20
-      label: "2015 House (2020 Census Boundaries)"
-      file: "boundaries/house/house15_census20.geojson"
+    - id: house_enacted_2123
+      label: "State House Map, 2021–2024"
+      file: "boundaries/house/house_enacted_2123_2024update.geojson"
+    - id: house_remedy_2
+      label: "GHDC House Remedy (2023)"
+      file: "boundaries/house/house_remedy_2.geojson"
+    - id: house_prop1_dem
+      label: "State House Proposal 1 (Dem)"
+      file: "boundaries/house/house_prop1_dem.geojson"
+    - id: house_prop2_rep
+      label: "State House Proposal 2 (Rep)"
+      file: "boundaries/house/house_prop2_rep.geojson"
   senate:
     - id: senate_enacted_24
       label: "2024 Enacted Senate Map"
       file: "boundaries/senate/senate_enacted_24_2024update.geojson"
+    - id: senate_enacted_2123
+      label: "State Senate Map, 2021–2024"
+      file: "boundaries/senate/senate_enacted_2123_2024update.geojson"
     - id: senate_remedy
       label: "Senate Remedy Map"
       file: "boundaries/senate/senate_remedy.geojson"
-    - id: senate14_census20
-      label: "2014 Senate (2020 Census Boundaries)"
-      file: "boundaries/senate/senate14_census20.geojson"
+    - id: senate_remedy_2
+      label: "GSDC Senate Remedy (2023)"
+      file: "boundaries/senate/senate_remedy_2.geojson"
+    - id: senate_prop1_dem
+      label: "State Senate Proposal 1 (Dem)"
+      file: "boundaries/senate/senate_prop1_dem.geojson"
+    - id: senate_prop2_rep
+      label: "State Senate Proposal 2 (Rep)"
+      file: "boundaries/senate/senate_prop2_rep.geojson"
 
 overlays:
   - id: bvap

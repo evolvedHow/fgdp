@@ -218,6 +218,15 @@ def sync_app(app, dest, repo, dry_run, fdp_root):
     to_copy: list[tuple[Path, Path]] = []  # (src, dst)
     seen: set[str] = set()
 
+    # Categories the consuming app expects to find in a subdirectory rather
+    # than flattened into the destination root (fdex fetches
+    # data/demographics/<chamber>.json, not data/<chamber>.json).
+    _KEEP_SUBDIR = {"demographics"}
+
+    def _dst_for(rel: str, src: Path) -> Path:
+        head = rel.split("/", 1)[0]
+        return dest_path / head / src.name if head in _KEEP_SUBDIR else dest_path / src.name
+
     def _add(rel: str) -> None:
         if not rel or rel in seen:
             return
@@ -225,7 +234,7 @@ def sync_app(app, dest, repo, dry_run, fdp_root):
         try:
             src = p.resolve(rel)
             if src.is_file():
-                to_copy.append((src, dest_path / src.name))
+                to_copy.append((src, _dst_for(rel, src)))
         except FileNotFoundError:
             console.print(f"[yellow]  MISSING  {rel}[/]")
 
@@ -260,12 +269,13 @@ def sync_app(app, dest, repo, dry_run, fdp_root):
     if dry_run:
         console.print(f"[cyan]Dry run — {len(to_copy)} file(s) would be copied to {dest_path}[/]")
         for src, dst in to_copy:
-            console.print(f"  {src.name}")
+            console.print(f"  {dst.relative_to(dest_path)}")
         return
 
     for src, dst in to_copy:
+        dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
-        console.print(f"  [green]copied[/]  {src.name}")
+        console.print(f"  [green]copied[/]  {dst.relative_to(dest_path)}")
 
     console.print(f"\n[green]{len(to_copy)} file(s) synced to {dest_path}[/]")
 
@@ -1464,3 +1474,7 @@ def load_pg(dsn, state, year, vintage, replace, fdp_root):
     console.print(f"  FROM fdp.election_results")
     console.print(f"  WHERE state = 'GA' GROUP BY 1,2,3 ORDER BY 1,2,3;")
     console.print(f"\n  SELECT * FROM fdp.v_statewide_results WHERE year = 2022;")
+
+
+if __name__ == "__main__":
+    main()
