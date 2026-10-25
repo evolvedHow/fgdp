@@ -210,6 +210,90 @@ PY
 
 ---
 
+## Connect Metabase (recommended over Looker Studio)
+
+A Docker Compose file is provided for Metabase because it handles multiple
+schemas and ad-hoc SQL much better than Looker Studio.
+
+### Start Metabase
+
+```bash
+cd fdp
+docker compose -f docker-compose.metabase.yml up -d
+```
+
+Wait ~30 seconds, then open: `http://localhost:3000`
+
+Create the admin account in the UI.
+
+### Add the local Postgres data source
+
+1. In Metabase, go to **Admin settings → Databases → Add a database**.
+2. Choose **PostgreSQL**.
+3. Fill in:
+
+| Setting | Value |
+|---|---|
+| Host | `host.docker.internal` |
+| Port | `5432` |
+| Database name | `fdga` |
+| Username | `homelab` |
+| Password | `homelab` |
+| SSL | No (for local) |
+
+4. Click **Save**.
+
+If `host.docker.internal` does not work on Linux, use your machine's LAN IP
+(e.g., `192.168.x.x`) or the Docker bridge gateway (`172.17.0.1`).
+
+### Switch to Supabase
+
+1. Go to **Admin settings → Databases**.
+2. Either edit the existing database or add a new one.
+3. Fill in the Supabase session pooler settings:
+
+| Setting | Value |
+|---|---|
+| Host | `aws-0-us-east-1.pooler.supabase.com` |
+| Port | `5432` |
+| Database name | `postgres` |
+| Username | `postgres.jzhxmnjmigfhggzfcwkv` |
+| Password | `fairdistrictsGA2026!` |
+| SSL | Yes / Require |
+
+4. Save. All questions and dashboards will now query Supabase.
+
+### Recommended Metabase starter questions
+
+Create these questions using **Native query**:
+
+1. **Benchmark summary**
+   ```sql
+   SELECT * FROM analytics.v_redistricting_benchmark_summary
+   ORDER BY cycle_year, office;
+   ```
+
+2. **Competitiveness distribution**
+   ```sql
+   SELECT cycle_year, office, competitive_district_count, map_count
+   FROM analytics.agg_sim_competitiveness
+   ORDER BY cycle_year, office, competitive_district_count;
+   ```
+
+3. **County summary map**
+   ```sql
+   SELECT county_fips, total_pop, dem_vote_pct, centroid_lat, centroid_lon
+   FROM dashboard.v_county_summary;
+   ```
+
+4. **Enacted vs ensemble**
+   ```sql
+   SELECT * FROM fdp.v_ensemble_vs_enacted
+   ORDER BY year, office;
+   ```
+
+---
+
 ## Connect Data Studio
 
 Use the **session pooler** settings:

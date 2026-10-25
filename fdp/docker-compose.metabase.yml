@@ -1,0 +1,57 @@
+# Metabase for FDP analytics
+#
+# Quick start:
+#   docker compose -f docker-compose.metabase.yml up -d
+#   open http://localhost:3000
+#
+# First-time setup:
+#   1. Create an admin account in the Metabase UI.
+#   2. Add a database connection:
+#      - Local Postgres (from the Docker host):
+#          host: host.docker.internal
+#          port: 5432
+#          db:   fdga
+#          user: homelab
+#          pass: homelab
+#      - Supabase (session pooler):
+#          host: aws-0-us-east-1.pooler.supabase.com
+#          port: 5432
+#          db:   postgres
+#          user: postgres.jzhxmnjmigfhggzfcwkv
+#          pass: fairdistrictsGA2026!
+#          SSL:  require
+#
+# Notes:
+#   - This compose uses Metabase's built-in H2 app database. For production,
+#     migrate Metabase's app DB to Postgres (see Metabase docs).
+#   - "host.docker.internal" works on Docker Desktop (Mac/Windows) and on Linux
+#     with the extra_hosts mapping below. If it fails on Linux, replace it with
+#     your machine's LAN IP in the Metabase UI.
+
+services:
+  metabase:
+    image: metabase/metabase:latest
+    container_name: fdp-metabase
+    ports:
+      - "3000:3000"
+    environment:
+      # Memory tuning for modest servers
+      JAVA_OPTS: "-Xmx2g -Xms1g"
+      # Optional: pre-fill the admin email (set in .env if desired)
+      # MB_ADMIN_EMAIL: ${MB_ADMIN_EMAIL:-}
+      # MB_ADMIN_PASSWORD: ${MB_ADMIN_PASSWORD:-}
+    volumes:
+      - metabase-data:/metabase-data
+    extra_hosts:
+      # Allows "host.docker.internal" to resolve on Linux Docker engines.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  metabase-data:
