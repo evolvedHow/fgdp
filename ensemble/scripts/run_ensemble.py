@@ -48,7 +48,8 @@ Schema of plans parquet
 Supabase catalog
 ----------------
   fdp.ensemble_runs — one row per run; status updated running → completed/failed
-  Requires DATABASE_URL env var.  Pass --no-db to skip catalog writes.
+  Defaults to the Supabase session pooler. Override with DATABASE_URL or
+  POSTGRES_DSN environment variables. Pass --no-db to skip catalog writes.
 """
 
 from __future__ import annotations
@@ -115,16 +116,27 @@ def _load_benchmark_config():
 # Catalog writes (Supabase)
 # ---------------------------------------------------------------------------
 
-def _db_url() -> str | None:
-    return os.environ.get("DATABASE_URL")
+def _db_url() -> str:
+    """Return the target Postgres DSN for catalog writes.
+
+    Preference order:
+      1. DATABASE_URL environment variable
+      2. POSTGRES_DSN environment variable
+      3. Supabase session pooler (shared/dashboard target)
+    """
+    return (
+        os.environ.get("DATABASE_URL")
+        or os.environ.get("POSTGRES_DSN")
+        or (
+            "postgresql://postgres.jzhxmnjmigfhggzfcwkv:fairdistrictsGA2026!"
+            "@aws-0-us-east-1.pooler.supabase.com:5432/postgres"
+        )
+    )
 
 
 def catalog_write_start(run_name: str, benchmark_id: str, params: dict) -> None:
     """Insert/upsert a 'running' row into fdp.ensemble_runs."""
     url = _db_url()
-    if not url:
-        print("  [catalog] DATABASE_URL not set — skipping catalog write")
-        return
     try:
         import psycopg
         with psycopg.connect(url, autocommit=True) as conn:
@@ -162,8 +174,6 @@ def catalog_write_end(
 ) -> None:
     """Update the catalog row on completion or failure."""
     url = _db_url()
-    if not url:
-        return
     try:
         import psycopg
         with psycopg.connect(url, autocommit=True) as conn:
@@ -245,18 +255,18 @@ def run_chain(
     }
 
     # ── Derive dimensions from the graph ────────────────────────────────────
-    node_order  = list(graph.nodes())
+    node_order  = list(graph.nodes)
     n_nodes     = len(node_order)
     node_index  = {n: i for i, n in enumerate(node_order)}
 
-    total_pop   = sum(graph.nodes[n].get(pop_column, 0) for n in node_order)
-    n_districts = len({graph.nodes[n][district_col] for n in node_order})
+    total_pop   = sum(graph.node_data(n).get(pop_column, 0) for n in node_order)
+    n_districts = len({graph.node_data(n)[district_col] for n in node_order})
     ideal_pop   = total_pop / n_districts
 
     # ── Row 0: enacted plan — read directly from graph ───────────────────────
     # Always stored as draw=1 in the output, regardless of burn_in or epsilon.
     enacted_row = np.array(
-        [graph.nodes[n][district_col] for n in node_order], dtype=np.int16
+        [graph.node_data(n)[district_col] for n in node_order], dtype=np.int16
     )
 
     # ── Widen constraint epsilon to accommodate enacted VTD-level deviations ─
@@ -267,7 +277,7 @@ def run_chain(
     # epsilon, so chain draws stay within the intended population tolerance.
     dist_pop = _dd(int)
     for n in node_order:
-        dist_pop[graph.nodes[n][district_col]] += graph.nodes[n].get(pop_column, 0)
+        dist_pop[graph.node_data(n)[district_col]] += graph.node_data(n).get(pop_column, 0)
     max_enacted_dev = max(abs(p - ideal_pop) / ideal_pop for p in dist_pop.values())
     constraint_eps  = max(epsilon, max_enacted_dev * 1.05)  # 5% slack above actual
 
@@ -669,17 +679,17 @@ Examples
     n_nodes = graph.number_of_nodes()
     print(f"  {n_nodes:,} nodes")
 
-    # Build GEOID map
-    sample_attrs = graph.nodes[next(iter(graph.nodes()))]
+    # Build GEOID map (GerryChain 1.0 uses graph.node_data(n) for attributes)
+    sample_attrs = graph.node_data(next(iter(graph.nodes)))
     geoid_attr   = next(
         (a for a in ["GEOID20", "GEOID", "geoid", "GEOID10"] if a in sample_attrs),
         None,
     )
     if geoid_attr:
-        geoid_map = {n: str(graph.nodes[n][geoid_attr]) for n in graph.nodes()}
+        geoid_map = {n: str(graph.node_data(n)[geoid_attr]) for n in graph.nodes}
     else:
         print("  WARNING: no GEOID attribute in graph — using node IDs as geoids")
-        geoid_map = {n: str(n) for n in graph.nodes()}
+        geoid_map = {n: str(n) for n in graph.nodes}
 
     # Resolve district column — priority order:
     #   1. YAML chamber.district_col (explicit, any state/chamber)

@@ -23,7 +23,7 @@ geography:
   state: GA                          # ✅
   geo_level: vtd                     # ✅  vtd (now) | precinct (Phase 6 — pending 2026 shapefile)
   vintage_year: 2020                 # ✅  2020 Census/VTD boundaries
-  graph_file: fdga-chain/data/graphs/ga_congress.json   # ✅ pre-built dual graph, 2698 nodes
+  graph_file: data/repos/main/graphs/ga_congress.json   # ✅ pre-built dual graph, 2698 nodes
 
 # -----------------------------------------------------------------------------
 # CHAMBER

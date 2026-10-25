@@ -141,7 +141,7 @@ def run_single_chain_modal(
         seed = seed + chain_idx
 
     dist_col = DISTRICT_COLS.get(chamber["name"], "CDIST")
-    sample_attrs = graph.nodes[next(iter(graph.nodes()))]
+    sample_attrs = graph.node_data(next(iter(graph.nodes)))
     if dist_col not in sample_attrs:
         fallbacks = [
             k for k in sample_attrs
@@ -171,9 +171,9 @@ def run_single_chain_modal(
         None,
     )
     geoid_map = (
-        {n: str(graph.nodes[n][geoid_attr]) for n in graph.nodes()}
+        {n: str(graph.node_data(n)[geoid_attr]) for n in graph.nodes}
         if geoid_attr
-        else {n: str(n) for n in graph.nodes()}
+        else {n: str(n) for n in graph.nodes}
     )
 
     n_draws, n_nodes = plan_matrix.shape

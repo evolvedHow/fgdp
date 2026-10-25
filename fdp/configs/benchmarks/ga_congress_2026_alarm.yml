@@ -26,7 +26,7 @@ geography:
   vintage_year: 2020
   # Note: graph_file is not used by the SMC runner (redist reads the RDS map
   # directly). Kept here for schema compatibility with BenchmarkConfig.
-  graph_file: fdga-chain/data/graphs/ga_congress.json
+  graph_file: data/repos/main/graphs/ga_congress.json
 
 chamber:
   name: congress

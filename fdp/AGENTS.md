@@ -62,7 +62,45 @@ See `wrenai/config.yaml.example` in this repo for the full file.
 4. Keep descriptions short and focused.
 5. Deploy.
 
+## Postgres mirror for dashboards
+A Postgres equivalent of the DuckDB CDM is available for Data Studio / Looker Studio.
+The canonical target is now the **Supabase** project `jzhxmnjmigfhggzfcwkv`,
+reachable over IPv4 via the shared session pooler:
+
+```bash
+cd /path/to/fgdp/fdp
+POSTGRES_DSN='postgresql://postgres.jzhxmnjmigfhggzfcwkv:fairdistrictsGA2026!@aws-0-us-east-1.pooler.supabase.com:5432/postgres' \
+  uv run python scripts/cdm_to_postgres.py
+```
+
+This creates `cdm.*`, `manifest.*`, `semantic.*`, `fdp.*`, `dashboard.*`, and
+`analytics.*` schemas. The `analytics` schema implements the briefing-spec
+views: county population shifts, statewide demographics, and ensemble-based
+partisan/competitiveness/minority-representation benchmarks. See
+`sql/postgres/README.md` for details.
+
+After rebuilding the schema, copy ensemble scores from a local Postgres with:
+
+```bash
+uv run python scripts/migrate_ensemble_to_supabase.py \
+  --remote-dsn 'postgresql://postgres.jzhxmnjmigfhggzfcwkv:fairdistrictsGA2026!@aws-0-us-east-1.pooler.supabase.com:5432/postgres'
+```
+
+`scripts/load_ensemble_scores.py` and `ensemble/scripts/run_ensemble.py` now
+default to the Supabase session pooler; override with `POSTGRES_DSN` or
+`DATABASE_URL` to target the local Docker Postgres instead.
+
 ## TODO
-- [ ] Add county/muni reference views (`v_counties`, `v_municipalities`).
+- [x] Add county reference table (`analytics.county_reference`) and census seed.
+- [x] Rebuild GerryChain dual graphs from Census VTD shapefile + enacted GeoJSON
+      (2,698 nodes, GEOID20, CDIST/SDIST/HDIST).
+- [x] Build `election_results_vtd.parquet` and `vtd/bvap_vtd.parquet` from
+      `fdensemble/data/vtd_composite.parquet` and `vtd_demographics.parquet`.
+- [x] Run, score, and load a GerryChain congress ensemble into Postgres;
+      refresh analytics materialized views.
+- [x] Migrate the local `fdga` database to Supabase session pooler for
+      Data Studio / business-user sharing.
+- [ ] Add municipal reference view (`v_municipalities`).
 - [ ] Seed WrenAI `sql_pair` table with example SQL pairs.
-- [ ] Build election/CVAP views once source Parquet files are available.
+- [ ] Run full State Senate / State House GerryChain ensembles (graphs ready;
+      House may need a larger population tolerance or smaller geographic unit).

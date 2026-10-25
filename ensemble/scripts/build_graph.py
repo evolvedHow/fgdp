@@ -66,6 +66,7 @@ DATA_GRAPH = CHAIN_ROOT / "data" / "graphs"
 # VTD shapefile search paths per state (first found wins)
 VTD_SEARCH_PATHS: dict[str, list[Path]] = {
     "ga": [
+        DATA_RAW / "tl_2020_13_vtd20.zip",
         DATA_RAW / "ga_pl2020_vtd.zip",
         CHAIN_ROOT.parent / "fdensemble" / "input_data" / "ga_pl2020_vtd.zip",
         CHAIN_ROOT.parent / "input_datasets" / "ga_pl2020_vtd.zip",
@@ -73,12 +74,17 @@ VTD_SEARCH_PATHS: dict[str, list[Path]] = {
     ],
 }
 
-# Default enacted shapefiles per state: {chamber: (path, district_col)}
+# Default enacted maps per state: {chamber: (path, district_col)}
+# These are the GeoJSON plans in fdensemble/uploaded_maps; the dist_col is the
+# column name *in the source file*. The output graph column is renamed to
+# CDIST/SDIST/HDIST below.
 ENACTED_DEFAULTS: dict[str, dict[str, tuple[Path, str]]] = {
     "ga": {
-        "congress": (DATA_RAW / "Congress-2023 shape.shp",       "CDIST"),
-        "senate":   (DATA_RAW / "Senate-2023 shape file.shp",    "SDIST"),
-        "house":    (DATA_RAW / "House-2023 shape.shp",          "HDIST"),
+        # Output district column names are CDIST/SDIST/HDIST. The source GeoJSONs
+        # use 'district', which join_districts falls back to automatically.
+        "congress": (CHAIN_ROOT.parent / "fdensemble" / "uploaded_maps" / "congress_enacted_2023.geojson", "CDIST"),
+        "senate":   (CHAIN_ROOT.parent / "fdensemble" / "uploaded_maps" / "senate_enacted_2023.geojson",   "SDIST"),
+        "house":    (CHAIN_ROOT.parent / "fdensemble" / "uploaded_maps" / "house_enacted_2023.geojson",    "HDIST"),
     },
 }
 
@@ -142,7 +148,7 @@ def _parse_enacted_arg(val: str) -> tuple[str, Path, str]:
 # Step 1 — Load and slim the VTD shapefile
 # ---------------------------------------------------------------------------
 
-def load_vtd(vtd_path: Path) -> gpd.GeoDataFrame:
+def load_vtd(vtd_path: Path, demographics_path: Path | None = None) -> gpd.GeoDataFrame:
     print(f"Loading VTD shapefile: {vtd_path.name}")
     path_str = f"zip://{vtd_path}" if vtd_path.suffix == ".zip" else str(vtd_path)
     gdf = gpd.read_file(path_str)
@@ -159,21 +165,30 @@ def load_vtd(vtd_path: Path) -> gpd.GeoDataFrame:
     else:
         gdf["COUNTYFP20"] = "000"
 
-    # Population — accept P0010001 (PL 94-171 raw) or TOTPOP (pre-named)
+    # Population — accept P0010001 (PL 94-171 raw) or TOTPOP (pre-named),
+    # otherwise join from a demographics parquet keyed by GEOID20.
     if "P0010001" in gdf.columns:
         gdf["TOTPOP"] = gdf["P0010001"].astype(int)
     elif "TOTPOP" in gdf.columns:
         gdf["TOTPOP"] = gdf["TOTPOP"].astype(int)
+    elif demographics_path and demographics_path.exists():
+        print(f"  Joining population from {demographics_path.name}")
+        demo = pd.read_parquet(demographics_path)[["geoid", "pop", "vap"]].copy()
+        demo = demo.rename(columns={"geoid": "GEOID20", "pop": "TOTPOP", "vap": "VAP_MOD"})
+        demo["GEOID20"] = demo["GEOID20"].astype(str)
+        gdf = gdf.merge(demo, on="GEOID20", how="left")
+        gdf["TOTPOP"] = gdf["TOTPOP"].fillna(0).astype(int)
+        gdf["VAP_MOD"] = gdf["VAP_MOD"].fillna(0).astype(int)
     else:
-        raise ValueError("No population column found (expected P0010001 or TOTPOP)")
+        raise ValueError(
+            "No population column found (expected P0010001 or TOTPOP) and "
+            "no demographics parquet provided."
+        )
 
     # VAP_MOD = total VAP minus correctional facility population
     # This adjusts for prison gerrymandering in rural counties.
     if "P0040001" in gdf.columns and "P0050003" in gdf.columns:
         gdf["VAP_MOD"] = (gdf["P0040001"] - gdf["P0050003"]).clip(lower=0).astype(int)
-    else:
-        print("  NOTE: P0040001/P0050003 not found — VAP_MOD = 0 (no prison adjustment)")
-        gdf["VAP_MOD"] = 0
 
     # Normalise to WGS84 for consistent spatial joins
     if gdf.crs and gdf.crs.to_epsg() != 4326:
@@ -302,14 +317,14 @@ def build_and_save(
     else:
         print(f"  ✓ Fully connected")
 
-    # Spot-check key attributes
-    sample = graph.nodes[next(iter(graph.nodes()))]
+    # Spot-check key attributes (GerryChain 1.0: graph.node_data(n))
+    sample = graph.node_data(next(iter(graph.nodes)))
     for attr in ["GEOID20", "TOTPOP", district_col]:
         val = sample.get(attr, "MISSING")
         print(f"  [{attr}] sample: {val}")
 
-    n_districts = max(graph.nodes[n].get(district_col, 0) for n in graph.nodes())
-    total_pop   = sum(graph.nodes[n].get("TOTPOP", 0) for n in graph.nodes())
+    n_districts = max(graph.node_data(n).get(district_col, 0) for n in graph.nodes)
+    total_pop   = sum(graph.node_data(n).get("TOTPOP", 0) for n in graph.nodes)
     print(f"  Districts: {n_districts}  |  Total pop: {total_pop:,}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -345,6 +360,13 @@ def main() -> None:
         default=None,
         help="Path to Census VTD shapefile or zip. Auto-detected from known "
              "paths if omitted.",
+    )
+    parser.add_argument(
+        "--vtd-demographics",
+        type=Path,
+        default=CHAIN_ROOT.parent / "fdensemble" / "data" / "vtd_demographics.parquet",
+        help="VTD demographics parquet used to join TOTPOP/VAP when the "
+             "shapefile does not contain population columns.",
     )
     parser.add_argument(
         "--enacted",
@@ -410,7 +432,7 @@ def main() -> None:
         sys.exit(1)
 
     # ── Step 1: load VTD base ────────────────────────────────────────────────
-    vtd_gdf = load_vtd(vtd_path)
+    vtd_gdf = load_vtd(vtd_path, demographics_path=args.vtd_demographics)
 
     # ── Resolve projection CRS ───────────────────────────────────────────────
     proj_crs = args.proj_crs
